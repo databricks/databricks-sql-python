@@ -16,13 +16,6 @@ Phase 1 gaps documented in the integration design:
 
 - ``query_tags`` on execute is not supported (kernel exposes
   ``statement_conf`` but PyO3 doesn't surface it).
-- ``get_tables`` with a non-empty ``table_types`` filter applies
-  the filter client-side; today the kernel returns the full
-  ``SHOW TABLES`` shape unchanged. The connector's existing
-  ``ResultSetFilter.filter_tables_by_type`` is keyed on
-  ``SeaResultSet`` not ``KernelResultSet``, so we punt and let
-  the caller see all rows — documented as a known gap in the
-  design doc.
 - Volume PUT/GET (staging operations): kernel has no Volume API
   yet. Users on Thrift-only paths.
 """
@@ -32,7 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
@@ -52,7 +45,6 @@ from databricks.sql.backend.types import (
 from databricks.sql.exc import (
     InterfaceError,
     NotSupportedError,
-    OperationalError,
     ProgrammingError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -105,6 +97,57 @@ def _strip_leading_sql_comments(sql: str) -> str:
         else:
             break
     return sql[i:]
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    """True iff ``exc`` is a kernel ``NotFound`` error (HTTP 404 /
+    ``STATEMENT_NOT_FOUND``).
+
+    Used by ``get_query_state`` to recognise an async statement the
+    server no longer knows about (closed and aged out of the result TTL,
+    or never a server statement) and treat it as terminal, rather than
+    surfacing a raw error. Keyed on the kernel ``ErrorCode`` string
+    (``"NotFound"``) — verified live against a SEA warehouse: an
+    unknown/expired statement id returns 404 which the kernel maps to
+    ``ErrorCode::NotFound`` (``retryable=False``), distinct from a
+    transient 5xx (retryable) or a malformed-id 400."""
+    return (
+        isinstance(exc, _kernel.KernelError)
+        and getattr(exc, "code", None) == "NotFound"
+    )
+
+
+def _none_if_blank(value: Optional[str]) -> Optional[str]:
+    """Map an empty/whitespace-only metadata filter to ``None``
+    ("match all"), matching the Thrift backend's effective behaviour.
+
+    The kernel's ``Identifier`` / ``LikePattern`` reject ``""`` with
+    ``InvalidArgument`` (-> ``ProgrammingError``); ``None`` is the
+    kernel's canonical "match all". Applied to schema / table / column
+    *pattern* args (which otherwise keep ``%`` / ``_`` as real LIKE
+    wildcards)."""
+    if value is None:
+        return None
+    return value if value.strip() else None
+
+
+def _catalog_or_none(value: Optional[str]) -> Optional[str]:
+    """Normalise a catalog filter: ``None`` / blank / ``'%'`` / ``'*'``
+    all mean "all catalogs" -> ``None``.
+
+    This makes ``columns(catalog='%')`` behave like
+    ``tables(catalog='%')`` / ``schemas(catalog='%')`` — the kernel
+    already treats blank/``%``/``*`` as "all catalogs" for SHOW SCHEMAS
+    / SHOW TABLES (``is_null_or_wildcard``) but treats the catalog as an
+    exact identifier for SHOW COLUMNS, so the three diverged. Normalising
+    connector-side makes them symmetric. This intentionally diverges from
+    raw-Thrift literalness (Thrift treats ``%`` as a literal catalog
+    name) in favour of JDBC "catalog is exact-or-all, not a pattern" +
+    internal consistency. Catalog is the only arg normalised this way;
+    schema/table/column patterns keep ``%`` / ``*`` as LIKE wildcards."""
+    if value is None or not value.strip() or value in ("%", "*"):
+        return None
+    return value
 
 
 def _is_staging_statement(operation: str) -> bool:
@@ -202,9 +245,20 @@ class KernelDatabricksClient(DatabricksClient):
         self._kernel_session: Optional[Any] = None
         self._session_id: Optional[SessionId] = None
         # Async-exec handles keyed by CommandId.guid. Populated by
-        # ``execute_command(async_op=True)``; drained by ``close_command``.
-        # Guarded by ``_async_handles_lock`` so concurrent cursors on the
-        # same connection don't race on submit / close / close-session.
+        # ``execute_command(async_op=True)``; drained by ``close_command``
+        # / ``close_session``. Guarded by ``_async_handles_lock`` so
+        # concurrent cursors on the same connection don't race on submit /
+        # close / close-session.
+        #
+        # This is a KEEP-ALIVE registry, not a state/result lookup: the
+        # submitting ``ExecutedAsyncStatement``'s ``Drop`` fires a
+        # fire-and-forget ``close_statement``, which would kill the
+        # still-running async query the moment the handle is dropped. We
+        # retain it (and its parent ``Statement``) here so the live query
+        # survives until an explicit close. ``get_query_state`` /
+        # ``get_execution_result`` do NOT consult this map — they
+        # re-attach to the statement by id (the server is the source of
+        # truth for async state), so they work even cross-process.
         self._async_handles: Dict[str, Any] = {}
         # Parent ``Statement`` objects kept alive alongside async handles.
         # On the kernel, ``Statement.close()`` flips the validity flag on
@@ -215,12 +269,6 @@ class KernelDatabricksClient(DatabricksClient):
         # ``close_command`` / ``close_session`` after the async handle
         # has finished its work.
         self._async_statements: Dict[str, Any] = {}
-        # CommandId.guids of async commands that have already been
-        # closed (via ``close_command`` or ``close_session``). Lets
-        # ``get_query_state`` report ``CLOSED`` for them rather than
-        # the SUCCEEDED fall-through used for the never-tracked sync
-        # path. Same lock as ``_async_handles``.
-        self._closed_commands: Set[str] = set()
         self._async_handles_lock = threading.RLock()
         # Sync-execute cancellers keyed by ``id(cursor)``. A blocking
         # ``execute()`` sets ``cursor.active_command_id`` only AFTER it
@@ -354,8 +402,6 @@ class KernelDatabricksClient(DatabricksClient):
             tracked_stmts = list(self._async_statements.items())
             self._async_handles.clear()
             self._async_statements.clear()
-            for guid, _ in tracked:
-                self._closed_commands.add(guid)
         for _, handle in tracked:
             # Per-handle close errors are non-fatal — PEP 249
             # discourages raising from session close — so log and
@@ -487,6 +533,27 @@ class KernelDatabricksClient(DatabricksClient):
                 # produced to reap it.
                 close_stmt = False
             except Exception as exc:
+                # Failed sync execute: publish the server-issued
+                # statement id (observed mid-execute via the canceller's
+                # inflight slot, still registered here — the finally pops
+                # it) so the cursor's query_id reflects the FAILED query,
+                # matching the Thrift backend which sets active_command_id
+                # on every execute regardless of outcome. statement_id()
+                # is None for a pre-id failure (transport error on the
+                # initial POST) — then leave active_command_id untouched.
+                # Best-effort; never mask the original failure.
+                try:
+                    with self._sync_cancellers_lock:
+                        canceller = self._sync_cancellers.get(id(cursor))
+                    stmt_id = (
+                        canceller.statement_id() if canceller is not None else None
+                    )
+                    if stmt_id:
+                        cursor.active_command_id = CommandId.from_sea_statement_id(
+                            stmt_id
+                        )
+                except Exception:
+                    pass
                 raise _wrap_kernel_exception("execute_command", exc) from exc
         finally:
             with self._sync_cancellers_lock:
@@ -502,7 +569,21 @@ class KernelDatabricksClient(DatabricksClient):
                     pass
 
         command_id = CommandId.from_sea_statement_id(executed.statement_id)
-        cursor.active_command_id = command_id
+        # Surface the affected-row count for DML (INSERT/UPDATE/DELETE/
+        # MERGE) as ``cursor.rowcount`` instead of the hardcoded ``-1``.
+        # ``num_modified_rows`` is ``None`` for SELECT (and warehouses
+        # that don't report it) → leave ``rowcount`` at its ``-1``
+        # default. ``getattr`` guards against an older kernel wheel that
+        # predates the pyo3 getter. NB the Thrift backend also hardcodes
+        # ``-1`` here, so this makes the kernel path *exceed* Thrift.
+        try:
+            modified = getattr(executed, "num_modified_rows", None)
+            if callable(modified):
+                modified = modified()
+        except Exception:
+            modified = None
+        if modified is not None:
+            cursor.rowcount = modified
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can itself raise ``KernelError`` (or, in principle, a PyO3
         # native exception) — wrap the construction so callers see a
@@ -571,10 +652,10 @@ class KernelDatabricksClient(DatabricksClient):
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)
-            if handle is not None:
-                # Record the close so ``get_query_state`` can report
-                # ``CLOSED`` (not ``SUCCEEDED``) for this command.
-                self._closed_commands.add(command_id.guid)
+        # Closing the handle below fires the server-side CloseStatement.
+        # A subsequent ``get_query_state`` re-attaches by id and reads
+        # ``CLOSED`` straight from the server — no connector-side
+        # closed-state bookkeeping needed.
         if handle is None:
             logger.debug("close_command: no tracked handle for %s", command_id)
             # Still drop the parent Statement if somehow tracked without
@@ -600,22 +681,40 @@ class KernelDatabricksClient(DatabricksClient):
                     pass
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
-        with self._async_handles_lock:
-            handle = self._async_handles.get(command_id.guid)
-            already_closed = command_id.guid in self._closed_commands
-        if handle is None:
-            if already_closed:
-                # We tracked this async handle and have since closed
-                # it; the command is no longer queryable on the
-                # server but the connector still has the id.
-                return CommandState.CLOSED
-            # No tracked async handle and never closed: execute_command
-            # ran sync and the result was materialised before
-            # returning. Terminal by construction.
-            return CommandState.SUCCEEDED
+        # Server is the source of truth for async command state. Re-attach
+        # to the statement by its id and read the state the server reports
+        # — no connector-side state to drift. SEA keys GetStatementStatus
+        # purely on the id, so a statement the connector no longer holds a
+        # handle for (or never held — a different process) is still
+        # queryable. CLOSED comes straight from the server: after a
+        # statement is closed (DELETE) the server still returns 200
+        # state=CLOSED until the result TTL elapses.
+        if self._kernel_session is None:
+            raise InterfaceError("get_query_state requires an open session.")
         try:
+            handle = self._kernel_session.attach_async_statement(command_id.guid)
             state, failure = handle.status()
         except Exception as exc:
+            if _is_not_found(exc):
+                # The server doesn't recognise the id (404). Two cases,
+                # disambiguated by whether we ever tracked it as async:
+                #   * still in _async_handles -> a live async command the
+                #     server lost? Shouldn't happen; fall through to the
+                #     not-tracked answer below.
+                #   * not (or no longer) tracked async -> either a sync
+                #     command (its id was never a standalone server
+                #     statement; terminal-by-construction since the result
+                #     was materialised before execute_command returned) or
+                #     an async command that was closed and has since aged
+                #     out of the server's result TTL.
+                # A closed async command reports CLOSED via the 200 path
+                # above for as long as it's queryable; once it 404s it's
+                # genuinely gone. SUCCEEDED is the truthful terminal answer
+                # for the sync case and a harmless one for an aged-out
+                # closed command (a client polling a closed command saw
+                # CLOSED while it was live). Matches the prior
+                # sync-fall-through behaviour.
+                return CommandState.SUCCEEDED
             raise _wrap_kernel_exception("get_query_state", exc) from exc
         if state == "Failed" and failure is not None:
             # Surface server-reported failure as a database error so
@@ -639,47 +738,26 @@ class KernelDatabricksClient(DatabricksClient):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
-        with self._async_handles_lock:
-            async_exec = self._async_handles.get(command_id.guid)
-        if async_exec is None:
-            raise ProgrammingError(
-                "get_execution_result called for an unknown command_id; "
-                "the kernel backend only tracks async-submitted statements."
-            )
+        # Re-attach to the statement by id and await its result. SEA keys
+        # GetStatementResult on the id, so this works whether or not the
+        # connector still holds the submitting handle — and it's
+        # inherently re-callable (each call attaches a fresh handle and
+        # re-materialises the result stream), matching the Thrift backend
+        # where the operation handle stays re-fetchable until an explicit
+        # close. No connector-side handle lookup, so no
+        # ``unknown command_id`` failure on a second call.
+        #
+        # ``attach_async_statement`` issues a GetStatementStatus to seed
+        # the handle; a 404 (unknown / aged-out id) surfaces as a
+        # NotFound KernelError mapped to ``ProgrammingError`` below via
+        # ``_wrap_kernel_exception``.
+        if self._kernel_session is None:
+            raise InterfaceError("get_execution_result requires an open session.")
         try:
-            stream = async_exec.await_result()
+            handle = self._kernel_session.attach_async_statement(command_id.guid)
+            stream = handle.await_result()
         except Exception as exc:
             raise _wrap_kernel_exception("get_execution_result", exc) from exc
-        # The async-exec handle's role ends once it has produced the
-        # ``ResultStream`` — keeping it around (and tracked in
-        # ``_async_handles``) would leak the server-side
-        # ``ExecutedAsyncStatement`` until ``close_session`` swept it
-        # up, since ``KernelResultSet.close`` only closes the stream
-        # it wraps. Drop tracking and fire-and-forget the close.
-        with self._async_handles_lock:
-            self._async_handles.pop(command_id.guid, None)
-            stmt = self._async_statements.pop(command_id.guid, None)
-            self._closed_commands.add(command_id.guid)
-        try:
-            async_exec.close()
-        except Exception as exc:
-            logger.warning(
-                "Error closing async_exec after await_result for %s: %s",
-                command_id,
-                exc,
-            )
-        # The parent Statement is no longer needed once the async handle
-        # has produced its ResultStream. Close to release server-side
-        # tracking; matches the sync path's eager Statement close.
-        if stmt is not None:
-            try:
-                stmt.close()
-            except Exception as exc:
-                logger.warning(
-                    "Error closing async statement after await_result for %s: %s",
-                    command_id,
-                    exc,
-                )
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.
         try:
@@ -697,7 +775,17 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         """Build a ``KernelResultSet`` from any kernel handle. Used
         by sync execute, ``get_execution_result``, and all metadata
-        paths to keep construction in one place."""
+        paths to keep construction in one place.
+
+        Sets ``cursor.active_command_id`` here so every result-producing
+        path — sync execute, async fetch, AND metadata — leaves the
+        cursor pointing at the command that produced the current result
+        set. This matches the Thrift backend, which sets it
+        unconditionally in ``_handle_execute_response``. Without it,
+        ``cursor.query_id`` / ``get_query_state`` would stay pinned to a
+        prior query after a metadata call (the metadata methods mint a
+        synthetic command id but previously never published it)."""
+        cursor.active_command_id = command_id
         return KernelResultSet(
             connection=cursor.connection,
             backend=self,
@@ -746,8 +834,8 @@ class KernelDatabricksClient(DatabricksClient):
             raise InterfaceError("get_schemas requires an open session.")
         try:
             stream = self._kernel_session.metadata().list_schemas(
-                catalog=catalog_name,
-                schema_pattern=schema_name,
+                catalog=_catalog_or_none(catalog_name),
+                schema_pattern=_none_if_blank(schema_name),
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:
@@ -767,45 +855,18 @@ class KernelDatabricksClient(DatabricksClient):
         if self._kernel_session is None:
             raise InterfaceError("get_tables requires an open session.")
         try:
+            # ``table_types`` is filtered kernel-side (the kernel applies
+            # it to the reshaped result, case-insensitively as of the
+            # batch-3 kernel change), so we forward it and let the kernel
+            # do the work — no connector-side drain + refilter. Passing it
+            # through preserves streaming for large schemas.
             stream = self._kernel_session.metadata().list_tables(
-                catalog=catalog_name,
-                schema_pattern=schema_name,
-                table_pattern=table_name,
-                table_types=table_types,
+                catalog=_catalog_or_none(catalog_name),
+                schema_pattern=_none_if_blank(schema_name),
+                table_pattern=_none_if_blank(table_name),
+                table_types=table_types if table_types else None,
             )
-            if not table_types:
-                return self._make_result_set(
-                    stream, cursor, self._synthetic_command_id()
-                )
-            # The kernel today returns the unfiltered ``SHOW TABLES``
-            # shape regardless of ``table_types``. Drain to a single
-            # Arrow table and apply the same client-side filter the
-            # native SEA backend uses. The filter is **case-sensitive**
-            # — matches the SEA backend's documented behaviour, and
-            # mirrors how the warehouse reports the values
-            # (``TABLE`` / ``VIEW`` / ``SYSTEM_TABLE`` — uppercase).
-            # Look the column up by name rather than positional index
-            # so a future kernel reshape of ``SHOW TABLES`` doesn't
-            # silently filter the wrong column.
-            from databricks.sql.backend.sea.utils.filters import ResultSetFilter
-
-            full_table = _drain_kernel_handle(stream)
-            if "TABLE_TYPE" not in full_table.schema.names:
-                raise OperationalError(
-                    "kernel get_tables result is missing a TABLE_TYPE "
-                    f"column; got {full_table.schema.names!r}"
-                )
-            filtered_table = ResultSetFilter._filter_arrow_table(
-                full_table,
-                column_name="TABLE_TYPE",
-                allowed_values=table_types,
-                case_sensitive=True,
-            )
-            return self._make_result_set(
-                _StaticArrowHandle(filtered_table),
-                cursor,
-                self._synthetic_command_id(),
-            )
+            return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:
             raise _wrap_kernel_exception("get_tables", exc) from exc
 
@@ -830,10 +891,10 @@ class KernelDatabricksClient(DatabricksClient):
             # Thrift backend's `getColumns(null, …)` behaviour from
             # the user's perspective.
             stream = self._kernel_session.metadata().list_columns(
-                catalog=catalog_name,
-                schema_pattern=schema_name,
-                table_pattern=table_name,
-                column_pattern=column_name,
+                catalog=_catalog_or_none(catalog_name),
+                schema_pattern=_none_if_blank(schema_name),
+                table_pattern=_none_if_blank(table_name),
+                column_pattern=_none_if_blank(column_name),
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:
@@ -1006,55 +1067,3 @@ def _read_pem_bytes(path: str, label: str) -> bytes:
             "kernel TLS config."
         )
     return data
-
-
-def _drain_kernel_handle(handle: Any) -> Any:
-    """Drain a kernel ResultStream / ExecutedStatement into a single
-    ``pyarrow.Table``. Used by ``get_tables`` to apply a client-side
-    ``table_types`` filter on a metadata result; cheap because
-    metadata streams are small."""
-    import pyarrow
-
-    schema = handle.arrow_schema()
-    batches = []
-    while True:
-        batch = handle.fetch_next_batch()
-        if batch is None:
-            break
-        if batch.num_rows > 0:
-            batches.append(batch)
-    try:
-        handle.close()
-    except Exception:
-        # Non-fatal — the surrounding ``get_tables`` call has already
-        # captured the result data, and the handle's server-side
-        # state will be reaped by the kernel's Drop impl.
-        pass
-    return pyarrow.Table.from_batches(batches, schema=schema)
-
-
-class _StaticArrowHandle:
-    """Duck-typed kernel handle that replays a pre-built
-    ``pyarrow.Table`` through ``arrow_schema()`` /
-    ``fetch_next_batch()`` / ``close()``. Used to wrap a
-    post-processed table (e.g., the ``table_types``-filtered output
-    of ``get_tables``) so it flows back through the normal
-    ``KernelResultSet`` path."""
-
-    def __init__(self, table: Any) -> None:
-        self._schema = table.schema
-        self._batches = list(table.to_batches())
-        self._idx = 0
-
-    def arrow_schema(self) -> Any:
-        return self._schema
-
-    def fetch_next_batch(self) -> Optional[Any]:
-        if self._idx >= len(self._batches):
-            return None
-        batch = self._batches[self._idx]
-        self._idx += 1
-        return batch
-
-    def close(self) -> None:
-        self._batches = []

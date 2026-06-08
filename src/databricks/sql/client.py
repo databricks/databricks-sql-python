@@ -1590,10 +1590,9 @@ class Cursor:
 
         Names can contain % wildcards.
 
-        Note: on ``use_kernel=True``, ``catalog_name`` is required —
-        the kernel's underlying ``SHOW COLUMNS`` cannot span catalogs.
-        Passing ``catalog_name=None`` raises ``ProgrammingError``. The
-        Thrift and native SEA backends accept ``catalog_name=None``.
+        ``catalog_name=None`` is accepted on all backends and matches
+        columns across every catalog (the kernel issues ``SHOW COLUMNS``
+        over all catalogs).
 
         :returns self
         """
