@@ -32,24 +32,30 @@ pyarrow = [
 pyjwt = "^2.0.0"
 pybreaker = "^1.0.0"
 requests-kerberos = {version = "^0.15.0", optional = true}
+# Optional Rust kernel backend for ``use_kernel=True`` (PyO3 wheel).
+# Pulled in only via the ``[kernel]`` extra below. The published wheel
+# is ``abi3`` with ``Requires-Python: >=3.10`` (built ``abi3-py310``),
+# so the dependency is gated to Python >= 3.10: on 3.8/3.9 the
+# ``[kernel]`` extra resolves to nothing and ``use_kernel=True`` raises
+# a clear ImportError at runtime (see backend/kernel/_errors.py).
+databricks-sql-kernel = {version = "^0.1.0", optional = true, python = ">=3.10"}
 
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
-# `[kernel]` extra is intentionally not declared here yet.
-# `databricks-sql-kernel` is built from the databricks-sql-kernel
-# repo and not yet published to PyPI; declaring it as a poetry dep
-# breaks `poetry lock` for every CI job. Once the wheel is on PyPI
-# the extra will be added back here:
+# ``pip install databricks-sql-connector[kernel]`` adds the Rust kernel
+# backend so ``use_kernel=True`` works. No-op on Python < 3.10 (the
+# wheel's floor) — those users get a runtime ImportError if they pass
+# ``use_kernel=True``.
 #
-#     databricks-sql-kernel = {version = "^0.1.0", optional = true}
-#     [tool.poetry.extras]
-#     kernel = ["databricks-sql-kernel"]
-#
-# Until then, the wheel is not on PyPI and the only supported
-# install path is local dev:
-#     cd databricks-sql-kernel/pyo3 && maturin develop --release
-# (into the same venv as databricks-sql-connector).
+# pyarrow is listed explicitly: the kernel result path
+# (``backend/kernel/result_set.py``) imports pyarrow unconditionally to
+# wrap the Arrow batches the kernel returns. The kernel wheel already
+# declares ``pyarrow>=23.0.1,<24`` so it's pulled transitively, but
+# naming it here documents the connector-side requirement and makes pip
+# co-resolve both constraints at install time rather than failing at
+# ``use_kernel=True`` runtime if the kernel ever drops its pyarrow dep.
+kernel = ["databricks-sql-kernel", "pyarrow"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"

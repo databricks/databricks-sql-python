@@ -30,6 +30,30 @@ Install using `pip install databricks-sql-connector`
 ### Installing the core library with PyArrow
 Install using `pip install databricks-sql-connector[pyarrow]`
 
+### Installing with the Rust kernel backend (`use_kernel=True`)
+Install using `pip install databricks-sql-connector[kernel]`
+
+This adds the optional [`databricks-sql-kernel`](https://pypi.org/project/databricks-sql-kernel/)
+extension (a native Rust client core, exposed via PyO3). Pass
+`use_kernel=True` to `sql.connect(...)` to route the connection through it
+instead of the default Thrift backend:
+
+```python
+connection = sql.connect(
+  server_hostname=host,
+  http_path=http_path,
+  access_token=token,
+  use_kernel=True,
+)
+```
+
+Notes:
+- Requires **Python >= 3.10** (the kernel wheel is published as
+  `cp310-abi3`). On older interpreters the `[kernel]` extra installs
+  nothing and `use_kernel=True` raises an `ImportError`.
+- The extra also pulls in PyArrow, which the kernel result path requires.
+- Authentication supports PAT (`access_token`), OAuth M2M, and OAuth U2M.
+
 
 ```bash
 export DATABRICKS_HOST=********.databricks.com
