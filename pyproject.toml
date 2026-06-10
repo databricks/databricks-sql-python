@@ -25,7 +25,16 @@ openpyxl = "^3.0.10"
 urllib3 = ">=1.26"
 python-dateutil = "^2.8.0"
 pyarrow = [
-    { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
+    # The <3.10 band is capped at <23 because pyarrow>=23 dropped
+    # Python 3.9 (it requires >=3.10). Without the cap, poetry tries to
+    # unify this entry with the kernel's transitive pyarrow>=23.0.1,<24
+    # across the 3.8–3.10 slice and `poetry lock` fails ("pyarrow is
+    # forbidden"). The cap removes no installable version — the newest
+    # pyarrow with a 3.9 wheel is 21.x — it just makes that explicit to
+    # the solver so the optional [kernel] extra (python>=3.10) can
+    # coexist. See the kernel dep + [kernel] extra below.
+    { version = ">=14.0.1,<23", python = ">=3.8,<3.10", optional=true },
+    { version = ">=14.0.1", python = ">=3.10,<3.13", optional=true },
     { version = ">=18.0.0", python = ">=3.13,<3.14", optional=true },
     { version = ">=22.0.0", python = ">=3.14", optional=true }
 ]
