@@ -98,6 +98,49 @@ jobs:
       - name: Run tests
         run: poetry run python -m pytest tests/unit
 
+  run-unit-tests-with-kernel:
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    strategy:
+      matrix:
+        # Kernel wheel is cp310-abi3 (Requires-Python >=3.10), so this
+        # matrix omits 3.9 — the [kernel] extra is a no-op there.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    name: "Unit Tests + Kernel (Python ${{ matrix.python-version }})"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
+        with:
+          python-version: ${{ matrix.python-version }}
+          # --all-extras installs the [kernel] extra, pulling the
+          # published databricks-sql-kernel wheel (+ its pyarrow).
+          install-args: "--all-extras"
+          cache-suffix: "kernel-"
+      - name: Show installed versions
+        run: |
+          echo "=== with databricks-sql-kernel ==="
+          poetry run pip list
+      - name: Verify the kernel extra is installed and importable
+        run: |
+          poetry run python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel wheel missing __file__'; print('kernel ok:', k.__file__)"
+      - name: Verify use_kernel backend wiring loads against the real wheel
+        run: |
+          # Import the kernel-backed client path against the *real* wheel
+          # (the unit tests use a fake module, so this is the only check
+          # that the published extra actually loads end to end).
+          poetry run python -c "from databricks.sql.backend.kernel.client import KernelDatabricksClient; from databricks.sql.backend.kernel.result_set import KernelResultSet; print('use_kernel backend import ok')"
+      - name: Run tests
+        run: poetry run python -m pytest tests/unit
+
   check-linting:
     runs-on:
       group: databricks-protected-runner-group
