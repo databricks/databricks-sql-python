@@ -48,7 +48,7 @@ jobs:
           echo "=== Dependency Version: ${{ matrix.dependency-version }} ==="
           poetry run pip list
       - name: Run tests
-        run: poetry run python -m pytest tests/unit
+        run: poetry run python -m pytest tests/unit -m "not realkernel"
 
   run-unit-tests-with-arrow:
     runs-on:
@@ -96,7 +96,7 @@ jobs:
           echo "=== Dependency Version: ${{ matrix.dependency-version }} with PyArrow ==="
           poetry run pip list
       - name: Run tests
-        run: poetry run python -m pytest tests/unit
+        run: poetry run python -m pytest tests/unit -m "not realkernel"
 
   run-unit-tests-with-kernel:
     runs-on:
@@ -129,17 +129,22 @@ jobs:
         run: |
           echo "=== with databricks-sql-kernel ==="
           poetry run pip list
-      - name: Verify the kernel extra is installed and importable
+      - name: Assert the real kernel wheel is installed (not a stub)
         run: |
-          poetry run python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel wheel missing __file__'; print('kernel ok:', k.__file__)"
-      - name: Verify use_kernel backend wiring loads against the real wheel
-        run: |
-          # Import the kernel-backed client path against the *real* wheel
-          # (the unit tests use a fake module, so this is the only check
-          # that the published extra actually loads end to end).
-          poetry run python -c "from databricks.sql.backend.kernel.client import KernelDatabricksClient; from databricks.sql.backend.kernel.result_set import KernelResultSet; print('use_kernel backend import ok')"
-      - name: Run tests
-        run: poetry run python -m pytest tests/unit
+          poetry run python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel wheel missing __file__ — not the real wheel'; print('real kernel wheel:', k.__file__)"
+      - name: Unit tests (kernel wheel present, realkernel deselected)
+        # The bulk of tests/unit fakes databricks_sql_kernel in
+        # sys.modules, so the real-wheel routing test is deselected here
+        # and run on its own below (a shared session would shadow the
+        # real wheel — both real-wheel tests fail loudly if that happens).
+        run: poetry run python -m pytest tests/unit -m "not realkernel"
+      - name: Drive use_kernel=True through the REAL wheel (routing)
+        # Separate invocation, explicit file path: never collects the
+        # fake-module test file, so sys.modules stays unpolluted. This is
+        # the no-network proof that sql.connect(use_kernel=True) actually
+        # instantiates the real KernelDatabricksClient (not a stub, not a
+        # Thrift fallback). Fails loudly if the real wheel is shadowed.
+        run: poetry run python -m pytest tests/unit/test_session.py -m realkernel -v
 
   check-linting:
     runs-on:

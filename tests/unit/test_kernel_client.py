@@ -61,6 +61,21 @@ class _FakeKernelError(Exception):
         self.error_details_json = error_details_json
 
 
+# These unit tests exercise the connector's error-mapping / wiring logic
+# and need a *controllable* fake ``KernelError`` (to simulate arbitrary
+# kernel error codes), so they install a fake ``databricks_sql_kernel``
+# into ``sys.modules`` unconditionally.
+#
+# IMPORTANT: this fake is session-global and shadows a real wheel if one
+# is installed. Tests that need the REAL wheel (the use_kernel routing
+# test in test_session.py, and the e2e suite in
+# tests/e2e/test_kernel_backend.py) MUST be run in a SEPARATE pytest
+# invocation from this file — never `pytest tests/unit tests/e2e` in one
+# session when the real wheel is installed. Both of those real-wheel
+# tests detect the shadowing (real wheel present but sys.modules holds a
+# stub) and FAIL LOUDLY rather than silently skipping, so a CI job that
+# accidentally mixes them will go red instead of falsely green. The
+# kernel CI matrix runs the real-wheel tests as their own step.
 _fake_kernel_module = types.ModuleType("databricks_sql_kernel")
 _fake_kernel_module.KernelError = _FakeKernelError  # type: ignore[attr-defined]
 _fake_kernel_module.Session = MagicMock()  # type: ignore[attr-defined]

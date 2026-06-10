@@ -30,24 +30,45 @@ header for the docker incantation).
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
 import databricks.sql as sql
 from databricks.sql.exc import Error as DatabricksSqlError
 
-# Same real-wheel guard as test_kernel_backend.py: a fake
-# ``databricks_sql_kernel`` ModuleType injected by the unit tests has no
-# ``__file__``; only a compiled wheel does.
-_kernel_mod = pytest.importorskip(
-    "databricks_sql_kernel",
-    reason="use_kernel=True requires the databricks-sql-kernel package",
-)
-if not getattr(_kernel_mod, "__file__", None):
+# Same real-wheel guard as test_kernel_backend.py — see the detailed
+# rationale there. Skip only when the wheel is genuinely not installed;
+# FAIL LOUDLY if it's installed but shadowed by a stub (so a misconfigured
+# shared pytest session can't silently pass as covering the kernel).
+import importlib.metadata as _ilm
+
+try:
+    _ilm.version("databricks-sql-kernel")
+    _kernel_installed = True
+except _ilm.PackageNotFoundError:
+    _kernel_installed = False
+
+_kernel_mod = sys.modules.get("databricks_sql_kernel")
+if _kernel_mod is None:
+    try:
+        import databricks_sql_kernel as _kernel_mod  # type: ignore[import-not-found]
+    except ImportError:
+        _kernel_mod = None
+_kernel_is_real = _kernel_mod is not None and getattr(_kernel_mod, "__file__", None)
+
+if not _kernel_installed:
     pytest.skip(
-        "databricks_sql_kernel is a test stub (no __file__); "
-        "install the real wheel to run kernel TLS e2e tests",
+        "databricks-sql-kernel is not installed; install the real wheel "
+        "to run kernel TLS e2e tests",
         allow_module_level=True,
+    )
+elif not _kernel_is_real:
+    raise RuntimeError(
+        "databricks-sql-kernel is installed but sys.modules holds a stub "
+        "(no __file__) — the kernel TLS e2e tests would not exercise the "
+        "real wheel. Run them in isolation (separate pytest invocation) so "
+        "a unit-test fake module doesn't shadow the real one."
     )
 
 _MITM_CA = os.getenv("MITMPROXY_CA_CERT")

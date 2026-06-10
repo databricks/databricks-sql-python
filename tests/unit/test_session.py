@@ -525,3 +525,65 @@ class TestKernelUserAgentForwarding:
                 assert "my-partner-app" in ua, f"UA was {ua!r}"
             finally:
                 conn.close()
+
+
+@pytest.mark.realkernel
+class TestUseKernelRoutesThroughRealWheel:
+    """No-network proof that ``sql.connect(use_kernel=True)`` actually
+    routes through the REAL databricks-sql-kernel wheel — not a stub and
+    not a fallback to Thrift.
+
+    This is the unit-side complement to the live e2e suite: it does not
+    need a warehouse (only the network boundary ``open_session`` is
+    mocked), but unlike the other kernel unit tests it does NOT fake the
+    wheel — the real ``KernelDatabricksClient`` is instantiated and its
+    ``_kernel_session`` is built from the real ``databricks_sql_kernel``
+    ``Session``. Skips only when the real wheel is genuinely absent
+    (e.g. the no-kernel CI tier); it must never silently pass when the
+    wheel is present.
+    """
+
+    def _real_kernel_or_skip(self):
+        import importlib.metadata as ilm
+
+        try:
+            ilm.version("databricks-sql-kernel")
+        except ilm.PackageNotFoundError:
+            pytest.skip("databricks-sql-kernel wheel not installed")
+        mod = __import__("databricks_sql_kernel")
+        if not getattr(mod, "__file__", None):
+            pytest.fail(
+                "databricks-sql-kernel is installed but sys.modules holds a "
+                "stub (no __file__) — a unit-test fake is shadowing the real "
+                "wheel; this routing test would not exercise the real kernel."
+            )
+
+    def test_connect_use_kernel_instantiates_real_kernel_backend(self):
+        self._real_kernel_or_skip()
+
+        from databricks.sql.backend.kernel.client import KernelDatabricksClient
+
+        # Mock only the network boundary: the real KernelDatabricksClient
+        # is constructed (building a real databricks_sql_kernel Session),
+        # but open_session() doesn't hit the wire.
+        with patch.object(
+            KernelDatabricksClient,
+            "open_session",
+            return_value=SessionId(BackendType.SEA, "sess-id", None),
+        ):
+            conn = databricks.sql.connect(
+                server_hostname="foo.cloud.databricks.com",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+            )
+            try:
+                # The active backend is the REAL kernel client class.
+                assert isinstance(conn.session.backend, KernelDatabricksClient), (
+                    "use_kernel=True did not route through the real "
+                    f"KernelDatabricksClient; got "
+                    f"{type(conn.session.backend).__name__}"
+                )
+            finally:
+                conn.close()

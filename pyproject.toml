@@ -100,7 +100,8 @@ exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck
 [tool.pytest.ini_options]
 markers = [
     "reviewed: Test case has been reviewed by Databricks",
-    "serial: Tests that must run serially (not parallelized)"
+    "serial: Tests that must run serially (not parallelized)",
+    "realkernel: Requires the real databricks-sql-kernel wheel and an unpolluted sys.modules (no fake kernel stub); must run in a separate pytest invocation from tests that fake databricks_sql_kernel (deselect with -m 'not realkernel', run alone with -m realkernel).",
 ]
 minversion = "6.0"
 log_cli = "false"
