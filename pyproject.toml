@@ -48,14 +48,17 @@ pyarrow = ["pyarrow"]
 # wheel's floor) — those users get a runtime ImportError if they pass
 # ``use_kernel=True``.
 #
-# pyarrow is listed explicitly: the kernel result path
-# (``backend/kernel/result_set.py``) imports pyarrow unconditionally to
-# wrap the Arrow batches the kernel returns. The kernel wheel already
-# declares ``pyarrow>=23.0.1,<24`` so it's pulled transitively, but
-# naming it here documents the connector-side requirement and makes pip
-# co-resolve both constraints at install time rather than failing at
-# ``use_kernel=True`` runtime if the kernel ever drops its pyarrow dep.
-kernel = ["databricks-sql-kernel", "pyarrow"]
+# The kernel result path (``backend/kernel/result_set.py``) needs
+# pyarrow, but it is NOT listed in this extra on purpose: the published
+# kernel wheel declares ``pyarrow>=23.0.1,<24`` as a hard runtime
+# dependency, so ``pip install ...[kernel]`` already pulls a compatible
+# pyarrow transitively. Listing bare ``pyarrow`` here additionally
+# forces poetry to co-resolve an unconstrained pyarrow against the
+# kernel's ``>=23.0.1,<24`` (which itself requires Python >=3.10) across
+# the connector's full 3.8–3.14 support matrix, which is unsatisfiable
+# on 3.8/3.9 and breaks ``poetry lock``. The kernel's own dependency
+# metadata is the single source of truth for the pyarrow floor.
+kernel = ["databricks-sql-kernel"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"
