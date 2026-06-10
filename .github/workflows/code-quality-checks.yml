@@ -77,7 +77,11 @@ jobs:
         uses: ./.github/actions/setup-poetry
         with:
           python-version: ${{ matrix.python-version }}
-          install-args: "--all-extras"
+          # Install ONLY the pyarrow extra (not --all-extras) so this
+          # tier isolates the "pyarrow present, kernel absent"
+          # configuration. --all-extras would also pull the kernel wheel,
+          # making this job redundant with "Unit Tests + Kernel".
+          install-args: "--extras pyarrow"
           cache-suffix: "pyarrow-${{ matrix.dependency-version }}-"
       - name: Install Python tools for custom versions
         if: matrix.dependency-version != 'default'
@@ -121,9 +125,11 @@ jobs:
         uses: ./.github/actions/setup-poetry
         with:
           python-version: ${{ matrix.python-version }}
-          # --all-extras installs the [kernel] extra, pulling the
-          # published databricks-sql-kernel wheel (+ its pyarrow).
-          install-args: "--all-extras"
+          # Install the kernel extra (pulls the published
+          # databricks-sql-kernel wheel, which transitively brings
+          # pyarrow). Explicit --extras kernel rather than --all-extras
+          # so this tier targets the kernel configuration specifically.
+          install-args: "--extras kernel"
           cache-suffix: "kernel-"
       - name: Show installed versions
         run: |
