@@ -52,11 +52,13 @@ try:
     import databricks_sql_kernel as _kernel  # type: ignore[import-not-found]
 except ImportError as exc:  # pragma: no cover - same hint as client.py
     raise ImportError(
-        "use_kernel=True requires the databricks-sql-kernel extension, which "
-        "is not yet published on PyPI. Build and install it locally from the "
-        "databricks-sql-kernel repo:\n"
-        "  cd databricks-sql-kernel/pyo3 && maturin develop --release\n"
-        "(into the same venv as databricks-sql-connector)."
+        "use_kernel=True requires the optional databricks-sql-kernel "
+        "extension, which is not installed. Install it with:\n"
+        '  pip install "databricks-sql-connector[kernel]"\n'
+        "The kernel wheel requires Python >= 3.10; on older interpreters "
+        "use_kernel is unavailable. For local kernel development you can "
+        "instead build it from the databricks-sql-kernel repo:\n"
+        "  cd databricks-sql-kernel/pyo3 && maturin develop --release"
     ) from exc
 
 # Route the kernel's Rust-side logs into Python's ``logging`` as soon as

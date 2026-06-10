@@ -48,7 +48,7 @@ jobs:
           echo "=== Dependency Version: ${{ matrix.dependency-version }} ==="
           poetry run pip list
       - name: Run tests
-        run: poetry run python -m pytest tests/unit
+        run: poetry run python -m pytest tests/unit -m "not realkernel"
 
   run-unit-tests-with-arrow:
     runs-on:
@@ -77,7 +77,11 @@ jobs:
         uses: ./.github/actions/setup-poetry
         with:
           python-version: ${{ matrix.python-version }}
-          install-args: "--all-extras"
+          # Install ONLY the pyarrow extra (not --all-extras) so this
+          # tier isolates the "pyarrow present, kernel absent"
+          # configuration. --all-extras would also pull the kernel wheel,
+          # making this job redundant with "Unit Tests + Kernel".
+          install-args: "--extras pyarrow"
           cache-suffix: "pyarrow-${{ matrix.dependency-version }}-"
       - name: Install Python tools for custom versions
         if: matrix.dependency-version != 'default'
@@ -96,7 +100,57 @@ jobs:
           echo "=== Dependency Version: ${{ matrix.dependency-version }} with PyArrow ==="
           poetry run pip list
       - name: Run tests
-        run: poetry run python -m pytest tests/unit
+        run: poetry run python -m pytest tests/unit -m "not realkernel"
+
+  run-unit-tests-with-kernel:
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    strategy:
+      matrix:
+        # Kernel wheel is cp310-abi3 (Requires-Python >=3.10), so this
+        # matrix omits 3.9 — the [kernel] extra is a no-op there.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    name: "Unit Tests + Kernel (Python ${{ matrix.python-version }})"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Install the kernel extra (pulls the published
+          # databricks-sql-kernel wheel, which transitively brings
+          # pyarrow). Explicit --extras kernel rather than --all-extras
+          # so this tier targets the kernel configuration specifically.
+          install-args: "--extras kernel"
+          cache-suffix: "kernel-"
+      - name: Show installed versions
+        run: |
+          echo "=== with databricks-sql-kernel ==="
+          poetry run pip list
+      - name: Assert the real kernel wheel is installed (not a stub)
+        run: |
+          poetry run python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel wheel missing __file__ — not the real wheel'; print('real kernel wheel:', k.__file__)"
+      - name: Unit tests (kernel wheel present, realkernel deselected)
+        # The bulk of tests/unit fakes databricks_sql_kernel in
+        # sys.modules, so the real-wheel routing test is deselected here
+        # and run on its own below (a shared session would shadow the
+        # real wheel — both real-wheel tests fail loudly if that happens).
+        run: poetry run python -m pytest tests/unit -m "not realkernel"
+      - name: Drive use_kernel=True through the REAL wheel (routing)
+        # Separate invocation, explicit file path: never collects the
+        # fake-module test file, so sys.modules stays unpolluted. This is
+        # the no-network proof that sql.connect(use_kernel=True) actually
+        # instantiates the real KernelDatabricksClient (not a stub, not a
+        # Thrift fallback). Fails loudly if the real wheel is shadowed.
+        run: poetry run python -m pytest tests/unit/test_session.py -m realkernel -v
 
   check-linting:
     runs-on:

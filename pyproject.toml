@@ -25,31 +25,56 @@ openpyxl = "^3.0.10"
 urllib3 = ">=1.26"
 python-dateutil = "^2.8.0"
 pyarrow = [
-    { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
+    # The <3.10 band is capped at <23 because pyarrow>=23 dropped
+    # Python 3.9 (it requires >=3.10). Without the cap, poetry tries to
+    # unify this entry with the kernel's transitive pyarrow>=23.0.1,<24
+    # across the 3.8–3.10 slice and `poetry lock` fails ("pyarrow is
+    # forbidden"). The cap removes no installable version — the newest
+    # pyarrow with a 3.9 wheel is 21.x — it just makes that explicit to
+    # the solver so the optional [kernel] extra (python>=3.10) can
+    # coexist. See the kernel dep + [kernel] extra below.
+    { version = ">=14.0.1,<23", python = ">=3.8,<3.10", optional=true },
+    { version = ">=14.0.1", python = ">=3.10,<3.13", optional=true },
     { version = ">=18.0.0", python = ">=3.13,<3.14", optional=true },
     { version = ">=22.0.0", python = ">=3.14", optional=true }
 ]
 pyjwt = "^2.0.0"
 pybreaker = "^1.0.0"
 requests-kerberos = {version = "^0.15.0", optional = true}
+# Optional Rust kernel backend for ``use_kernel=True`` (PyO3 wheel).
+# Pulled in only via the ``[kernel]`` extra below. The published wheel
+# is ``abi3`` with ``Requires-Python: >=3.10`` (built ``abi3-py310``),
+# so the dependency is gated to Python >= 3.10: on 3.8/3.9 the
+# ``[kernel]`` extra resolves to nothing and ``use_kernel=True`` raises
+# a clear ImportError at runtime (see backend/kernel/_errors.py).
+#
+# Floor is 0.2.0 (``^0.2.0`` == ``>=0.2.0,<0.3.0``). The kernel is
+# pre-1.0, so each 0.x minor may carry breaking changes — the ``<0.3.0``
+# cap means we bump this deliberately when the kernel ships 0.3.0 rather
+# than letting a potentially-breaking minor flow in automatically. 0.2.0
+# keeps the same Requires-Python (>=3.10) and pyarrow (>=23.0.1,<24) pin
+# as 0.1.x, so the gating below is unchanged.
+databricks-sql-kernel = {version = "^0.2.0", optional = true, python = ">=3.10"}
 
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
-# `[kernel]` extra is intentionally not declared here yet.
-# `databricks-sql-kernel` is built from the databricks-sql-kernel
-# repo and not yet published to PyPI; declaring it as a poetry dep
-# breaks `poetry lock` for every CI job. Once the wheel is on PyPI
-# the extra will be added back here:
+# ``pip install databricks-sql-connector[kernel]`` adds the Rust kernel
+# backend so ``use_kernel=True`` works. No-op on Python < 3.10 (the
+# wheel's floor) — those users get a runtime ImportError if they pass
+# ``use_kernel=True``.
 #
-#     databricks-sql-kernel = {version = "^0.1.0", optional = true}
-#     [tool.poetry.extras]
-#     kernel = ["databricks-sql-kernel"]
-#
-# Until then, the wheel is not on PyPI and the only supported
-# install path is local dev:
-#     cd databricks-sql-kernel/pyo3 && maturin develop --release
-# (into the same venv as databricks-sql-connector).
+# The kernel result path (``backend/kernel/result_set.py``) needs
+# pyarrow, but it is NOT listed in this extra on purpose: the published
+# kernel wheel declares ``pyarrow>=23.0.1,<24`` as a hard runtime
+# dependency, so ``pip install ...[kernel]`` already pulls a compatible
+# pyarrow transitively. Listing bare ``pyarrow`` here additionally
+# forces poetry to co-resolve an unconstrained pyarrow against the
+# kernel's ``>=23.0.1,<24`` (which itself requires Python >=3.10) across
+# the connector's full 3.8–3.14 support matrix, which is unsatisfiable
+# on 3.8/3.9 and breaks ``poetry lock``. The kernel's own dependency
+# metadata is the single source of truth for the pyarrow floor.
+kernel = ["databricks-sql-kernel"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"
@@ -82,7 +107,8 @@ exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck
 [tool.pytest.ini_options]
 markers = [
     "reviewed: Test case has been reviewed by Databricks",
-    "serial: Tests that must run serially (not parallelized)"
+    "serial: Tests that must run serially (not parallelized)",
+    "realkernel: Requires the real databricks-sql-kernel wheel and an unpolluted sys.modules (no fake kernel stub); must run in a separate pytest invocation from tests that fake databricks_sql_kernel (deselect with -m 'not realkernel', run alone with -m realkernel).",
 ]
 minversion = "6.0"
 log_cli = "false"

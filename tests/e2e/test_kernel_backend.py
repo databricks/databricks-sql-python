@@ -21,6 +21,7 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+import sys
 from uuid import uuid4
 
 import pytest
@@ -34,23 +35,58 @@ from databricks.sql.exc import (
     ServerOperationError,
 )
 
-# Skip the whole module unless the kernel wheel is genuinely installed.
-# ``pytest.importorskip`` alone isn't enough: the kernel unit tests inject a
-# fake ``databricks_sql_kernel`` ModuleType into ``sys.modules`` so the
-# connector's import-time ``import databricks_sql_kernel`` succeeds without
-# the Rust extension. In the same pytest session that fake module is still
-# in ``sys.modules`` when this e2e file is collected, and importorskip
-# happily returns it. A real wheel exposes ``__file__`` (the compiled
-# extension on disk); the fake ModuleType does not.
-_kernel_mod = pytest.importorskip(
-    "databricks_sql_kernel",
-    reason="use_kernel=True requires the databricks-sql-kernel package",
-)
-if not getattr(_kernel_mod, "__file__", None):
+# These tests must run against the REAL databricks-sql-kernel wheel and
+# must NOT silently pass when it's absent or shadowed. We distinguish
+# three states explicitly so a misconfigured CI job can't look green:
+#
+#   1. Wheel genuinely not installed  -> legitimate skip.
+#   2. Wheel installed in the env but ``sys.modules`` currently holds a
+#      stub (the kernel UNIT tests inject a fake ``databricks_sql_kernel``
+#      ModuleType; in a shared ``pytest tests/unit tests/e2e`` session
+#      that fake can still be resident when this file is collected) ->
+#      FAIL loudly. Silently skipping here is what made the coverage job
+#      look like it exercised the kernel when it didn't.
+#   3. Wheel installed and importable for real -> run.
+#
+# "Installed in the env" is decided via importlib.metadata (the dist
+# database on disk), which a ``sys.modules`` stub can't fake. The
+# ``__file__`` check then tells a real compiled extension from a stub
+# ModuleType.
+import importlib.metadata as _ilm
+
+try:
+    _ilm.version("databricks-sql-kernel")
+    _kernel_installed = True
+except _ilm.PackageNotFoundError:
+    _kernel_installed = False
+
+_kernel_mod = sys.modules.get("databricks_sql_kernel")
+if _kernel_mod is None:
+    try:
+        import databricks_sql_kernel as _kernel_mod  # type: ignore[import-not-found]
+    except ImportError:
+        _kernel_mod = None
+
+_kernel_is_real = _kernel_mod is not None and getattr(_kernel_mod, "__file__", None)
+
+if not _kernel_installed:
+    # State 1: nothing to test against.
     pytest.skip(
-        "databricks_sql_kernel is a test stub (no __file__); "
-        "install the real wheel to run kernel e2e tests",
+        "databricks-sql-kernel is not installed; "
+        "install the real wheel (pip install 'databricks-sql-connector[kernel]') "
+        "to run kernel e2e tests",
         allow_module_level=True,
+    )
+elif not _kernel_is_real:
+    # State 2: the wheel IS installed but a stub is shadowing it. Do NOT
+    # skip — that would hide the fact that the kernel path never ran.
+    raise RuntimeError(
+        "databricks-sql-kernel is installed in this environment but "
+        "sys.modules holds a stub (no __file__) — the kernel e2e tests "
+        "would not actually exercise the real wheel. This usually means a "
+        "unit test's fake databricks_sql_kernel module is shadowing the "
+        "real one in a shared pytest session. Run the kernel e2e tests in "
+        "isolation (separate pytest invocation) so the real wheel loads."
     )
 
 
@@ -80,9 +116,21 @@ def kernel_conn_params(connection_details):
 @pytest.fixture
 def conn(kernel_conn_params):
     """One-shot connection per test (the simple_test pattern the
-    existing e2e suite uses for cursor-level tests)."""
+    existing e2e suite uses for cursor-level tests).
+
+    Asserts the connection actually routed through the kernel backend —
+    if ``use_kernel=True`` silently fell back to Thrift (e.g. a wiring
+    regression), these tests must fail rather than pass against the
+    wrong backend.
+    """
+    from databricks.sql.backend.kernel.client import KernelDatabricksClient
+
     c = sql.connect(**kernel_conn_params)
     try:
+        assert isinstance(c.session.backend, KernelDatabricksClient), (
+            "use_kernel=True did not route through KernelDatabricksClient; "
+            f"got {type(c.session.backend).__name__}"
+        )
         yield c
     finally:
         c.close()
