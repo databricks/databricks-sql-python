@@ -1,5 +1,9 @@
 # Release History
 
+# 4.3.0rc1 (2026-06-11)
+- Add optional Rust kernel backend for `use_kernel=True`, installable via the new `databricks-sql-connector[kernel]` extra (requires Python >= 3.10). Routes connections through the native `databricks-sql-kernel` client, with parity work across cursor-state tracking, metadata, logging (kernel logs surface through Python `logging`), staging fail-loud behavior, error context, and sync cancel (databricks/databricks-sql-python#824, #825, #830, #838, #839 by @vikrantpuppala)
+- Revert the thrift 0.23.0 bump that broke installation on DBR LTS (ES-1960554) (databricks/databricks-sql-python#840 by @vikrantpuppala)
+
 # 4.2.7 (2026-06-02)
 - Extract SPOG org-id from cluster http_path for non-Thrift requests (databricks/databricks-sql-python#817 by @msrathore-db)
 - Remove empty chunks in CloudFetch concatenation (databricks/databricks-sql-python#814 by @jprakash-db)
