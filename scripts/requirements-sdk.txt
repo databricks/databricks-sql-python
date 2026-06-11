@@ -1,0 +1,23 @@
+# Claude Agent SDK migration dependencies (PoC).
+#
+# Replaces the hand-rolled LLM transport + tool-use loop
+# (scripts/engineer_bot/agent_runner.py, scripts/shared/llm_client.py)
+# with the Claude Agent SDK. See docs/migration/claude-agent-sdk-migration.md.
+#
+# IMPORTANT: the SDK spawns the Claude Code CLI under the hood. The CLI
+# must be on PATH in any environment that calls sdk_agent.run_agent
+# (CI runners + local dev). Install it once, globally, via npm:
+#
+#     npm i -g @anthropic-ai/claude-code
+#
+# The CLI is NOT a pip package; it cannot be pinned here. CI workflows
+# (engineer-bot.yml, reviewer-bot.yml, *-followup.yml) must add an install
+# + npm-cache step before invoking any bot that uses the SDK.
+#
+# Endpoint config (set by sdk_agent.configure_databricks_env at runtime,
+# derived from the existing MODEL_ENDPOINT / DATABRICKS_TOKEN workflow env):
+#     ANTHROPIC_BASE_URL   = <workspace>/serving-endpoints/anthropic
+#     ANTHROPIC_AUTH_TOKEN = $DATABRICKS_TOKEN     # NOT ANTHROPIC_API_KEY
+#     ANTHROPIC_MODEL      = databricks-claude-opus-4-8
+
+claude-agent-sdk

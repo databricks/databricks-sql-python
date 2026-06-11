@@ -1,0 +1,39 @@
+# Reviewer-bot foundation smoke test.
+#
+# Manual-only (workflow_dispatch). Verifies the one infra unknown for the
+# reviewer-bot foundation on this repo: that the Claude Agent SDK (pip) + the
+# Claude Code CLI (npm) install on the protected runner via Databricks' internal
+# JFrog mirror (the runner group is egress-blocked from pypi.org/npmjs.org).
+# No secrets required — only the JFrog OIDC token exchange (id-token: write).
+name: SDK Smoke (reviewer-bot foundation)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # JFrog OIDC token exchange for the internal pip/npm mirror
+
+jobs:
+  smoke:
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: [linux-ubuntu-latest]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+
+      - name: Setup Claude Agent SDK + CLI
+        uses: ./.github/actions/setup-claude-sdk
+
+      - name: Verify SDK + CLI are importable/spawnable
+        run: |
+          python -c "import claude_agent_sdk; print('claude_agent_sdk import OK')"
+          echo "claude CLI: $(command -v claude || echo 'NOT FOUND')"
+          claude --version || true
