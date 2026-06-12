@@ -1,7 +1,8 @@
 # Release History
 
-# 4.3.0rc1 (2026-06-11)
-- Add optional Rust kernel backend for `use_kernel=True`, installable via the new `databricks-sql-connector[kernel]` extra (requires Python >= 3.10). Routes connections through the native `databricks-sql-kernel` client, with parity work across cursor-state tracking, metadata, logging (kernel logs surface through Python `logging`), staging fail-loud behavior, error context, and sync cancel (databricks/databricks-sql-python#824, #825, #830, #838, #839 by @vikrantpuppala)
+# 4.3.0 (2026-06-12)
+- **New: optional Rust kernel backend (`use_kernel=True`).** Adds an alternative connection path backed by the native [`databricks-sql-kernel`](https://pypi.org/project/databricks-sql-kernel/) client (a Rust core exposed via PyO3), installable with the new `databricks-sql-connector[kernel]` extra. The kernel talks to Databricks over the **SEA (Statement Execution API) HTTP transport** — not Thrift — with CloudFetch and inline-Arrow result fetching, so `use_kernel=True` gives you a modern SEA-native client through the same DB-API surface. Supports PAT, OAuth M2M, and OAuth U2M auth. Requires Python >= 3.10 (the kernel wheel is `cp310-abi3`); on older interpreters the extra is a no-op and `use_kernel=True` raises a clear `ImportError`. The default backend remains Thrift — opt in per connection.
+- Kernel backend behavior is aligned with the Thrift backend so application code works the same either way: consistent cursor-state tracking (`query_id` / `get_query_state`), metadata (catalogs/schemas/tables/columns with JDBC-style filter semantics and case-insensitive `table_types`), DML `rowcount`, server-sourced async execution state, sync `cancel()`, fail-loud staging/volume operations, and structured error context (SQLSTATE, diagnostic info). Kernel logs surface through Python `logging` under the `databricks.sql.kernel` logger (databricks/databricks-sql-python#824, #825, #830, #838, #839 by @vikrantpuppala)
 - Revert the thrift 0.23.0 bump that broke installation on DBR LTS (ES-1960554) (databricks/databricks-sql-python#840 by @vikrantpuppala)
 
 # 4.2.7 (2026-06-02)
