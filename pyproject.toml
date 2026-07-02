@@ -10,6 +10,15 @@ include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
 python = "^3.8.0"
+# Keep the cap at <0.23.0. thrift ships sdist-only, and thrift 0.23.0's
+# setup.py calls sys.exit(0) on the build-success path, which kills the PEP
+# 517 build backend before pip writes output.json. On the OLD setuptools
+# shipped by DBR LTS (14.3 / 15.4) this is a hard `pip install` failure --
+# the SEV0 ES-1960554 incident (4.2.7 widened this to <0.24.0 and was yanked;
+# see PR #840). Do NOT re-widen until a fixed thrift (0.23.1 / 0.24.0, per
+# THRIFT-6067 / apache/thrift#3584) ships. The `DBR LTS Install` CI check
+# (.github/workflows/dbr-lts-install.yml) installs the built wheel on real DBR
+# LTS clusters and catches this regression when dependency pins change.
 thrift = "~=0.22.0"
 pandas = [
     { version = ">=1.2.5,<4.0.0", python = ">=3.8,<3.13" },

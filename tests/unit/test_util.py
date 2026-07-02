@@ -152,6 +152,28 @@ class TestUtils:
         assert result_table.column("col1").to_pylist() == [1, 2, 3, 4]
         assert result_table.column("col2").to_pylist() == [5, 6, 7, 8]
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_concat_table_chunks_arrow_old_pyarrow_fallback(self, monkeypatch):
+        # pyarrow < 14 has no `promote_options` kwarg; a base connector install
+        # can run against a runtime's old bundled pyarrow (e.g. DBR 13.3/14.3).
+        # concat_table_chunks must fall back to the legacy `promote=True` API
+        # rather than raise TypeError (regression: DBR LTS install check).
+        arrow_table1 = pyarrow.Table.from_pydict({"col1": [1, 2]})
+        arrow_table2 = pyarrow.Table.from_pydict({"col1": [3, 4]})
+
+        real_concat = pyarrow.concat_tables
+
+        def old_concat(tables, promote_options=None, **kwargs):
+            if promote_options is not None:
+                raise TypeError(
+                    "concat_tables() got an unexpected keyword argument 'promote_options'"
+                )
+            return real_concat(tables, **kwargs)
+
+        monkeypatch.setattr(pyarrow, "concat_tables", old_concat)
+        result_table = concat_table_chunks([arrow_table1, arrow_table2])
+        assert result_table.column("col1").to_pylist() == [1, 2, 3, 4]
+
     def test_concat_table_chunks_empty(self):
         result_table = concat_table_chunks([])
         assert result_table == []
