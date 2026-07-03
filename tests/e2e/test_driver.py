@@ -99,9 +99,9 @@ class PySQLPytestTestCase:
         return params
 
     def auth_params(self):
-        return {
-            "access_token": self.arguments.get("access_token"),
-        }
+        from conftest import auth_connect_kwargs
+
+        return auth_connect_kwargs(self.arguments)
 
     @contextmanager
     def connection(self, extra_params=()):

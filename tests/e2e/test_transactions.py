@@ -56,10 +56,12 @@ def _unique_table_name_raw(suffix):
 @pytest.fixture
 def mst_conn_params(connection_details):
     """Connection parameters with MST enabled."""
+    from conftest import auth_connect_kwargs
+
     return {
         "server_hostname": connection_details["host"],
         "http_path": connection_details["http_path"],
-        "access_token": connection_details.get("access_token"),
+        **auth_connect_kwargs(connection_details),
         "ignore_transactions": False,
     }
 
