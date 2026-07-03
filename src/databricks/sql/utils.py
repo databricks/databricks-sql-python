@@ -894,7 +894,23 @@ def concat_table_chunks(
                 result_table[j].extend(table_chunks[i].column_table[j])
         return ColumnTable(result_table, table_chunks[0].column_names)
     else:
+        return _concat_arrow_tables(table_chunks)
+
+
+def _concat_arrow_tables(table_chunks: List["pyarrow.Table"]) -> "pyarrow.Table":
+    """Concatenate Arrow tables, tolerant of the installed pyarrow version.
+
+    ``promote_options`` was added in pyarrow 14.0.0, replacing the older
+    ``promote`` boolean. The connector's declared floor is pyarrow>=14, but a
+    base install (no ``[pyarrow]`` extra) can run against a runtime's older
+    bundled pyarrow -- e.g. DBR 13.3 (12.x) / 14.3 -- where ``promote_options``
+    raises ``TypeError: unexpected keyword argument``. Fall back to the legacy
+    ``promote=True`` there (equivalent to ``promote_options="default"``).
+    """
+    try:
         return pyarrow.concat_tables(table_chunks, promote_options="default")
+    except TypeError:
+        return pyarrow.concat_tables(table_chunks, promote=True)
 
 
 def serialize_query_tags(
