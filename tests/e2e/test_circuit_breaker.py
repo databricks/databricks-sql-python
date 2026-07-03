@@ -21,7 +21,6 @@ from urllib3 import HTTPResponse
 
 import databricks.sql as sql
 from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
-from conftest import auth_connect_kwargs
 
 
 def wait_for_circuit_state(circuit_breaker, expected_states, timeout=5):
@@ -121,7 +120,7 @@ class TestCircuitBreakerTelemetry:
             with sql.connect(
                 server_hostname=self.arguments["host"],
                 http_path=self.arguments["http_path"],
-                **auth_connect_kwargs(self.arguments),
+                access_token=self.arguments.get("access_token"),
                 force_enable_telemetry=True,
                 telemetry_batch_size=1,
                 _telemetry_circuit_breaker_enabled=True,
@@ -182,7 +181,7 @@ class TestCircuitBreakerTelemetry:
             with sql.connect(
                 server_hostname=self.arguments["host"],
                 http_path=self.arguments["http_path"],
-                **auth_connect_kwargs(self.arguments),
+                access_token=self.arguments.get("access_token"),
                 force_enable_telemetry=True,
                 telemetry_batch_size=1,
                 _telemetry_circuit_breaker_enabled=False,  # Disabled
@@ -216,7 +215,7 @@ class TestCircuitBreakerTelemetry:
             with sql.connect(
                 server_hostname=self.arguments["host"],
                 http_path=self.arguments["http_path"],
-                **auth_connect_kwargs(self.arguments),
+                access_token=self.arguments.get("access_token"),
                 force_enable_telemetry=True,
                 telemetry_batch_size=1,
                 _telemetry_circuit_breaker_enabled=True,

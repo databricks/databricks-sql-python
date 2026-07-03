@@ -45,14 +45,6 @@ jobs:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      # OAuth M2M as the PECO service principal. The e2e suite prefers this
-      # over the PAT (see conftest.auth_connect_kwargs) so the connecting
-      # identity IS the service principal -- required for the Personal Staging
-      # Location tests, whose stage path is stage://tmp/<DATABRICKS_USER>/ and
-      # DATABRICKS_USER is this same SP. A PAT for a different identity fails
-      # those with PERMISSION_DENIED on the personal stage.
-      DATABRICKS_CLIENT_ID: ${{ secrets.TEST_PECO_SP_ID }}
-      DATABRICKS_CLIENT_SECRET: ${{ secrets.TEST_PECO_SP_OAUTH_SECRET }}
       DATABRICKS_CATALOG: peco
       DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
     steps:

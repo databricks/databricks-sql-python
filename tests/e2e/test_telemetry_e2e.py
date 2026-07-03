@@ -24,12 +24,10 @@ class TelemetryTestBase:
         self.arguments = connection_details.copy()
 
     def connection_params(self):
-        from conftest import auth_connect_kwargs
-
         return {
             "server_hostname": self.arguments["host"],
             "http_path": self.arguments["http_path"],
-            **auth_connect_kwargs(self.arguments),
+            "access_token": self.arguments.get("access_token"),
         }
 
     @contextmanager
