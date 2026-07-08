@@ -65,9 +65,9 @@ test_loader = loader.TestLoader()
 for name in test_loader.getTestCaseNames(DecimalTestsMixin):
     if name.startswith("test_"):
         fn = getattr(DecimalTestsMixin, name)
-        decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(
-            fn
-        )
+        decorated = skipUnless(
+            pysql_supports_arrow(), "Decimal tests need arrow support"
+        )(fn)
         setattr(DecimalTestsMixin, name, decorated)
 
 
@@ -152,9 +152,7 @@ class TestPySQLLargeWideResultSet(PySQLPytestTestCase):
             cursor.connection.lz4_compression = lz4_compression
             uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
             cursor.execute(
-                "SELECT id, {uuids} FROM RANGE({rows})".format(
-                    uuids=uuids, rows=rows
-                )
+                "SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows)
             )
             assert lz4_compression == cursor.active_result_set.lz4_compressed
             for row_id, row in enumerate(
@@ -464,9 +462,7 @@ class TestPySQLCoreSuite(
             try:
                 cursor.execute("CREATE TABLE {} (n INT)".format(table_name))
 
-                cursor.execute(
-                    "INSERT INTO {} VALUES (1), (2), (3)".format(table_name)
-                )
+                cursor.execute("INSERT INTO {} VALUES (1), (2), (3)".format(table_name))
                 assert cursor.rowcount == 3, f"INSERT rowcount {cursor.rowcount!r}"
 
                 cursor.execute(
@@ -481,6 +477,14 @@ class TestPySQLCoreSuite(
                 cursor.execute("SELECT * FROM {}".format(table_name))
                 assert cursor.rowcount == -1, f"SELECT rowcount {cursor.rowcount!r}"
                 assert len(cursor.fetchall()) == 2
+
+                # executemany aggregates the affected-row count across all
+                # parameter sets (PEP 249), not just the last one.
+                cursor.executemany(
+                    "INSERT INTO {} VALUES (%(v)s)".format(table_name),
+                    seq_of_parameters=[{"v": 10}, {"v": 20}, {"v": 30}],
+                )
+                assert cursor.rowcount == 3, f"executemany rowcount {cursor.rowcount!r}"
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
@@ -995,7 +999,13 @@ class TestPySQLCoreSuite(
     )
     def test_multi_timestamps_arrow(self, extra_params):
         with self.cursor(
-            {"session_configuration": {"ansi_mode": False, "query_tags": "test:multi-timestamps,driver:python"}, **extra_params}
+            {
+                "session_configuration": {
+                    "ansi_mode": False,
+                    "query_tags": "test:multi-timestamps,driver:python",
+                },
+                **extra_params,
+            }
         ) as cursor:
             query, expected = self.multi_query()
             expected = [

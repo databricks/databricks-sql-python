@@ -1525,8 +1525,22 @@ class Cursor:
 
         :returns self
         """
+        # Per PEP 249, rowcount after executemany reflects the total rows
+        # affected across all parameter sets (or -1 when undeterminable). Each
+        # execute() resets self.rowcount and sets it from its own statement, so
+        # we accumulate the reported counts here. If no statement reports a
+        # count (e.g. all SELECT, or the server does not report one), rowcount
+        # stays at its -1 default.
+        total_rowcount = -1
         for parameters in seq_of_parameters:
             self.execute(operation, parameters, query_tags=query_tags)
+            if self.rowcount >= 0:
+                total_rowcount = (
+                    self.rowcount
+                    if total_rowcount < 0
+                    else total_rowcount + self.rowcount
+                )
+        self.rowcount = total_rowcount
         return self
 
     @log_latency(StatementType.METADATA)

@@ -500,6 +500,8 @@ class ClientTestSuite(unittest.TestCase):
         # Set is_staging_operation to False to avoid _handle_staging_operation being called
         for mock_rs in mock_result_set_instances:
             mock_rs.is_staging_operation = False
+            # SELECT statements: no modified-row count, so rowcount stays -1.
+            mock_rs.num_modified_rows = None
 
         mock_backend = ThriftDatabricksClientMockFactory.new()
         mock_backend.execute_command.side_effect = mock_result_set_instances
@@ -528,6 +530,63 @@ class ClientTestSuite(unittest.TestCase):
             "Expected the active result set to be the result set corresponding to the"
             "last operation",
         )
+
+    def test_executemany_rowcount_sums_dml_across_parameter_sets(self):
+        """executemany aggregates rowcount across all parameter sets (PEP 249),
+        rather than reporting only the final statement's count (GH #784)."""
+        result_sets = []
+        for n in (2, 3, 5):
+            rs = Mock()
+            rs.is_staging_operation = False
+            rs.num_modified_rows = n
+            result_sets.append(rs)
+
+        mock_backend = ThriftDatabricksClientMockFactory.new()
+        mock_backend.execute_command.side_effect = result_sets
+
+        cursor = client.Cursor(Mock(), mock_backend)
+        cursor.executemany(
+            "INSERT INTO t VALUES (%(x)s)",
+            seq_of_parameters=[{"x": 1}, {"x": 2}, {"x": 3}],
+        )
+
+        self.assertEqual(cursor.rowcount, 10)
+
+    def test_executemany_rowcount_ignores_unreported_statements(self):
+        """Parameter sets the server doesn't report a count for (num_modified_rows
+        None) don't drag the aggregate down; only reported counts are summed."""
+        reported = Mock()
+        reported.is_staging_operation = False
+        reported.num_modified_rows = 4
+
+        unreported = Mock()
+        unreported.is_staging_operation = False
+        unreported.num_modified_rows = None
+
+        mock_backend = ThriftDatabricksClientMockFactory.new()
+        mock_backend.execute_command.side_effect = [reported, unreported]
+
+        cursor = client.Cursor(Mock(), mock_backend)
+        cursor.executemany("...", seq_of_parameters=[{"x": 1}, {"x": 2}])
+
+        self.assertEqual(cursor.rowcount, 4)
+
+    def test_executemany_rowcount_stays_default_when_nothing_reported(self):
+        """All-SELECT (or all-unreported) executemany leaves rowcount at -1."""
+        result_sets = []
+        for _ in range(2):
+            rs = Mock()
+            rs.is_staging_operation = False
+            rs.num_modified_rows = None
+            result_sets.append(rs)
+
+        mock_backend = ThriftDatabricksClientMockFactory.new()
+        mock_backend.execute_command.side_effect = result_sets
+
+        cursor = client.Cursor(Mock(), mock_backend)
+        cursor.executemany("SELECT %(x)s", seq_of_parameters=[{"x": 1}, {"x": 2}])
+
+        self.assertEqual(cursor.rowcount, -1)
 
     def test_setinputsizes_a_noop(self):
         cursor = client.Cursor(Mock(), Mock())
