@@ -874,7 +874,10 @@ class Cursor:
 
         self.connection: Connection = connection
 
-        self.rowcount: int = -1  # Return -1 as this is not supported
+        # -1 until a statement runs. Set to the affected-row count after a DML
+        # statement (INSERT/UPDATE/DELETE/MERGE); stays -1 for SELECT and any
+        # statement the server does not report a modified-row count for.
+        self.rowcount: int = -1
         self.buffer_size_bytes: int = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
         self.arraysize: int = arraysize
@@ -1039,6 +1042,9 @@ class Cursor:
                 self.active_result_set.close()
         finally:
             self.active_result_set = None
+            # Reset rowcount to its -1 default so a prior DML's count never
+            # leaks into a subsequent SELECT (or unreported) statement.
+            self.rowcount = -1
 
     def _check_not_closed(self):
         if not self.open:
@@ -1372,6 +1378,14 @@ class Cursor:
             row_limit=self.row_limit,
             query_tags=query_tags,
         )
+
+        # Surface the affected-row count for DML (INSERT/UPDATE/DELETE/MERGE) as
+        # cursor.rowcount instead of the hardcoded -1. num_modified_rows is None
+        # for SELECT (and statements the server does not report a count for) →
+        # leave rowcount at its -1 default.
+        num_modified_rows = getattr(self.active_result_set, "num_modified_rows", None)
+        if num_modified_rows is not None:
+            self.rowcount = num_modified_rows
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
