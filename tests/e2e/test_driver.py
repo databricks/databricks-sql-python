@@ -455,6 +455,35 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
+    def test_dml_rowcount(self):
+        """cursor.rowcount reports the affected-row count for DML
+        (INSERT/UPDATE/DELETE) instead of the hardcoded -1, and resets
+        to -1 for a subsequent SELECT (GH #784)."""
+        with self.cursor({}) as cursor:
+            table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
+            try:
+                cursor.execute("CREATE TABLE {} (n INT)".format(table_name))
+
+                cursor.execute(
+                    "INSERT INTO {} VALUES (1), (2), (3)".format(table_name)
+                )
+                assert cursor.rowcount == 3, f"INSERT rowcount {cursor.rowcount!r}"
+
+                cursor.execute(
+                    "UPDATE {} SET n = n + 1 WHERE n >= 2".format(table_name)
+                )
+                assert cursor.rowcount == 2, f"UPDATE rowcount {cursor.rowcount!r}"
+
+                cursor.execute("DELETE FROM {} WHERE n = 1".format(table_name))
+                assert cursor.rowcount == 1, f"DELETE rowcount {cursor.rowcount!r}"
+
+                # SELECT must reset rowcount to -1 (not leak the DELETE count).
+                cursor.execute("SELECT * FROM {}".format(table_name))
+                assert cursor.rowcount == -1, f"SELECT rowcount {cursor.rowcount!r}"
+                assert len(cursor.fetchall()) == 2
+            finally:
+                cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
+
     def test_get_tables(self):
         with self.cursor({}) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
