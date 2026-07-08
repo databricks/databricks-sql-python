@@ -129,6 +129,18 @@ jobs:
           git checkout FETCH_HEAD -- poetry.lock pyproject.toml
           echo "Overlaid poetry.lock / pyproject.toml from the fork branch."
 
+      # Capture the lock hash from the PRISTINE, committed poetry.lock BEFORE
+      # setup-poetry runs (it calls `poetry lock`, which rewrites poetry.lock
+      # in place and changes hashFiles's result). restore-deps in the PR jobs
+      # hashes the pristine lock, so the warmer MUST hash it at the same point
+      # or the keys never match and every fork restore misses.
+      - name: Capture pristine lock hash
+        id: lockhash
+        run: |
+          set -euo pipefail
+          echo "value=${{ hashFiles('**/poetry.lock') }}" >> "$GITHUB_OUTPUT"
+          echo "Pristine poetry.lock hash: ${{ hashFiles('**/poetry.lock') }}"
+
       - name: Install Kerberos system dependencies
         if: matrix.extras == 'pyarrow' || matrix.extras == 'kernel'
         run: |
@@ -186,7 +198,9 @@ jobs:
         run: |
           set -euo pipefail
           TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-          LOCK_HASH="${{ hashFiles('**/poetry.lock') }}"
+          # Pristine hash captured BEFORE setup-poetry's `poetry lock` mutated
+          # the file — matches what restore-deps computes in the PR jobs.
+          LOCK_HASH="${{ steps.lockhash.outputs.value }}"
           PY="${{ matrix.python-version }}"
           DEP="${{ matrix.dependency-version }}"
           EXTRAS="${{ matrix.extras || 'base' }}"
