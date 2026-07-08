@@ -141,7 +141,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           # extras="" -> base install (no --extras). Otherwise install exactly
           # the one extra this leg targets, matching the PR job's isolation.
-          install-args: ${{ matrix.extras == '' && '' || format('--extras {0}', matrix.extras) }}
+          # NB: the non-empty branch must come FIRST — GitHub's `A && B || C`
+          # treats an empty-string B as falsy and would fall through to C, so
+          # `extras=='' && '' || format(...)` wrongly yields "--extras " (no
+          # value) for the base leg. Test for non-empty and default to "".
+          install-args: ${{ matrix.extras != '' && format('--extras {0}', matrix.extras) || '' }}
           # Distinct suffix per leg so setup-poetry's own "venv-*" cache (used by
           # same-repo PRs) never collides across dependency-version / extras.
           cache-suffix: "warm-${{ matrix.dependency-version }}-${{ matrix.extras || 'base' }}-"
