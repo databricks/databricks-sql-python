@@ -37,6 +37,15 @@ concurrency:
 
 jobs:
   test-with-coverage:
+    # This job runs the e2e suite against a live warehouse, so it needs the
+    # azure-prod secrets. FORK PRs never receive those secrets (Secret source:
+    # None), so on a fork the job can only fail. Skip it on fork PRs — the real
+    # coverage gate runs on the merge_group's transient branch (base context,
+    # secrets present), which is what actually protects main. Same-repo PRs and
+    # merge_group are unaffected.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest

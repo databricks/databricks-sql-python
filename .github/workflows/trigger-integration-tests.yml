@@ -137,21 +137,37 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
+            // On FORK PRs GitHub forces GITHUB_TOKEN to read-only regardless of
+            // the declared `checks: write`, so checks.create 403s ("Resource
+            // not accessible by integration"). Expected — a fork can't post
+            // check-runs on the base repo. Swallow the 403 for forks so this
+            // poster doesn't show a spurious failure; the real Python Proxy
+            // Tests required checks are posted by the merge_group run (full
+            // perms) when a maintainer queues the PR. Other errors fail loudly.
+            const isFork = context.payload.pull_request.head.repo.fork;
             const MODES = ['thrift', 'kernel'];
             for (const mode of MODES) {
-              await github.rest.checks.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: `Python Proxy Tests / ${mode}`,
-                head_sha: context.payload.pull_request.head.sha,
-                status: 'completed',
-                conclusion: 'success',
-                completed_at: new Date().toISOString(),
-                output: {
-                  title: 'Skipped on PR — runs in merge queue',
-                  summary: `Python Proxy Tests (${mode}) are skipped on PRs and run as a required gate in the merge queue. Add the \`integration-test\` label to preview them on this PR.`
+              try {
+                await github.rest.checks.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: `Python Proxy Tests / ${mode}`,
+                  head_sha: context.payload.pull_request.head.sha,
+                  status: 'completed',
+                  conclusion: 'success',
+                  completed_at: new Date().toISOString(),
+                  output: {
+                    title: 'Skipped on PR — runs in merge queue',
+                    summary: `Python Proxy Tests (${mode}) are skipped on PRs and run as a required gate in the merge queue. Add the \`integration-test\` label to preview them on this PR.`
+                  }
+                });
+              } catch (e) {
+                if (isFork && e.status === 403) {
+                  core.notice(`Fork PR: cannot post the Python Proxy Tests / ${mode} check-run (read-only token). It will be posted by the merge queue at merge time.`);
+                } else {
+                  throw e;
                 }
-              });
+              }
             }
 
   # =============================================================================

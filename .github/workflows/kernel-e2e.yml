@@ -106,19 +106,35 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Kernel E2E',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'completed',
-              conclusion: 'success',
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'Skipped on PR — runs in merge queue',
-                summary: 'Kernel E2E is skipped on PRs and runs as a required gate in the merge queue. Add the `kernel-e2e` label to preview on this PR.'
+            // On FORK PRs GitHub forces GITHUB_TOKEN to read-only regardless of
+            // the declared `checks: write`, so checks.create 403s ("Resource
+            // not accessible by integration"). That's expected — a fork can't
+            // post check-runs on the base repo. Swallow the 403 for forks so
+            // this poster doesn't show a spurious failure; the real Kernel E2E
+            // required check is posted by the merge_group run (full perms) when
+            // a maintainer queues the PR. Any other error still fails loudly.
+            const isFork = context.payload.pull_request.head.repo.fork;
+            try {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'Kernel E2E',
+                head_sha: context.payload.pull_request.head.sha,
+                status: 'completed',
+                conclusion: 'success',
+                completed_at: new Date().toISOString(),
+                output: {
+                  title: 'Skipped on PR — runs in merge queue',
+                  summary: 'Kernel E2E is skipped on PRs and runs as a required gate in the merge queue. Add the `kernel-e2e` label to preview on this PR.'
+                }
+              });
+            } catch (e) {
+              if (isFork && e.status === 403) {
+                core.notice('Fork PR: cannot post the Kernel E2E check-run (read-only token). It will be posted by the merge queue at merge time.');
+              } else {
+                throw e;
               }
-            });
+            }
 
   # ───────────────────────────────────────────────────────────────
   # Detect whether kernel-relevant files changed. Used by both the
