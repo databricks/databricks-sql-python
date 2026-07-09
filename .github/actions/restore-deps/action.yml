@@ -1,13 +1,22 @@
 name: Restore Prewarmed Dependencies
 description: |
   Restores a fully-built in-project .venv from the "forkvenv-*" cache written by
-  warm-deps-cache.yml, so FORK PRs run offline without touching JFrog (#831).
+  warm-deps-cache.yml, provisions the matching Python interpreter, and probes
+  that the restored venv actually runs — so FORK PRs run offline without JFrog
+  (#831).
 
-  Outputs cache-hit. When true, the caller must SKIP setup-poetry (the .venv is
-  already complete) and only install Poetry itself. When false — a same-repo PR,
-  or a fork whose lockfiles changed and haven't been warmed — the caller falls
-  back to setup-poetry (JFrog OIDC), which works in every trusted context and on
-  cache-miss for same-repo PRs.
+  Outputs:
+    - cache-hit: "true" if a warmed .venv was restored. When false — a same-repo
+      PR, or a fork whose lockfiles changed and haven't been re-warmed — the
+      caller falls back to setup-poetry (JFrog OIDC), which works in every
+      trusted context and on cache-miss for same-repo PRs.
+    - venv-usable: "true" if the restored venv's interpreter runs offline. It is
+      false when the interpreter can't be provisioned without network — the
+      protected-runner image preinstalls 3.10–3.14 but not 3.9 (EOL), so on 3.9
+      setup-python would try to download the interpreter and fail on a fork.
+      Callers gate their offline run on venv-usable=='true' and skip neutrally
+      otherwise (3.9 fork coverage comes from the merge queue), which also keeps
+      a 3.9 leg from cancelling its 3.10–3.14 siblings under fail-fast.
 
 inputs:
   python-version:
@@ -26,6 +35,9 @@ outputs:
   cache-hit:
     description: "true if a warmed .venv was restored (install can be skipped)"
     value: ${{ steps.restore.outputs.cache-matched-key != '' }}
+  venv-usable:
+    description: "true if the restored venv interpreter runs offline (run tests) — false means skip neutrally"
+    value: ${{ steps.probe.outputs.usable }}
 
 runs:
   using: composite
@@ -38,16 +50,37 @@ runs:
         # The warmer appends a timestamp to the key (caches are immutable), so
         # there is no fixed exact key to hit. restore-keys does a PREFIX match
         # and returns the most-recently-created entry for this lockfile +
-        # matrix leg — exactly the freshest warmed venv.
+        # matrix leg — exactly the freshest warmed venv. The lockfile hash MUST
+        # be computed here on the PRISTINE poetry.lock (before any `poetry
+        # lock` rewrites it) to match the warmer's key — see warm-deps-cache.yml.
         key: forkvenv-${{ runner.os }}-${{ inputs.python-version }}-${{ inputs.dependency-version }}-${{ inputs.extras || 'base' }}-${{ hashFiles('**/poetry.lock') }}-never
         restore-keys: |
           forkvenv-${{ runner.os }}-${{ inputs.python-version }}-${{ inputs.dependency-version }}-${{ inputs.extras || 'base' }}-${{ hashFiles('**/poetry.lock') }}-
 
-    - name: Report restore outcome
+    - name: Set up Python for the restored venv
+      # Only meaningful on a cache hit — the restored venv symlinks its
+      # interpreter to a hostedtoolcache path this step provisions.
+      # continue-on-error: 3.9 isn't preinstalled on the runner image, so this
+      # would try to DOWNLOAD it and fail offline on a fork. Tolerate that and
+      # let the probe decide, rather than hard-fail (and cancel siblings).
+      if: steps.restore.outputs.cache-matched-key != ''
+      continue-on-error: true
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Probe restored venv interpreter
+      id: probe
       shell: bash
       run: |
-        if [ -n "${{ steps.restore.outputs.cache-matched-key }}" ]; then
-          echo "Restored warmed .venv (${{ steps.restore.outputs.cache-matched-key }}) — install will be skipped."
+        if [ -n "${{ steps.restore.outputs.cache-matched-key }}" ] && .venv/bin/python --version >/dev/null 2>&1; then
+          echo "usable=true" >> "$GITHUB_OUTPUT"
+          echo "Restored venv is usable offline: $(.venv/bin/python --version 2>&1)"
         else
-          echo "No warmed .venv for this lockfile/leg — caller falls back to setup-poetry (JFrog)."
+          echo "usable=false" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ steps.restore.outputs.cache-matched-key }}" ]; then
+            echo "::notice::Prewarmed venv interpreter (Python ${{ inputs.python-version }}) is unavailable offline on this runner; the caller will skip its offline run for this leg. Covered in the merge queue."
+          else
+            echo "No warmed .venv for this lockfile/leg — caller falls back to setup-poetry (JFrog)."
+          fi
         fi
