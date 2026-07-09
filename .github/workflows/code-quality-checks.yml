@@ -49,19 +49,17 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       # --- Fork path: restore a prewarmed .venv and run offline -------------
+      # restore-deps also provisions the interpreter and probes it; venv-usable
+      # is false when the interpreter can't be provisioned offline (3.9), in
+      # which case we skip the offline run neutrally instead of failing.
       - name: Restore prewarmed dependencies
         id: deps
         uses: ./.github/actions/restore-deps
         with:
           python-version: ${{ matrix.python-version }}
           dependency-version: ${{ matrix.dependency-version }}
-      - name: Set up Python (cache hit — needed for the restored venv interpreter)
-        if: steps.deps.outputs.cache-hit == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Run tests (offline, from prewarmed venv)
-        if: steps.deps.outputs.cache-hit == 'true'
+        if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/python -m pytest tests/unit -m "not realkernel"
 
       # --- Fallback path: same-repo PRs / cache miss use JFrog (unchanged) --
@@ -126,13 +124,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           dependency-version: ${{ matrix.dependency-version }}
           extras: pyarrow
-      - name: Set up Python (cache hit — needed for the restored venv interpreter)
-        if: steps.deps.outputs.cache-hit == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Run tests (offline, from prewarmed venv)
-        if: steps.deps.outputs.cache-hit == 'true'
+        if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/python -m pytest tests/unit -m "not realkernel"
 
       # --- Fallback path: same-repo PRs / cache miss use JFrog (unchanged) ---
@@ -200,19 +193,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           extras: kernel
-      - name: Set up Python (cache hit — needed for the restored venv interpreter)
-        if: steps.deps.outputs.cache-hit == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Assert the real kernel wheel is installed (offline)
-        if: steps.deps.outputs.cache-hit == 'true'
+        if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel wheel missing __file__ — not the real wheel'; print('real kernel wheel:', k.__file__)"
       - name: Unit tests, realkernel deselected (offline)
-        if: steps.deps.outputs.cache-hit == 'true'
+        if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/python -m pytest tests/unit -m "not realkernel"
       - name: Drive use_kernel=True through the REAL wheel — routing (offline)
-        if: steps.deps.outputs.cache-hit == 'true'
+        if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/python -m pytest tests/unit/test_session.py -m realkernel -v
 
       # --- Fallback path: same-repo PRs / cache miss use JFrog (unchanged) --
@@ -267,13 +255,8 @@ jobs:
         uses: ./.github/actions/restore-deps
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Set up Python (cache hit — needed for the restored venv interpreter)
-        if: steps.deps.outputs.cache-hit == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Black (offline, from prewarmed venv)
-        if: steps.deps.outputs.cache-hit == 'true'
+        if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/black --check src
       - name: Setup Poetry
         if: steps.deps.outputs.cache-hit != 'true'
@@ -299,18 +282,15 @@ jobs:
         uses: ./.github/actions/restore-deps
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Set up Python (cache hit — needed for the restored venv interpreter)
-        if: steps.deps.outputs.cache-hit == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Mypy (offline, from prewarmed venv)
-        if: steps.deps.outputs.cache-hit == 'true'
-        # --install-types would reach the index; the warmed venv already has
-        # the stub packages, so run mypy without it on the offline path.
+        if: steps.deps.outputs.venv-usable == 'true'
+        # The warmer already ran `mypy --install-types` to bake the stub
+        # packages into the venv, so just run mypy plainly here. (mypy rejects
+        # --non-interactive unless --install-types is also given, and
+        # --install-types would reach the index — neither is wanted offline.)
         run: |
           mkdir -p .mypy_cache
-          .venv/bin/mypy --non-interactive src
+          .venv/bin/mypy src
       - name: Setup Poetry
         if: steps.deps.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup-poetry

@@ -90,12 +90,13 @@ jobs:
         dependency-version: ["default", "min"]
         extras: ["", "pyarrow", "kernel"]
         exclude:
-          # min deps are only exercised on 3.9/3.10/3.11 in the PR matrix.
+          # MUST match code-quality-checks.yml's excludes exactly, or a PR leg
+          # with no warmed cache entry misses and falls back to JFrog (which
+          # forks can't reach). The PR matrix excludes ONLY 3.12-min and
+          # 3.13-min — 3.14-min IS a real PR leg, so it must be warmed.
           - python-version: "3.12"
             dependency-version: "min"
           - python-version: "3.13"
-            dependency-version: "min"
-          - python-version: "3.14"
             dependency-version: "min"
           # The kernel wheel is cp310-abi3 (Requires-Python >=3.10); the
           # [kernel] extra is a no-op on 3.9, so there's no kernel leg to warm.
