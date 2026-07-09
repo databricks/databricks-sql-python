@@ -63,8 +63,21 @@ jobs:
           install-args: "--all-extras"
       - name: Run all tests with coverage
         continue-on-error: false
+        # This job installs --all-extras, so the REAL databricks-sql-kernel
+        # wheel is present. The unit suite fakes databricks_sql_kernel in
+        # sys.modules, which would shadow the real wheel in this shared
+        # session — so the kernel-backed suites that need the real wheel
+        # are excluded here and covered by the dedicated kernel-e2e.yml
+        # (isolated session, real wheel, live warehouse):
+        #   - --ignore the kernel e2e files (they assert the real wheel and
+        #     now FAIL LOUDLY rather than silently skip if shadowed), and
+        #   - -m "not realkernel" deselects the no-network real-wheel
+        #     routing test for the same reason.
         run: |
           poetry run pytest tests/unit tests/e2e \
+            --ignore=tests/e2e/test_kernel_backend.py \
+            --ignore=tests/e2e/test_kernel_tls.py \
+            -m "not realkernel" \
             -n 4 \
             --dist=loadgroup \
             --cov=src \

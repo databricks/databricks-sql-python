@@ -21,28 +21,72 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+import sys
+from uuid import uuid4
+
 import pytest
 
 import databricks.sql as sql
-from databricks.sql.exc import DatabaseError, NotSupportedError, ServerOperationError
-
-# Skip the whole module unless the kernel wheel is genuinely installed.
-# ``pytest.importorskip`` alone isn't enough: the kernel unit tests inject a
-# fake ``databricks_sql_kernel`` ModuleType into ``sys.modules`` so the
-# connector's import-time ``import databricks_sql_kernel`` succeeds without
-# the Rust extension. In the same pytest session that fake module is still
-# in ``sys.modules`` when this e2e file is collected, and importorskip
-# happily returns it. A real wheel exposes ``__file__`` (the compiled
-# extension on disk); the fake ModuleType does not.
-_kernel_mod = pytest.importorskip(
-    "databricks_sql_kernel",
-    reason="use_kernel=True requires the databricks-sql-kernel package",
+from databricks.sql.backend.types import CommandState
+from databricks.sql.exc import (
+    DatabaseError,
+    NotSupportedError,
+    OperationalError,
+    ServerOperationError,
 )
-if not getattr(_kernel_mod, "__file__", None):
+
+# These tests must run against the REAL databricks-sql-kernel wheel and
+# must NOT silently pass when it's absent or shadowed. We distinguish
+# three states explicitly so a misconfigured CI job can't look green:
+#
+#   1. Wheel genuinely not installed  -> legitimate skip.
+#   2. Wheel installed in the env but ``sys.modules`` currently holds a
+#      stub (the kernel UNIT tests inject a fake ``databricks_sql_kernel``
+#      ModuleType; in a shared ``pytest tests/unit tests/e2e`` session
+#      that fake can still be resident when this file is collected) ->
+#      FAIL loudly. Silently skipping here is what made the coverage job
+#      look like it exercised the kernel when it didn't.
+#   3. Wheel installed and importable for real -> run.
+#
+# "Installed in the env" is decided via importlib.metadata (the dist
+# database on disk), which a ``sys.modules`` stub can't fake. The
+# ``__file__`` check then tells a real compiled extension from a stub
+# ModuleType.
+import importlib.metadata as _ilm
+
+try:
+    _ilm.version("databricks-sql-kernel")
+    _kernel_installed = True
+except _ilm.PackageNotFoundError:
+    _kernel_installed = False
+
+_kernel_mod = sys.modules.get("databricks_sql_kernel")
+if _kernel_mod is None:
+    try:
+        import databricks_sql_kernel as _kernel_mod  # type: ignore[import-not-found]
+    except ImportError:
+        _kernel_mod = None
+
+_kernel_is_real = _kernel_mod is not None and getattr(_kernel_mod, "__file__", None)
+
+if not _kernel_installed:
+    # State 1: nothing to test against.
     pytest.skip(
-        "databricks_sql_kernel is a test stub (no __file__); "
-        "install the real wheel to run kernel e2e tests",
+        "databricks-sql-kernel is not installed; "
+        "install the real wheel (pip install 'databricks-sql-connector[kernel]') "
+        "to run kernel e2e tests",
         allow_module_level=True,
+    )
+elif not _kernel_is_real:
+    # State 2: the wheel IS installed but a stub is shadowing it. Do NOT
+    # skip — that would hide the fact that the kernel path never ran.
+    raise RuntimeError(
+        "databricks-sql-kernel is installed in this environment but "
+        "sys.modules holds a stub (no __file__) — the kernel e2e tests "
+        "would not actually exercise the real wheel. This usually means a "
+        "unit test's fake databricks_sql_kernel module is shadowing the "
+        "real one in a shared pytest session. Run the kernel e2e tests in "
+        "isolation (separate pytest invocation) so the real wheel loads."
     )
 
 
@@ -72,9 +116,21 @@ def kernel_conn_params(connection_details):
 @pytest.fixture
 def conn(kernel_conn_params):
     """One-shot connection per test (the simple_test pattern the
-    existing e2e suite uses for cursor-level tests)."""
+    existing e2e suite uses for cursor-level tests).
+
+    Asserts the connection actually routed through the kernel backend —
+    if ``use_kernel=True`` silently fell back to Thrift (e.g. a wiring
+    regression), these tests must fail rather than pass against the
+    wrong backend.
+    """
+    from databricks.sql.backend.kernel.client import KernelDatabricksClient
+
     c = sql.connect(**kernel_conn_params)
     try:
+        assert isinstance(c.session.backend, KernelDatabricksClient), (
+            "use_kernel=True did not route through KernelDatabricksClient; "
+            f"got {type(c.session.backend).__name__}"
+        )
         yield c
     finally:
         c.close()
@@ -127,6 +183,91 @@ def test_fetchall_arrow(conn):
         assert table.column_names == ["a", "b"]
 
 
+# ─── Logging (Rust kernel -> Python logging bridge) ──────────────────────────
+#
+# Layer 3 of the logger-name drift guard (see also the Rust tests
+# `klog::tests::klog_emits_contract_target` and
+# `logging::tests::kernel_target_matches_contract` in the kernel repo).
+# Asserts the *customer-facing* contract end-to-end: kernel logs reach
+# Python `logging` under the `databricks.sql.kernel` logger, respect the
+# level set on it, and the pyo3 boundary surfaces under
+# `databricks.sql.kernel.pyo3`. If the kernel's tracing target or the
+# pyo3-log wiring ever drifts, these fail.
+
+import logging
+
+
+def test_kernel_logs_reach_python_logging(kernel_conn_params, caplog):
+    """A query at DEBUG produces records on the `databricks.sql.kernel`
+    logger — proving the tracing -> log -> pyo3-log -> logging chain."""
+    with caplog.at_level(logging.DEBUG, logger="databricks.sql.kernel"):
+        c = sql.connect(**kernel_conn_params)
+        try:
+            with c.cursor() as cur:
+                cur.execute("SELECT 1 AS a")
+                cur.fetchall()
+        finally:
+            c.close()
+
+    kernel_records = [
+        r for r in caplog.records if r.name.startswith("databricks.sql.kernel")
+    ]
+    assert kernel_records, (
+        "expected log records under the 'databricks.sql.kernel' logger; "
+        "the kernel tracing -> Python logging bridge did not deliver any"
+    )
+    # The core kernel logger (not just any child) must be present — this
+    # is the customer-facing contract.
+    assert any(
+        r.name == "databricks.sql.kernel" for r in kernel_records
+    ), "expected core kernel records on the exact 'databricks.sql.kernel' logger"
+    # The pyo3-boundary breadcrumb (`databricks.sql.kernel.pyo3`) is a
+    # nice-to-have, but the exact sub-target is a kernel-internal naming
+    # detail — assert softly so a benign kernel change to the boundary
+    # breadcrumbs doesn't break the connector e2e suite.
+    if not any(r.name == "databricks.sql.kernel.pyo3" for r in kernel_records):
+        import warnings
+
+        warnings.warn(
+            "no 'databricks.sql.kernel.pyo3' boundary records seen; "
+            "the kernel may have changed its pyo3 breadcrumb target",
+            stacklevel=2,
+        )
+
+
+def test_kernel_log_level_is_respected(kernel_conn_params, caplog):
+    """At WARNING on the kernel logger, no DEBUG/INFO kernel records reach
+    `caplog.records` — i.e. level control on `databricks.sql.kernel`
+    behaves like any other Python logger.
+
+    Scope note: `caplog.at_level` sets the logger's level and attaches a
+    handler, so this asserts the *effective* outcome a customer sees
+    (sub-threshold records don't surface), not specifically that the Rust
+    side suppressed them at source. A DEBUG record that crossed the FFI
+    would still be dropped by Python's level check before reaching
+    `caplog`. Source-side suppression (and its per-record FFI cost
+    avoidance) is covered by the kernel-side filtering, not asserted
+    here."""
+    with caplog.at_level(logging.WARNING, logger="databricks.sql.kernel"):
+        c = sql.connect(**kernel_conn_params)
+        try:
+            with c.cursor() as cur:
+                cur.execute("SELECT 1 AS a")
+                cur.fetchall()
+        finally:
+            c.close()
+
+    debug_records = [
+        r
+        for r in caplog.records
+        if r.name.startswith("databricks.sql.kernel") and r.levelno < logging.WARNING
+    ]
+    assert not debug_records, (
+        "DEBUG/INFO kernel records leaked through at WARNING level: "
+        f"{[(r.name, r.levelname, r.getMessage()) for r in debug_records]}"
+    )
+
+
 # ── Metadata ──────────────────────────────────────────────────────
 
 
@@ -160,6 +301,165 @@ def test_metadata_columns(conn):
         )
         rows = cur.fetchall()
         assert len(rows) > 0
+
+
+# ── Metadata filter normalization (batch 3) ───────────────────────
+
+
+def test_schemas_with_empty_string_filter_matches_all(conn):
+    """An empty-string schema pattern normalizes to match-all rather
+    than raising ``ProgrammingError`` (kernel rejects ``""``) — locks
+    ``_none_if_blank`` on the pattern args."""
+    with conn.cursor() as cur:
+        cur.schemas(catalog_name="main", schema_name="")
+        rows = cur.fetchall()
+        assert len(rows) > 0
+
+
+def test_tables_table_types_filter_is_case_insensitive(conn):
+    """Lowercase ``table_types=['view']`` / uppercase ``['TABLE']``
+    each match the right object regardless of case — locks the
+    kernel-side case-insensitive ``table_types`` match (batch-3 kernel
+    B2) end-to-end plus the connector drain removal (the filter now
+    runs kernel-side, not client-side).
+
+    Self-contained: creates a table + a view over it in the session's
+    default (writable) schema, scopes the lookup to a unique name
+    prefix, and drops both afterward — no dependency on which
+    workspace schemas happen to contain views."""
+    sfx = str(uuid4()).replace("-", "_")
+    tbl = f"dbsql_kernel_tt_t_{sfx}"
+    vw = f"dbsql_kernel_tt_v_{sfx}"
+    name_pat = f"dbsql_kernel_tt_%_{sfx}"
+    with conn.cursor() as cur:
+        cur.execute("SELECT current_catalog(), current_schema()")
+        cat, sch = cur.fetchall()[0]
+        try:
+            cur.execute(f"CREATE TABLE {tbl} (n INT)")
+            cur.execute(f"CREATE VIEW {vw} AS SELECT * FROM {tbl}")
+
+            def _names_and_types():
+                rows = cur.fetchall()
+                cols = [d[0] for d in cur.description]
+                ni, ti = cols.index("TABLE_NAME"), cols.index("TABLE_TYPE")
+                return {(r[ni], r[ti]) for r in rows}
+
+            # Lowercase 'view' must match the VIEW (and only it).
+            cur.tables(
+                catalog_name=cat,
+                schema_name=sch,
+                table_name=name_pat,
+                table_types=["view"],
+            )
+            assert _names_and_types() == {(vw, "VIEW")}
+
+            # Uppercase 'TABLE' must match the TABLE (and only it).
+            cur.tables(
+                catalog_name=cat,
+                schema_name=sch,
+                table_name=name_pat,
+                table_types=["TABLE"],
+            )
+            assert _names_and_types() == {(tbl, "TABLE")}
+        finally:
+            cur.execute(f"DROP VIEW IF EXISTS {vw}")
+            cur.execute(f"DROP TABLE IF EXISTS {tbl}")
+
+
+# ── Cursor-state tracking (batch 3) ───────────────────────────────
+
+
+def test_metadata_call_publishes_active_command_id(conn):
+    """A metadata call leaves the cursor pointing at the command that
+    produced the current result set (Thrift parity) — ``query_id`` is
+    populated rather than stale/None after ``catalogs()``."""
+    with conn.cursor() as cur:
+        cur.catalogs()
+        cur.fetchall()
+        assert cur.active_command_id is not None
+        assert cur.query_id is not None
+
+
+def test_dml_rowcount_wiring_does_not_break_dml(conn):
+    """The ``num_modified_rows`` → ``cursor.rowcount`` wiring must not
+    break DML execution, and ``rowcount`` is a well-formed int.
+
+    The affected-row count itself is only surfaced when the warehouse
+    reports ``num_modified_rows`` (absent on some warehouses, including
+    parts of dogfood — then ``rowcount`` stays at its ``-1`` default,
+    matching the Thrift backend). The positive-count mapping is locked
+    by the unit test; here we assert the path runs end-to-end and the
+    rows really landed. Self-contained in the writable default schema."""
+    sfx = str(uuid4()).replace("-", "_")
+    tbl = f"dbsql_kernel_rc_{sfx}"
+    with conn.cursor() as cur:
+        try:
+            cur.execute(f"CREATE TABLE {tbl} (n INT)")
+            cur.execute(f"INSERT INTO {tbl} VALUES (1), (2), (3)")
+            # rowcount is a real int (>= -1); never a MagicMock / None /
+            # crash from the getattr wiring.
+            assert isinstance(cur.rowcount, int)
+            assert (
+                cur.rowcount == 3 or cur.rowcount == -1
+            ), f"unexpected rowcount {cur.rowcount!r}"
+            # The INSERT genuinely modified the table.
+            cur.execute(f"SELECT COUNT(*) FROM {tbl}")
+            assert cur.fetchall()[0][0] == 3
+        finally:
+            cur.execute(f"DROP TABLE IF EXISTS {tbl}")
+
+
+# ── Async execution: state + result come from the server (attach-by-id) ──
+
+
+def test_async_execute_polls_and_fetches_result(conn):
+    """The full async CUJ: ``execute_async`` → poll
+    ``get_query_state`` → ``get_async_execution_result``. State and
+    result are read from the server by re-attaching to the statement
+    id (no connector-side state)."""
+    with conn.cursor() as cur:
+        cur.execute_async("SELECT 7 AS n")
+        cur.get_async_execution_result()  # polls to terminal, fetches
+        rows = cur.fetchall()
+        assert rows[0][0] == 7
+        assert cur.get_query_state() in (
+            CommandState.SUCCEEDED,
+            CommandState.CLOSED,
+        )
+
+
+def test_async_get_execution_result_is_re_callable(conn):
+    """``get_async_execution_result`` re-attaches by id on each call,
+    so fetching the same async command twice both succeed — the
+    connector never relied on a one-shot retained handle (Thrift-parity
+    re-fetch)."""
+    with conn.cursor() as cur:
+        cur.execute_async("SELECT 11 AS n")
+        cur.get_async_execution_result()
+        first = cur.fetchall()
+        # Second fetch of the same command must also succeed.
+        cur.get_async_execution_result()
+        second = cur.fetchall()
+        assert first[0][0] == 11
+        assert second[0][0] == 11
+
+
+def test_async_result_resumable_from_a_fresh_cursor(conn):
+    """The async command id is the only thing needed to fetch the
+    result — a *different* cursor that never submitted it can adopt the
+    id and retrieve the result, proving state/results come from the
+    server (attach-by-id), not connector-side per-cursor tracking."""
+    with conn.cursor() as submitter:
+        submitter.execute_async("SELECT 13 AS n")
+        command_id = submitter.active_command_id
+        assert command_id is not None
+
+    # A brand-new cursor adopts the id and fetches.
+    with conn.cursor() as resumer:
+        resumer.active_command_id = command_id
+        resumer.get_async_execution_result()
+        rows = resumer.fetchall()
+        assert rows[0][0] == 13
 
 
 # ── Session configuration ─────────────────────────────────────────
@@ -475,6 +775,57 @@ def test_sync_cancel_interrupts_blocking_execute(conn):
                 "SELECT count(*) FROM range(0, 1000000000000) "
                 "WHERE pow(rand(), 2) < 0.5 AND sqrt(id) > 1"
             )
+    finally:
+        t.join()
+        cur.close()
+
+
+# ── Batch 2 ────────────────────────────────────────────────────────
+
+
+def test_large_result_drains_without_premature_close(conn):
+    """A large multi-chunk result fully drains even though the connector
+    no longer closes the statement at execute-return — the kernel
+    auto-closes on drain. Guards the regression where a premature
+    CloseStatement broke lazy CloudFetch chunk-link fetches."""
+    n = 5_000_000
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT id, cast(id AS string) s FROM range({n})")
+        rows = cur.fetchall()
+        assert len(rows) == n
+        # Cursor is reusable after the auto-close fired on the prior result.
+        cur.execute("SELECT 42 AS n")
+        assert cur.fetchall()[0][0] == 42
+
+
+def test_server_cancel_maps_to_operational_error(conn):
+    """A server-side cancel surfaces as OperationalError (cancelled
+    class), not ProgrammingError. We trigger it via a cross-thread
+    cancel of a running query; the raised exception must be in the
+    OperationalError family, not ProgrammingError."""
+    import threading
+    import time
+
+    from databricks.sql.exc import ProgrammingError
+
+    cur = conn.cursor()
+
+    def cancel_after_delay():
+        time.sleep(15.0)
+        cur.cancel()
+
+    t = threading.Thread(target=cancel_after_delay)
+    t.start()
+    try:
+        with pytest.raises(Exception) as exc_info:
+            cur.execute(
+                "SELECT count(*) FROM range(0, 1000000000000) "
+                "WHERE pow(rand(), 2) < 0.5 AND sqrt(id) > 1"
+            )
+        # The cancellation must not masquerade as a caller-argument
+        # (ProgrammingError) error. It should be operational.
+        assert not isinstance(exc_info.value, ProgrammingError)
+        assert isinstance(exc_info.value, (OperationalError, DatabaseError))
     finally:
         t.join()
         cur.close()

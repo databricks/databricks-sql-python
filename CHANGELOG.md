@@ -1,5 +1,13 @@
 # Release History
 
+# Unreleased
+- Fix: `REMOVE` staging operations no longer require `staging_allowed_local_path` to be set, since removing a remote file does not touch the local filesystem (databricks/databricks-sql-python#726)
+
+# 4.3.0 (2026-06-12)
+- **New: optional Rust kernel backend (`use_kernel=True`).** Adds an alternative connection path backed by the native [`databricks-sql-kernel`](https://pypi.org/project/databricks-sql-kernel/) client (a Rust core exposed via PyO3), installable with the new `databricks-sql-connector[kernel]` extra. The kernel talks to Databricks over the **SEA (Statement Execution API) HTTP transport** — not Thrift — with CloudFetch and inline-Arrow result fetching, so `use_kernel=True` gives you a modern SEA-native client through the same DB-API surface. Supports PAT, OAuth M2M, and OAuth U2M auth. Requires Python >= 3.10 (the kernel wheel is `cp310-abi3`); on older interpreters the extra is a no-op and `use_kernel=True` raises a clear `ImportError`. The default backend remains Thrift — opt in per connection.
+- Kernel backend behavior is aligned with the Thrift backend so application code works the same either way: consistent cursor-state tracking (`query_id` / `get_query_state`), metadata (catalogs/schemas/tables/columns with JDBC-style filter semantics and case-insensitive `table_types`), DML `rowcount`, server-sourced async execution state, sync `cancel()`, fail-loud staging/volume operations, and structured error context (SQLSTATE, diagnostic info). Kernel logs surface through Python `logging` under the `databricks.sql.kernel` logger (databricks/databricks-sql-python#824, #825, #830, #838, #839 by @vikrantpuppala)
+- Revert the thrift 0.23.0 bump that broke installation on DBR LTS (ES-1960554) (databricks/databricks-sql-python#840 by @vikrantpuppala)
+
 # 4.2.7 (2026-06-02)
 - Extract SPOG org-id from cluster http_path for non-Thrift requests (databricks/databricks-sql-python#817 by @msrathore-db)
 - Remove empty chunks in CloudFetch concatenation (databricks/databricks-sql-python#814 by @jprakash-db)

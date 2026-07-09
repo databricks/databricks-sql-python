@@ -61,6 +61,21 @@ class _FakeKernelError(Exception):
         self.error_details_json = error_details_json
 
 
+# These unit tests exercise the connector's error-mapping / wiring logic
+# and need a *controllable* fake ``KernelError`` (to simulate arbitrary
+# kernel error codes), so they install a fake ``databricks_sql_kernel``
+# into ``sys.modules`` unconditionally.
+#
+# IMPORTANT: this fake is session-global and shadows a real wheel if one
+# is installed. Tests that need the REAL wheel (the use_kernel routing
+# test in test_session.py, and the e2e suite in
+# tests/e2e/test_kernel_backend.py) MUST be run in a SEPARATE pytest
+# invocation from this file — never `pytest tests/unit tests/e2e` in one
+# session when the real wheel is installed. Both of those real-wheel
+# tests detect the shadowing (real wheel present but sys.modules holds a
+# stub) and FAIL LOUDLY rather than silently skipping, so a CI job that
+# accidentally mixes them will go red instead of falsely green. The
+# kernel CI matrix runs the real-wheel tests as their own step.
 _fake_kernel_module = types.ModuleType("databricks_sql_kernel")
 _fake_kernel_module.KernelError = _FakeKernelError  # type: ignore[attr-defined]
 _fake_kernel_module.Session = MagicMock()  # type: ignore[attr-defined]
@@ -272,6 +287,14 @@ def test_no_open_session_guards_raise_interface_error():
                 cursor=cursor,
                 **kwargs,
             )
+
+    # The async-state methods attach to the kernel session by id; they
+    # must also guard a closed/absent session before the kernel call.
+    cid = CommandId.from_sea_statement_id("any-id")
+    with pytest.raises(InterfaceError):
+        c.get_query_state(cid)
+    with pytest.raises(InterfaceError):
+        c.get_execution_result(cid, cursor=cursor)
 
 
 def test_open_session_rejects_double_open(monkeypatch):
@@ -572,6 +595,74 @@ def test_execute_command_registers_and_clears_sync_canceller():
         assert id(cursor) not in c._sync_cancellers
 
 
+def test_sync_execute_does_not_close_statement_on_success():
+    """On a successful sync execute(), the connector must NOT close the
+    parent kernel Statement — the kernel now auto-closes the server
+    statement when the result stream drains (with the executed handle's
+    Drop as backstop). A premature close() here broke lazy CloudFetch
+    chunk-link fetches for large paginated-link results."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    stmt = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="stmt-id",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    c.execute_command(
+        operation="SELECT 1",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    # The kernel owns the statement lifecycle post-execute; connector
+    # leaves it alone (kernel auto-close-on-drain + Drop backstop).
+    stmt.close.assert_not_called()
+
+
+def test_sync_execute_closes_statement_on_failure():
+    """On the error path (execute raised, no executed handle / result
+    set produced), the connector still closes the parent Statement so
+    it isn't leaked."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    stmt = MagicMock()
+    stmt.execute.side_effect = RuntimeError("boom")
+    c._kernel_session.statement.return_value = stmt
+
+    with pytest.raises(Exception):
+        c.execute_command(
+            operation="SELECT 1",
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+
+    stmt.close.assert_called_once_with()
+
+
 def test_get_columns_accepts_none_catalog():
     """The kernel's `list_columns` honours `catalog=None` by issuing
     `SHOW COLUMNS IN ALL CATALOGS` server-side. The connector should
@@ -624,24 +715,85 @@ def test_close_command_tolerant_when_handle_missing():
     c.close_command(fake_command_id)  # must not raise
 
 
-def test_get_query_state_returns_succeeded_when_handle_missing():
-    """Sync-execute paths never register an async handle; by the
-    time ``get_query_state`` could be called the command is
-    terminal-by-construction. The client returns SUCCEEDED so the
-    cursor's polling loop terminates cleanly."""
-    c = _make_client()
-    fake_command_id = CommandId.from_sea_statement_id("sync-only")
-    assert c.get_query_state(fake_command_id) == CommandState.SUCCEEDED
+def _attach_returns(c, *, status=None, status_error=None, await_result=None):
+    """Wire ``_kernel_session.attach_async_statement`` to return a fake
+    handle. ``status`` is a ``(state, failure)`` tuple for ``handle.status()``;
+    ``status_error`` makes ``attach`` itself raise (e.g. NotFound);
+    ``await_result`` sets ``handle.await_result()`` return value."""
+    c._kernel_session = MagicMock()
+    if status_error is not None:
+        c._kernel_session.attach_async_statement.side_effect = status_error
+        return None
+    handle = MagicMock()
+    if status is not None:
+        handle.status.return_value = status
+    if await_result is not None:
+        handle.await_result.return_value = await_result
+    c._kernel_session.attach_async_statement.return_value = handle
+    return handle
 
 
-def test_get_execution_result_raises_for_unknown_command_id():
-    """The kernel backend only tracks async-submitted statements;
-    a ``get_execution_result`` call for an unknown id is a
-    programming error."""
+def test_get_query_state_returns_succeeded_when_server_404s():
+    """An id the server doesn't recognise (sync command whose id was
+    never a standalone server statement, or an async command closed and
+    aged out of the result TTL) surfaces as a NotFound KernelError from
+    ``attach``; the client maps that to SUCCEEDED so the cursor's
+    polling loop terminates cleanly."""
     c = _make_client()
-    fake_command_id = CommandId.from_sea_statement_id("unknown")
-    with pytest.raises(ProgrammingError, match="unknown command_id"):
-        c.get_execution_result(fake_command_id, cursor=MagicMock())
+    _attach_returns(c, status_error=_FakeKernelError(code="NotFound"))
+    cid = CommandId.from_sea_statement_id("sync-only")
+    assert c.get_query_state(cid) == CommandState.SUCCEEDED
+
+
+def test_get_query_state_returns_closed_from_server():
+    """A closed-but-not-yet-GC'd async command: the server still answers
+    GetStatementStatus with state=CLOSED (200), which flows through the
+    state map to ``CommandState.CLOSED`` — no connector-side
+    closed-state bookkeeping."""
+    c = _make_client()
+    _attach_returns(c, status=("Closed", None))
+    cid = CommandId.from_sea_statement_id("closed-async")
+    assert c.get_query_state(cid) == CommandState.CLOSED
+
+
+def test_get_query_state_propagates_non_not_found_error():
+    """A transient/other error from ``attach`` (NOT NotFound) must not be
+    silently swallowed as a terminal state — it propagates as a mapped
+    PEP 249 exception so the caller can retry / surface it."""
+    c = _make_client()
+    _attach_returns(c, status_error=_FakeKernelError(code="Unavailable"))
+    cid = CommandId.from_sea_statement_id("flaky")
+    with pytest.raises(DatabaseError):
+        c.get_query_state(cid)
+
+
+def test_get_execution_result_attaches_by_id():
+    """``get_execution_result`` re-attaches to the statement by id and
+    awaits its result — no connector-side handle lookup."""
+    c = _make_client()
+    fake_stream = MagicMock()
+    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    handle = _attach_returns(c, await_result=fake_stream)
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cid = CommandId.from_sea_statement_id("async-1")
+
+    rs = c.get_execution_result(cid, cursor=cursor)
+
+    assert rs is not None
+    c._kernel_session.attach_async_statement.assert_called_with("async-1")
+    handle.await_result.assert_called_once_with()
+
+
+def test_get_execution_result_maps_not_found_to_programming_error():
+    """An unknown / aged-out id surfaces the kernel's NotFound as a
+    mapped PEP 249 exception rather than a raw error."""
+    c = _make_client()
+    _attach_returns(c, status_error=_FakeKernelError(code="NotFound"))
+    cid = CommandId.from_sea_statement_id("gone")
+    with pytest.raises(DatabaseError):
+        c.get_execution_result(cid, cursor=MagicMock())
 
 
 def test_cancel_command_reraises_kernel_error():
@@ -669,13 +821,10 @@ def test_close_command_reraises_kernel_error():
 
 def test_get_query_state_raises_on_failed_state_with_failure():
     c = _make_client()
-    fake_handle = MagicMock()
-    fake_handle.status.return_value = (
-        "Failed",
-        _FakeKernelError(code="SqlError", message="bad"),
+    _attach_returns(
+        c, status=("Failed", _FakeKernelError(code="SqlError", message="bad"))
     )
     cid = CommandId.from_sea_statement_id("abc")
-    c._async_handles[cid.guid] = fake_handle
     with pytest.raises(DatabaseError, match="bad"):
         c.get_query_state(cid)
 
@@ -688,12 +837,10 @@ def test_get_query_state_handles_non_baseexception_failure():
     ``TypeError: exception causes must derive from BaseException``;
     the wrap helper deals with it."""
     c = _make_client()
-    fake_handle = MagicMock()
     # ``failure`` is a plain dict (not BaseException) — simulates a
     # kernel binding that exposes the failure as a structured value.
-    fake_handle.status.return_value = ("Failed", {"code": "Internal", "msg": "weird"})
+    _attach_returns(c, status=("Failed", {"code": "Internal", "msg": "weird"}))
     cid = CommandId.from_sea_statement_id("xyz")
-    c._async_handles[cid.guid] = fake_handle
     # Must surface as a PEP 249 exception (OperationalError via the
     # wrap helper's fallback path), not TypeError.
     with pytest.raises(OperationalError):
@@ -702,10 +849,8 @@ def test_get_query_state_handles_non_baseexception_failure():
 
 def test_get_query_state_returns_state_when_no_failure():
     c = _make_client()
-    fake_handle = MagicMock()
-    fake_handle.status.return_value = ("Running", None)
+    _attach_returns(c, status=("Running", None))
     cid = CommandId.from_sea_statement_id("abc")
-    c._async_handles[cid.guid] = fake_handle
     assert c.get_query_state(cid) == CommandState.RUNNING
 
 
@@ -749,36 +894,45 @@ def test_close_session_clears_async_handles_even_if_close_fails():
     assert bad.close.called
 
 
-def test_close_session_marks_swept_handles_as_closed():
-    """Close-session pre-populates ``_closed_commands`` for every
-    swept async handle so a subsequent ``get_query_state`` reports
-    ``CLOSED`` instead of falling through to the SUCCEEDED
-    sync-default."""
+def test_close_session_closes_and_drops_swept_handles():
+    """Close-session closes every tracked async handle (firing its
+    server-side CloseStatement) and drops it from the keep-alive map.
+    There is no connector-side closed-state bookkeeping — a subsequent
+    ``get_query_state`` re-attaches by id and reads CLOSED from the
+    server."""
     c = _make_client()
     handle = MagicMock()
     cid = CommandId.from_sea_statement_id("xyz")
     c._async_handles[cid.guid] = handle
     c._kernel_session = MagicMock()
     c.close_session(MagicMock())
-    assert cid.guid in c._closed_commands
+    assert handle.close.called
+    assert c._async_handles == {}
 
 
 # ---------------------------------------------------------------------------
-# CLOSED command-state for previously-tracked async handles (m3)
+# CLOSED command-state comes from the server (re-attach by id)
 # ---------------------------------------------------------------------------
 
 
 def test_get_query_state_returns_closed_after_close_command():
-    """After ``close_command`` on a tracked async handle, the
-    subsequent ``get_query_state`` lookup must report ``CLOSED``,
-    not fall through to the SUCCEEDED sync-default — the command
-    was tracked then closed; SUCCEEDED would lie about its history."""
+    """After ``close_command`` fires the server-side CloseStatement, a
+    subsequent ``get_query_state`` re-attaches by id and the server
+    reports CLOSED (200 state=CLOSED until the result TTL elapses). No
+    connector-side closed-state tracking — the server is the source of
+    truth."""
     c = _make_client()
+    c._kernel_session = MagicMock()
     handle = MagicMock()
     cid = CommandId.from_sea_statement_id("async-1")
     c._async_handles[cid.guid] = handle
     c.close_command(cid)
     assert handle.close.called
+
+    # Re-attach now reports CLOSED from the server.
+    attached = MagicMock()
+    attached.status.return_value = ("Closed", None)
+    c._kernel_session.attach_async_statement.return_value = attached
     assert c.get_query_state(cid) == CommandState.CLOSED
 
 
@@ -858,72 +1012,49 @@ def test_kernel_error_during_result_set_construction_is_mapped():
 
 
 # ---------------------------------------------------------------------------
-# Async leak in get_execution_result (M1)
+# get_execution_result is re-callable via attach-by-id
 # ---------------------------------------------------------------------------
 
 
-def test_get_execution_result_closes_async_exec_and_drops_tracking():
-    """The ``ExecutedAsyncStatement`` handle's role ends once it
-    produces a ``ResultStream`` via ``await_result()``. The client
-    must close the async_exec and drop the tracking entry there —
-    otherwise ``KernelResultSet.close()`` (which only closes the
-    stream) leaves the executed handle leaked server-side until
-    ``close_session`` sweeps."""
+def test_get_execution_result_is_re_callable():
+    """``get_execution_result`` re-attaches by id on every call, so a
+    second fetch for the same async command succeeds (Thrift-parity
+    re-fetch). Each call attaches a fresh handle and awaits its result;
+    neither raises, and the connector never depended on a retained
+    handle. The kernel's ``await_result()`` is idempotent server-side."""
     c = _make_client()
     c._kernel_session = MagicMock()
-    async_exec = MagicMock()
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
-    async_exec.await_result.return_value = fake_stream
-    cid = CommandId.from_sea_statement_id("async-leak-test")
-    c._async_handles[cid.guid] = async_exec
+    handle = MagicMock()
+    handle.await_result.return_value = fake_stream
+    c._kernel_session.attach_async_statement.return_value = handle
+    cid = CommandId.from_sea_statement_id("async-recall-twice")
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
 
-    c.get_execution_result(cid, cursor=cursor)
+    rs1 = c.get_execution_result(cid, cursor=cursor)
+    rs2 = c.get_execution_result(cid, cursor=cursor)
 
-    # async_exec must be closed and dropped from tracking; the
-    # closed-commands set records it.
-    assert async_exec.close.called
-    assert cid.guid not in c._async_handles
-    assert cid.guid in c._closed_commands
-
-
-def test_get_execution_result_does_not_raise_on_async_exec_close_failure():
-    """A failure to close the async_exec is non-fatal — the result
-    stream has already been returned by ``await_result()`` and the
-    kernel's Drop will reap server-side state."""
-    c = _make_client()
-    c._kernel_session = MagicMock()
-    async_exec = MagicMock()
-    fake_stream = MagicMock()
-    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
-    async_exec.await_result.return_value = fake_stream
-    async_exec.close.side_effect = _FakeKernelError(code="Unavailable")
-    cid = CommandId.from_sea_statement_id("async-close-fail")
-    c._async_handles[cid.guid] = async_exec
-    cursor = MagicMock()
-    cursor.arraysize = 100
-    cursor.buffer_size_bytes = 1024
-
-    # Must not raise.
-    rs = c.get_execution_result(cid, cursor=cursor)
-    assert rs is not None
-    assert cid.guid not in c._async_handles
+    assert rs1 is not None and rs2 is not None
+    # Two calls -> two attaches -> two await_results. No reliance on a
+    # connector-tracked handle.
+    assert c._kernel_session.attach_async_statement.call_count == 2
+    assert handle.await_result.call_count == 2
 
 
 # ---------------------------------------------------------------------------
-# get_tables table_types client-side filter (m2)
+# get_tables — table_types is filtered kernel-side (no connector drain)
 # ---------------------------------------------------------------------------
 
 
 def _make_tables_stream() -> MagicMock:
     """Build a fake stream that mimics the kernel's ``list_tables``
-    output shape (5 cols ending in TABLE_TYPE at index 5 — the
-    connector matches what SEA produces, which has 5 metadata cols
-    before TABLE_TYPE). Returns a fixed table with mixed table types
-    so the filter has something to discriminate."""
+    output shape. The kernel applies the ``table_types`` filter
+    itself, so the connector now forwards ``table_types`` and returns
+    this stream unchanged — these tests mock the kernel filter away
+    and only assert the forwarded args + pass-through behaviour."""
     schema = pa.schema(
         [
             ("TABLE_CAT", pa.string()),
@@ -953,12 +1084,15 @@ def _make_tables_stream() -> MagicMock:
     return stream
 
 
-def test_get_tables_with_table_types_filters_rows():
+def test_get_tables_forwards_table_types_to_kernel():
+    """``table_types`` is forwarded verbatim to the kernel's
+    ``list_tables`` (which filters case-insensitively) — the
+    connector no longer drains + refilters client-side. The stream
+    flows back through the normal ``KernelResultSet`` path unchanged."""
     c = _make_client()
     c._kernel_session = MagicMock()
-    c._kernel_session.metadata.return_value.list_tables.return_value = (
-        _make_tables_stream()
-    )
+    list_tables = c._kernel_session.metadata.return_value.list_tables
+    list_tables.return_value = _make_tables_stream()
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -968,21 +1102,28 @@ def test_get_tables_with_table_types_filters_rows():
         max_rows=10,
         max_bytes=1,
         cursor=cursor,
-        table_types=["TABLE"],
+        table_types=["view"],
     )
+
+    list_tables.assert_called_once_with(
+        catalog=None,
+        schema_pattern=None,
+        table_pattern=None,
+        table_types=["view"],
+    )
+    # Stream is returned as-is — no connector-side row filtering. The
+    # mock kernel doesn't filter, so all three rows pass through.
     table = rs.fetchall_arrow()
-    assert table.num_rows == 2
-    assert set(table.column("TABLE_TYPE").to_pylist()) == {"TABLE"}
+    assert table.num_rows == 3
 
 
-def test_get_tables_without_table_types_returns_full_stream():
-    """No filter → kernel result flows through unchanged via the
-    normal ``KernelResultSet`` path (no drain-and-rewrap)."""
+def test_get_tables_without_table_types_passes_none():
+    """No filter → ``table_types=None`` forwarded; stream flows
+    through unchanged via the normal ``KernelResultSet`` path."""
     c = _make_client()
     c._kernel_session = MagicMock()
-    c._kernel_session.metadata.return_value.list_tables.return_value = (
-        _make_tables_stream()
-    )
+    list_tables = c._kernel_session.metadata.return_value.list_tables
+    list_tables.return_value = _make_tables_stream()
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -994,8 +1135,311 @@ def test_get_tables_without_table_types_returns_full_stream():
         cursor=cursor,
         table_types=None,
     )
+
+    list_tables.assert_called_once_with(
+        catalog=None,
+        schema_pattern=None,
+        table_pattern=None,
+        table_types=None,
+    )
     table = rs.fetchall_arrow()
     assert table.num_rows == 3
+
+
+# ---------------------------------------------------------------------------
+# Cursor-state tracking (T7) — active_command_id consistency
+# ---------------------------------------------------------------------------
+
+
+def _stream_with_schema() -> MagicMock:
+    """A minimal fake kernel handle whose ``arrow_schema()`` returns a
+    real schema so ``KernelResultSet.__init__`` succeeds."""
+    stream = MagicMock()
+    stream.arrow_schema.return_value = pa.schema([("x", pa.int64())])
+    return stream
+
+
+def test_metadata_call_sets_active_command_id():
+    """Metadata methods mint a synthetic command id and must publish
+    it on the cursor (Thrift sets ``active_command_id`` unconditionally
+    in ``_handle_execute_response``). Without this, ``cursor.query_id``
+    would stay pinned to a prior query after a metadata browse."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    c._kernel_session.metadata.return_value.list_catalogs.return_value = (
+        _stream_with_schema()
+    )
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.active_command_id = None
+
+    c.get_catalogs(session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor)
+
+    assert cursor.active_command_id is not None
+    # The synthetic id is a UUID-shaped guid the cursor can attribute
+    # logs to (rather than a stale prior-query id).
+    assert cursor.active_command_id.guid
+
+
+def test_sync_execute_sets_active_command_id():
+    """A successful sync execute publishes the server statement id on
+    the cursor."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.active_command_id = None
+
+    stmt = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="stmt-abc",
+        num_modified_rows=None,
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    c.execute_command(
+        operation="SELECT 1",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    assert cursor.active_command_id is not None
+    assert cursor.active_command_id.guid == "stmt-abc"
+
+
+def test_failed_sync_execute_sets_active_command_id_from_canceller():
+    """When execute() fails *after* the server assigned a statement id,
+    the canceller's inflight slot holds that id. The connector reads it
+    and publishes ``active_command_id`` before re-raising, so the cursor
+    can correlate the failed query (telemetry / log lookup)."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.active_command_id = None
+
+    canceller = MagicMock()
+    canceller.statement_id.return_value = "failed-stmt-id"
+    stmt = MagicMock()
+    stmt.canceller.return_value = canceller
+    stmt.execute.side_effect = RuntimeError("boom after id assigned")
+    c._kernel_session.statement.return_value = stmt
+
+    with pytest.raises(Exception):
+        c.execute_command(
+            operation="SELECT 1",
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+
+    assert cursor.active_command_id is not None
+    assert cursor.active_command_id.guid == "failed-stmt-id"
+
+
+def test_failed_sync_execute_leaves_active_command_id_untouched_when_no_id():
+    """A pre-id transport failure (canceller has no statement id yet)
+    must leave ``active_command_id`` untouched — there's nothing to
+    correlate, and clobbering it would lie about cursor state."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    sentinel = object()
+    cursor.active_command_id = sentinel
+
+    canceller = MagicMock()
+    canceller.statement_id.return_value = None  # no id observed yet
+    stmt = MagicMock()
+    stmt.canceller.return_value = canceller
+    stmt.execute.side_effect = RuntimeError("connect refused")
+    c._kernel_session.statement.return_value = stmt
+
+    with pytest.raises(Exception):
+        c.execute_command(
+            operation="SELECT 1",
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+
+    assert cursor.active_command_id is sentinel
+
+
+def test_sync_execute_forwards_num_modified_rows_to_rowcount():
+    """DML reports a real ``cursor.rowcount`` from the kernel's
+    ``num_modified_rows`` instead of the hardcoded ``-1``."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.rowcount = -1
+
+    stmt = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="dml-1",
+        num_modified_rows=42,
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    c.execute_command(
+        operation="INSERT INTO t VALUES (1)",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    assert cursor.rowcount == 42
+
+
+def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
+    """SELECT (and warehouses that don't report it) → ``None`` leaves
+    ``rowcount`` at its ``-1`` default."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.rowcount = -1
+
+    stmt = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="select-1",
+        num_modified_rows=None,
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    c.execute_command(
+        operation="SELECT 1",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    assert cursor.rowcount == -1
+
+
+# ---------------------------------------------------------------------------
+# Metadata filter normalization — wildcard catalog + empty-string patterns
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("wildcard", ["%", "*", "", "   "])
+def test_get_columns_normalizes_wildcard_catalog_to_none(wildcard):
+    """``catalog_name`` of ``%``/``*``/blank → ``None`` (all-catalogs),
+    matching JDBC exact-or-all semantics and keeping the three metadata
+    methods symmetric."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_columns = c._kernel_session.metadata.return_value.list_columns
+    list_columns.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name=wildcard,
+        schema_name="s",
+        table_name="t",
+        column_name="c",
+    )
+
+    list_columns.assert_called_once_with(
+        catalog=None,
+        schema_pattern="s",
+        table_pattern="t",
+        column_pattern="c",
+    )
+
+
+def test_get_schemas_normalizes_blank_pattern_to_none():
+    """An empty-string schema pattern → ``None`` (match-all), mapping
+    the kernel's ``InvalidArgument``-on-``""`` to Thrift's effective
+    match-all. ``%``/``*`` stay as real LIKE wildcards on patterns."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_schemas = c._kernel_session.metadata.return_value.list_schemas
+    list_schemas.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_schemas(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="main",
+        schema_name="",
+    )
+
+    list_schemas.assert_called_once_with(catalog="main", schema_pattern=None)
+
+
+def test_get_schemas_keeps_wildcard_pattern():
+    """A ``%`` schema pattern is a real LIKE wildcard — passed through,
+    NOT normalized to None."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_schemas = c._kernel_session.metadata.return_value.list_schemas
+    list_schemas.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_schemas(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="main",
+        schema_name="prod_%",
+    )
+
+    list_schemas.assert_called_once_with(catalog="main", schema_pattern="prod_%")
 
 
 # ---------------------------------------------------------------------------

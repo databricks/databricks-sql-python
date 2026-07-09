@@ -1081,6 +1081,14 @@ class Cursor:
                 headers=headers,
             )
 
+        # REMOVE deletes a remote resource and never touches the local
+        # filesystem, so it does not require staging_allowed_local_path.
+        if row.operation == "REMOVE":
+            return self._handle_staging_remove(
+                presigned_url=row.presignedUrl,
+                headers=headers,
+            )
+
         # For non-streaming operations, validate staging_allowed_local_path
         if isinstance(staging_allowed_local_path, type(str())):
             _staging_allowed_local_paths = [staging_allowed_local_path]
@@ -1133,14 +1141,12 @@ class Cursor:
         )
 
         # TODO: Create a retry loop here to re-attempt if the request times out or fails
+        # REMOVE is handled above, before staging_allowed_local_path validation,
+        # since it does not touch the local filesystem.
         if row.operation == "GET":
             return self._handle_staging_get(**handler_args)
         elif row.operation == "PUT":
             return self._handle_staging_put(**handler_args)
-        elif row.operation == "REMOVE":
-            # Local file isn't needed to remove a remote resource
-            handler_args.pop("local_file")
-            return self._handle_staging_remove(**handler_args)
         else:
             raise ProgrammingError(
                 f"Operation {row.operation} is not supported. "
@@ -1590,10 +1596,9 @@ class Cursor:
 
         Names can contain % wildcards.
 
-        Note: on ``use_kernel=True``, ``catalog_name`` is required —
-        the kernel's underlying ``SHOW COLUMNS`` cannot span catalogs.
-        Passing ``catalog_name=None`` raises ``ProgrammingError``. The
-        Thrift and native SEA backends accept ``catalog_name=None``.
+        ``catalog_name=None`` is accepted on all backends and matches
+        columns across every catalog (the kernel issues ``SHOW COLUMNS``
+        over all catalogs).
 
         :returns self
         """
