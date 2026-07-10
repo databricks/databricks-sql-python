@@ -425,3 +425,7 @@ class ExecuteResponse:
     is_staging_operation: bool = False
     arrow_schema_bytes: Optional[bytes] = None
     result_format: Optional[Any] = None
+    # Number of rows modified by a DML statement (INSERT/UPDATE/DELETE/MERGE),
+    # surfaced as ``cursor.rowcount``. ``None`` for SELECT and any statement
+    # for which the server does not report a count → ``rowcount`` stays at -1.
+    num_modified_rows: Optional[int] = None

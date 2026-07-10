@@ -618,7 +618,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -662,13 +662,105 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                http_client=MagicMock(),
             )
 
             execute_response, _ = thrift_backend._handle_execute_response(
                 t_execute_resp, Mock()
             )
             self.assertEqual(execute_response.lz4_compressed, lz4Compressed)
+
+    @patch(
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",
+        return_value=Mock(),
+    )
+    def test_handle_execute_response_reads_num_modified_rows_from_direct_results(
+        self, build_queue
+    ):
+        """DML (INSERT/UPDATE/DELETE/MERGE) surfaces the server's
+        numModifiedRows on ExecuteResponse so it can flow to cursor.rowcount."""
+        for resp_type in self.execute_response_types:
+            resultSet = MagicMock()
+            resultSet.results.startRowOffset = 0
+            t_execute_resp = resp_type(
+                status=Mock(),
+                operationHandle=Mock(),
+                directResults=ttypes.TSparkDirectResults(
+                    operationStatus=ttypes.TGetOperationStatusResp(
+                        status=self.okay_status,
+                        operationState=ttypes.TOperationState.FINISHED_STATE,
+                        numModifiedRows=42,
+                    ),
+                    resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                        status=self.okay_status,
+                        resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+                        schema=MagicMock(),
+                        arrowSchema=MagicMock(),
+                    ),
+                    resultSet=resultSet,
+                    closeOperation=None,
+                ),
+            )
+            thrift_backend = ThriftDatabricksClient(
+                "foobar",
+                443,
+                "path",
+                [],
+                auth_provider=AuthProvider(),
+                ssl_options=SSLOptions(),
+                http_client=MagicMock(),
+            )
+
+            execute_response, _ = thrift_backend._handle_execute_response(
+                t_execute_resp, Mock()
+            )
+            self.assertEqual(execute_response.num_modified_rows, 42)
+
+    @patch(
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",
+        return_value=Mock(),
+    )
+    def test_handle_execute_response_num_modified_rows_none_for_select(
+        self, build_queue
+    ):
+        """SELECT (and statements the server doesn't report a count for) leave
+        num_modified_rows as None so cursor.rowcount stays at its -1 default."""
+        for resp_type in self.execute_response_types:
+            resultSet = MagicMock()
+            resultSet.results.startRowOffset = 0
+            t_execute_resp = resp_type(
+                status=Mock(),
+                operationHandle=Mock(),
+                directResults=ttypes.TSparkDirectResults(
+                    operationStatus=ttypes.TGetOperationStatusResp(
+                        status=self.okay_status,
+                        operationState=ttypes.TOperationState.FINISHED_STATE,
+                        numModifiedRows=None,
+                    ),
+                    resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                        status=self.okay_status,
+                        resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+                        schema=MagicMock(),
+                        arrowSchema=MagicMock(),
+                    ),
+                    resultSet=resultSet,
+                    closeOperation=None,
+                ),
+            )
+            thrift_backend = ThriftDatabricksClient(
+                "foobar",
+                443,
+                "path",
+                [],
+                auth_provider=AuthProvider(),
+                ssl_options=SSLOptions(),
+                http_client=MagicMock(),
+            )
+
+            execute_response, _ = thrift_backend._handle_execute_response(
+                t_execute_resp, Mock()
+            )
+            self.assertIsNone(execute_response.num_modified_rows)
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_checks_operation_state_in_polls(
@@ -707,7 +799,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -859,7 +951,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                         [],
                         auth_provider=AuthProvider(),
                         ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                        http_client=MagicMock(),
                     )
 
                     with self.assertRaises(DatabaseError) as cm:
@@ -912,7 +1004,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
                 (
                     execute_response,
@@ -951,7 +1043,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
                 thrift_backend._results_message_to_execute_response = Mock()
 
@@ -960,6 +1052,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 thrift_backend._results_message_to_execute_response.assert_called_with(
                     execute_resp,
                     ttypes.TOperationState.FINISHED_STATE,
+                    None,
                 )
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
@@ -1723,7 +1816,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_handle_execute_response_sets_active_op_handle(self):
         thrift_backend = self._make_fake_thrift_backend()
         thrift_backend._check_direct_results_for_error = Mock()
-        thrift_backend._wait_until_command_done = Mock()
+        thrift_backend._wait_until_command_done = Mock(
+            return_value=(ttypes.TOperationState.FINISHED_STATE, Mock())
+        )
         thrift_backend._results_message_to_execute_response = Mock()
 
         # Create a mock response with a real operation handle
@@ -2108,7 +2203,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                http_client=MagicMock(),
                 **retry_delay_args,
             )
             retry_delay_expected_vals = {
@@ -2361,10 +2456,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
         test_cases = [
             ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}, "variant"),
             ("normal_col", {}, "string"),
-            ("weird_field", {b"Spark:DataType:SqlName": b"Some unexpected value"}, "string"),
+            (
+                "weird_field",
+                {b"Spark:DataType:SqlName": b"Some unexpected value"},
+                "string",
+            ),
             ("missing_field", None, "string"),  # None field case
         ]
-        
+
         for column_name, field_metadata, expected_type in test_cases:
             with self.subTest(column_name=column_name, expected_type=expected_type):
                 col = ttypes.TColumnDesc(
@@ -2375,7 +2474,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 field = (
                     None
                     if field_metadata is None
-                    else pyarrow.field(column_name, pyarrow.string(), metadata=field_metadata)
+                    else pyarrow.field(
+                        column_name, pyarrow.string(), metadata=field_metadata
+                    )
                 )
 
                 result = ThriftDatabricksClient._col_to_description(col, field)
@@ -2408,7 +2509,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [("regular_col", "string")],
             ),
         ]
-        
+
         for columns, arrow_fields, expected_types in test_cases:
             with self.subTest(arrow_fields=arrow_fields is not None):
                 t_table_schema = ttypes.TTableSchema(

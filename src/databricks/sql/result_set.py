@@ -50,6 +50,7 @@ class ResultSet(ABC):
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
         arrow_schema_bytes: Optional[bytes] = None,
+        num_modified_rows: Optional[int] = None,
     ):
         """
         A ResultSet manages the results of a single command.
@@ -82,6 +83,8 @@ class ResultSet(ABC):
         self._is_staging_operation = is_staging_operation
         self.lz4_compressed = lz4_compressed
         self._arrow_schema_bytes = arrow_schema_bytes
+        # Affected-row count for DML; None for SELECT / unreported.
+        self.num_modified_rows = num_modified_rows
 
     def __iter__(self):
         while True:
@@ -264,6 +267,7 @@ class ThriftResultSet(ResultSet):
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            num_modified_rows=execute_response.num_modified_rows,
         )
 
         # Initialize results queue if not provided

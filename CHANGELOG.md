@@ -2,6 +2,7 @@
 
 # Unreleased
 - Fix: `REMOVE` staging operations no longer require `staging_allowed_local_path` to be set, since removing a remote file does not touch the local filesystem (databricks/databricks-sql-python#726)
+- Report `cursor.rowcount` for DML on the Thrift backend: INSERT/UPDATE/DELETE/MERGE now set `rowcount` to the server's affected-row count instead of the hardcoded `-1`; SELECT (and statements the server does not report a count for) still return `-1`. `executemany` aggregates the count across all parameter sets per PEP 249 ([#784](https://github.com/databricks/databricks-sql-python/issues/784))
 
 # 4.3.0 (2026-06-12)
 - **New: optional Rust kernel backend (`use_kernel=True`).** Adds an alternative connection path backed by the native [`databricks-sql-kernel`](https://pypi.org/project/databricks-sql-kernel/) client (a Rust core exposed via PyO3), installable with the new `databricks-sql-connector[kernel]` extra. The kernel talks to Databricks over the **SEA (Statement Execution API) HTTP transport** — not Thrift — with CloudFetch and inline-Arrow result fetching, so `use_kernel=True` gives you a modern SEA-native client through the same DB-API surface. Supports PAT, OAuth M2M, and OAuth U2M auth. Requires Python >= 3.10 (the kernel wheel is `cp310-abi3`); on older interpreters the extra is a no-op and `use_kernel=True` raises a clear `ImportError`. The default backend remains Thrift — opt in per connection.
