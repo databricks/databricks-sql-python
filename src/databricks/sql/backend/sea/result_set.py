@@ -104,6 +104,7 @@ class SeaResultSet(ResultSet):
                 column_name=column_name,
                 precision=precision,
                 scale=scale,
+                timestamp_format=self.connection.non_arrow_timestamp_format,
             )
             converted_row.append(converted_value)
 

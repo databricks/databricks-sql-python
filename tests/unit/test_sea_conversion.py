@@ -7,6 +7,7 @@ This module contains tests for the SqlType and SqlTypeConverter classes.
 import pytest
 import datetime
 import decimal
+import pytz
 from unittest.mock import Mock, patch
 
 from databricks.sql.backend.sea.utils.conversion import SqlType, SqlTypeConverter
@@ -147,3 +148,37 @@ class TestSqlTypeConverter:
             SqlTypeConverter.convert_value("complex_value", SqlType.STRUCT, None)
             == "complex_value"
         )
+
+    def test_convert_timestamp_with_format(self):
+        """Test converting timestamp with an explicit strptime format."""
+        fmt = "%Y-%m-%d %H:%M:%S.%f"
+        result = SqlTypeConverter.convert_value(
+            "2023-12-31 12:30:00.123000",
+            SqlType.TIMESTAMP,
+            None,
+            timestamp_format=fmt,
+        )
+        assert isinstance(result, datetime.datetime)
+        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0, 123000, tzinfo=pytz.UTC)
+
+    def test_convert_timestamp_with_format_fallback(self):
+        """Test that non-matching format falls back to dateutil."""
+        fmt = "%Y-%m-%d %H:%M:%S.%f"
+        result = SqlTypeConverter.convert_value(
+            "08-Mar-2024 14:30:15",
+            SqlType.TIMESTAMP,
+            None,
+            timestamp_format=fmt,
+        )
+        assert isinstance(result, datetime.datetime)
+        assert result == datetime.datetime(2024, 3, 8, 14, 30, 15)
+
+    def test_convert_timestamp_without_format(self):
+        """Test converting timestamp without explicit format uses dateutil."""
+        result = SqlTypeConverter.convert_value(
+            "2023-01-15T12:30:45",
+            SqlType.TIMESTAMP,
+            None,
+        )
+        assert isinstance(result, datetime.datetime)
+        assert result == datetime.datetime(2023, 1, 15, 12, 30, 45)

@@ -1316,6 +1316,7 @@ class ThriftDatabricksClient(DatabricksClient):
         description,
         chunk_id: int,
         use_cloud_fetch=True,
+        timestamp_format=None,
     ):
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -1356,6 +1357,7 @@ class ThriftDatabricksClient(DatabricksClient):
             statement_id=command_id.to_hex_guid(),
             chunk_id=chunk_id,
             http_client=self._http_client,
+            timestamp_format=timestamp_format,
         )
 
         return (
