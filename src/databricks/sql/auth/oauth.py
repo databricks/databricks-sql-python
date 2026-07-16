@@ -45,7 +45,7 @@ class Token:
             exp_time = decoded_token.get("exp")
             current_time = time.time()
             buffer_time = 30  # 30 seconds buffer
-            return exp_time and (exp_time - buffer_time) <= current_time
+            return exp_time is not None and (exp_time - buffer_time) <= current_time
         except Exception as e:
             logger.error("Failed to decode token: %s", e)
             raise e
