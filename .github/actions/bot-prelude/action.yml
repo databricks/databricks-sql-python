@@ -1,0 +1,94 @@
+# Shared prelude for the bot workflows — the steps identical across all four
+# (reviewer, reviewer-followup, engineer, engineer-followup):
+#   1. mint the bot's App installation token (this repo) — for PR/issue posting
+#   2. mint a SECOND token scoped to the engine repo (contents:read) — PAT-free
+#      auth for the private-engine install
+#   3. set up Node (the Claude Code CLI the SDK spawns)
+#   4. install the pinned engine + Claude SDK/CLI via the local install-bot-engine
+#      composite, authenticated by the engine-scoped token
+#
+# LOCAL composite (`uses: ./…`) — resolves against this checked-out repo, so it
+# works where a cross-repo `uses:` of the engine does NOT. Call it AFTER checkout
+# (a composite can't run the checkout that loads it) and AFTER Python/Poetry setup
+# (the engine `pip install` needs the interpreter present). What stays inline in
+# each workflow: checkout (differs per flow), Python-vs-Poetry (reviewer needs
+# only Python; engineer needs the connector's deps via setup-poetry), and the
+# run/publish tail.
+name: Bot prelude (tokens + Node + engine install)
+description: Mint the bot + engine-scoped App tokens, set up Node, and install the pinned engine (PAT-free). Shared by all four bot workflows.
+
+inputs:
+  app-id:
+    description: 'Bot App id (review-bot or engineer-bot) — mints the this-repo token used to post.'
+    required: true
+  private-key:
+    description: 'Bot App private key (PEM) for the same App.'
+    required: true
+  engine-ref:
+    # SINGLE SOURCE OF TRUTH for the engine pin. All four bot workflows route
+    # through this composite, so the SHA lives here once (overridable per-caller)
+    # instead of being duplicated — and drifting — across the callers. Bump this
+    # value to move every bot to a new engine commit; never @main.
+    description: 'Engine commit SHA (full 40-char) to install.'
+    required: false
+    default: '3569dae31280628fcaf1b6e49c0193bc2fe48a4d'
+  engine-repo:
+    description: 'owner/name of the engine repo.'
+    required: false
+    default: 'databricks/databricks-bot-engine'
+
+outputs:
+  token:
+    description: 'The minted bot App installation token for THIS repo (post reviews / push fix branches / comment).'
+    value: ${{ steps.app-token.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    # This-repo token: the identity the bot acts as (post reviews, push the fix
+    # branch, comment). Exposed as the `token` output for the caller's run steps.
+    - name: Mint bot App token
+      id: app-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+
+    # Split `engine-repo` (owner/name) so the token mint below is scoped to the
+    # SAME repo `install-bot-engine` clones. Deriving it (rather than hardcoding
+    # databricks/databricks-bot-engine) keeps the overridable `engine-repo` input
+    # honest: a fork/renamed engine gets a correctly-scoped token instead of an
+    # auth failure against the wrong repo.
+    - name: Derive engine repo owner/name
+      id: engine-scope
+      shell: bash
+      env:
+        ENGINE_REPO: ${{ inputs.engine-repo }}
+      run: |
+        echo "owner=${ENGINE_REPO%%/*}" >> "$GITHUB_OUTPUT"
+        echo "repo=${ENGINE_REPO##*/}" >> "$GITHUB_OUTPUT"
+
+    # Engine-scoped token: a SECOND, per-run token scoped to ONLY the engine repo
+    # (contents:read), used to `pip install` the private engine with no stored
+    # PAT. Requires the same App installed on the engine repo with contents:read.
+    - name: Mint engine-scoped install token
+      id: engine-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ steps.engine-scope.outputs.owner }}
+        repositories: ${{ steps.engine-scope.outputs.repo }}
+        permission-contents: read
+
+    - name: Setup Node (for the Claude Code CLI the SDK spawns)
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      with:
+        node-version: '20'
+
+    - name: Install engine + Claude SDK/CLI
+      uses: ./.github/actions/install-bot-engine
+      with:
+        engine-ref: ${{ inputs.engine-ref }}
+        engine-repo: ${{ inputs.engine-repo }}
+        engine-token: ${{ steps.engine-token.outputs.token }}

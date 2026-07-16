@@ -1,0 +1,143 @@
+# Install databricks-bot-engine (pinned REF) + the Claude Agent SDK/CLI.
+#
+# WHY THIS IS A LOCAL COMPOSITE (not `uses: databricks/databricks-bot-engine/...`):
+# databricks-sql-python cannot reference the engine's actions/reusable workflows
+# cross-repo — GitHub fails with "Unable to resolve action ..., not found" (the
+# internal engine repo's Actions aren't consumable from an external repo; adbc's
+# workflows note the same: "a cross-repo `uses:` of the hub's internal composite
+# action does NOT work"). So we do NOT `uses:` engine actions. Instead this local
+# action `pip install`s the engine over HTTPS with a token — a plain clone, which
+# an external repo CAN do — inlining what the engine's own install-bot-engine
+# action does in REF mode. Keep in sync with that action at the pinned engine SHA.
+#
+# Auth is PAT-FREE: the caller passes a short-lived, engine-scoped GitHub App
+# installation token as `engine-token` (minted from the bot App creds). It slots
+# into the same git auth path a PAT would; nothing stored/long-lived.
+name: Install bot engine (local)
+description: pip-install the pinned databricks-bot-engine + Claude Agent SDK/CLI, PAT-free (engine-scoped App token).
+
+inputs:
+  engine-ref:
+    description: 'Engine commit SHA (full 40-char) to install.'
+    required: true
+  engine-repo:
+    description: 'owner/name of the engine repo.'
+    required: false
+    default: 'databricks/databricks-bot-engine'
+  engine-token:
+    description: 'Short-lived engine-scoped GitHub App installation token (contents:read). Authenticates the private-engine clone; no stored PAT.'
+    required: true
+  use-jfrog:
+    description: 'Route pip/npm through the internal JFrog mirror (egress-blocked runners). Requires id-token: write on the job.'
+    required: false
+    default: 'true'
+  sdk-version:
+    description: 'claude-agent-sdk version. Keep in sync with the engine at the pinned SHA.'
+    required: false
+    default: '0.2.102'
+  cli-version:
+    description: '@anthropic-ai/claude-code version. Keep in sync with the engine at the pinned SHA.'
+    required: false
+    default: '2.1.61'
+
+runs:
+  using: composite
+  steps:
+    - name: Configure JFrog mirror (pip + npm)
+      if: inputs.use-jfrog == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Keyless: mint a GitHub OIDC token, exchange it for a short-lived JFrog
+        # access token (the protected runner group is egress-blocked from
+        # pypi.org / registry.npmjs.org). Requires the job to grant id-token: write.
+        ID_TOKEN=$(curl -sLS \
+          -H "User-Agent: actions/oidc-client" \
+          -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=jfrog-github" | jq .value | tr -d '"')
+        echo "::add-mask::${ID_TOKEN}"
+        # Fail fast HERE if the OIDC mint failed (jq prints `null` for a missing
+        # .value; a request error yields empty), so the diagnostic points at the
+        # real cause instead of surfacing later as a misleading "could not extract
+        # JFrog access token" from the exchange below.
+        if [ -z "$ID_TOKEN" ] || [ "$ID_TOKEN" = "null" ]; then
+          echo "::error::Could not mint GitHub OIDC token (is id-token:write granted?)"; exit 1
+        fi
+        ACCESS_TOKEN=$(curl -sLS -XPOST -H "Content-Type: application/json" \
+          "https://databricks.jfrog.io/access/api/v1/oidc/token" \
+          -d "{\"grant_type\": \"urn:ietf:params:oauth:grant-type:token-exchange\", \"subject_token_type\":\"urn:ietf:params:oauth:token-type:id_token\", \"subject_token\": \"${ID_TOKEN}\", \"provider_name\": \"github-actions\"}" | jq .access_token | tr -d '"')
+        echo "::add-mask::${ACCESS_TOKEN}"
+        if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+          echo "::error::Could not extract JFrog access token (is id-token:write granted?)"; exit 1
+        fi
+        # Do NOT export the token-bearing index URL to $GITHUB_ENV or write it to
+        # ~/.npmrc: either would leak the embedded credential into the environment
+        # of every LATER step in the job (the author/publish/comment steps that run
+        # the model and `gh`). Instead stash both creds in JOB-LOCAL files (0600)
+        # under RUNNER_TEMP; the install step below loads them into its own step-local
+        # environment and removes them in its EXIT trap — the same scope-and-cleanup
+        # discipline the git extraheader already uses.
+        umask 077
+        printf '%s\n' "https://gha-service-account:${ACCESS_TOKEN}@databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple" > "${RUNNER_TEMP:-/tmp}/bot-jfrog-pip-index"
+        cat > "${RUNNER_TEMP:-/tmp}/bot-jfrog-npmrc" << EOF
+        registry=https://databricks.jfrog.io/artifactory/api/npm/db-npm/
+        //databricks.jfrog.io/artifactory/api/npm/db-npm/:_authToken=${ACCESS_TOKEN}
+        always-auth=true
+        EOF
+        echo "JFrog mirror configured for pip + npm (job-local creds)"
+
+    - name: Install engine (pinned REF) + Claude SDK/CLI
+      shell: bash
+      env:
+        ENGINE_REF: ${{ inputs.engine-ref }}
+        ENGINE_REPO: ${{ inputs.engine-repo }}
+        ENGINE_TOKEN: ${{ inputs.engine-token }}
+        SDK_VERSION: ${{ inputs.sdk-version }}
+        CLI_VERSION: ${{ inputs.cli-version }}
+      run: |
+        set -euo pipefail
+        # Supply-chain: require a full 40-char commit SHA (immutable pin). `case`
+        # globs match the whole string, so an embedded newline is rejected too.
+        case "$ENGINE_REF" in
+          *[!0-9a-f]* | "")
+            echo "::error::engine-ref must be a full 40-char commit SHA, got '$ENGINE_REF'"; exit 1 ;;
+        esac
+        if [ "${#ENGINE_REF}" -ne 40 ]; then
+          echo "::error::engine-ref must be a full 40-char commit SHA, got '$ENGINE_REF'"; exit 1
+        fi
+        if [ -z "$ENGINE_TOKEN" ]; then
+          echo "::error::engine-token is required (engine repo is private)"; exit 1
+        fi
+        # Supply the token via a git extraheader, NOT in the URL handed to pip:
+        # pip echoes the requirement spec (incl. any in-URL credential) in normal
+        # and error output where Actions masking is not guaranteed. The header
+        # lives only in a JOB-LOCAL git config for this job. Mask the token + its
+        # base64 form defensively.
+        echo "::add-mask::${ENGINE_TOKEN}"
+        BASIC=$(printf 'x-access-token:%s' "$ENGINE_TOKEN" | base64 | tr -d '\n')
+        echo "::add-mask::${BASIC}"
+        export GIT_CONFIG_GLOBAL="${RUNNER_TEMP:-/tmp}/bot-engine-gitconfig-$$"
+        : > "$GIT_CONFIG_GLOBAL"
+        # Job-local JFrog creds written by the mirror step above (if any). Load the
+        # pip index into a per-command flag and point npm at the job-local .npmrc,
+        # so neither credential lands in $GITHUB_ENV / ~/.npmrc for later steps.
+        JFROG_PIP_INDEX_FILE="${RUNNER_TEMP:-/tmp}/bot-jfrog-pip-index"
+        JFROG_NPMRC_FILE="${RUNNER_TEMP:-/tmp}/bot-jfrog-npmrc"
+        trap 'git config --global --unset-all "http.https://github.com/.extraheader" || true; rm -f "$GIT_CONFIG_GLOBAL" "$JFROG_PIP_INDEX_FILE" "$JFROG_NPMRC_FILE"' EXIT
+        git config --global "http.https://github.com/.extraheader" "Authorization: Basic ${BASIC}"
+        PIP_ARGS=()
+        NPM_ARGS=()
+        if [ -s "$JFROG_PIP_INDEX_FILE" ]; then
+          PIP_ARGS=(--index-url "$(cat "$JFROG_PIP_INDEX_FILE")")
+        fi
+        if [ -s "$JFROG_NPMRC_FILE" ]; then
+          NPM_ARGS=(--userconfig "$JFROG_NPMRC_FILE")
+        fi
+        python -m pip install "${PIP_ARGS[@]}" --upgrade pip
+        # REF mode resolves the published engine's deps unpinned + installs the
+        # SDK/CLI by version (a consumer can't see the engine's hash-locked
+        # requirements). SDK_VERSION/CLI_VERSION track the engine at ENGINE_REF.
+        pip install "${PIP_ARGS[@]}" "databricks-bot-engine @ git+https://github.com/${ENGINE_REPO}@${ENGINE_REF}"
+        pip install "${PIP_ARGS[@]}" "claude-agent-sdk==${SDK_VERSION}"
+        npm install "${NPM_ARGS[@]}" -g "@anthropic-ai/claude-code@${CLI_VERSION}"
+        echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
