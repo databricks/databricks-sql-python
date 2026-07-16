@@ -86,7 +86,7 @@ jobs:
         # Mirror code-quality-checks.yml exactly so every fork check has a
         # matching warmed entry. extras: "" is the base unit-test / lint / type
         # environment; pyarrow and kernel back the two extra unit-test tiers.
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         dependency-version: ["default", "min"]
         extras: ["", "pyarrow", "kernel"]
         exclude:
@@ -98,10 +98,6 @@ jobs:
             dependency-version: "min"
           - python-version: "3.13"
             dependency-version: "min"
-          # The kernel wheel is cp310-abi3 (Requires-Python >=3.10); the
-          # [kernel] extra is a no-op on 3.9, so there's no kernel leg to warm.
-          - python-version: "3.9"
-            extras: "kernel"
 
     name: "Warm (py ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps, extras=${{ matrix.extras || 'base' }})"
 
