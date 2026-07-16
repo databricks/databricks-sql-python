@@ -1782,12 +1782,12 @@ version = "2026.2"
 description = "World timezone definitions, modern and historical"
 optional = false
 python-versions = "*"
-groups = ["main"]
-markers = "python_version == \"3.10\""
+groups = ["main", "dev"]
 files = [
     {file = "pytz-2026.2-py2.py3-none-any.whl", hash = "sha256:04156e608bee23d3792fd45c94ae47fae1036688e75032eea2e3bf0323d1f126"},
     {file = "pytz-2026.2.tar.gz", hash = "sha256:0e60b47b29f21574376f218fe21abc009894a2321ea16c6754f3cad6eb7cdd6a"},
 ]
+markers = {main = "python_version == \"3.10\""}
 
 [[package]]
 name = "requests"
@@ -2017,4 +2017,4 @@ pyarrow = ["pyarrow", "pyarrow", "pyarrow"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "7ec39c59e57d38612dbd5a2e77fae3551d1942695b58fd52362920913472195d"
+content-hash = "89c4643180383371aa08a336857763247736cff297a0a041f71e510088a83c4c"
