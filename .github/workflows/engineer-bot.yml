@@ -80,6 +80,12 @@ jobs:
         uses: ./.github/actions/setup-poetry
         with:
           python-version: '3.11'
+          # Match code-coverage.yml's e2e job: install optional extras (notably
+          # pyarrow, declared optional=true behind the `pyarrow` extra) so the
+          # agent's REQUIRED live E2E repro test runs against the same runtime as
+          # the e2e suite it mirrors. Without this, arrow-touching e2e tests
+          # ModuleNotFoundError/skip instead of failing red-for-the-right-reason.
+          install-args: "--all-extras"
 
       # setup-poetry runs `poetry lock` (to reconcile the lock with the internal
       # JFrog source it injects), which REWRITES tracked poetry.lock / pyproject.toml
@@ -185,6 +191,16 @@ jobs:
         env:
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          # Live-warehouse connection env for the agent's REQUIRED E2E repro test
+          # (see .bot/prompts/engineer/system.md — the bug-fix flow reproduces the
+          # bug via a tests/e2e test against a real warehouse; a mocked unit test
+          # alone cannot prove the live server behaves correctly). Mirrors the
+          # e2e job in code-coverage.yml; the job already runs in `environment:
+          # azure-prod`, so these secrets are in scope.
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+          DATABRICKS_CATALOG: peco
+          DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
           REPO_ROOT: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
           FLOW: ${{ steps.ctx.outputs.flow }}
