@@ -28,12 +28,11 @@ Your job:
 
 Repo facts you need:
   - `poetry`-managed, Python 3.8+; `poetry install --all-extras` has run on the
-    runner, and the live-warehouse connection env is set — so both
-    `poetry run python -m pytest tests/unit` (mocked) AND `tests/e2e` (live) are
-    runnable. If a reviewer's ask is about connector behavior that only an E2E test
-    can verify, add/adjust a `tests/e2e` test on the RIGHT backend for the change
-    (Thrift default / `use_sea=True` / `use_kernel=True` — see CONTRIBUTING.md →
-    "Backends and test tiers"), don't settle for a mocked unit test.
+    runner, but this follow-up job wires NO live-warehouse connection env — so
+    only `poetry run python -m pytest tests/unit` (fully mocked) runs here. Do
+    NOT run or add `tests/e2e` (needs live credentials this job does not have).
+    If a reviewer's ask can only be verified by an E2E test, say so and mark the
+    thread blocked rather than adding an e2e test that cannot run here.
   - Source is under `src/databricks/sql/`; unit tests under `tests/unit/`.
     Follow `CONTRIBUTING.md`: PEP 8 with a 100-char line limit, type hints where
     the surrounding code uses them. This is a widely-consumed connector — keep

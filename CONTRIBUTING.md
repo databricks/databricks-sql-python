@@ -146,13 +146,14 @@ The suites marked `[not documented]` require additional configuration which will
 
 #### Backends and test tiers
 
-The connector has **two execution backends**, selected per connection. When you
+The connector has **three execution backends**, selected per connection. When you
 reproduce or fix a bug, use the backend the bug is actually on — a Thrift bug won't
-reproduce on a kernel connection, and vice versa:
+reproduce on a SEA or kernel connection, and vice versa:
 
 | Backend | Select via (connect kwarg / `extra_params`) | Where its tests live |
 | --- | --- | --- |
 | **Thrift** (default) | *(nothing — the default path)* | the general `tests/e2e` suite (the `{}` parametrize case) and mocked `tests/unit` |
+| **SEA** (Statement Execution API) | `use_sea=True` | the general `tests/e2e` suite (the `{"use_sea": True}` parametrize case, e.g. `tests/e2e/test_driver.py`) and mocked `tests/unit` |
 | **Kernel** (Rust, optional) | `use_kernel=True` | the dedicated `tests/e2e/test_kernel_backend.py` / `test_kernel_tls.py`, plus the offline routing test `tests/unit/test_session.py -m realkernel` |
 
 Notes that matter when running the suite:
