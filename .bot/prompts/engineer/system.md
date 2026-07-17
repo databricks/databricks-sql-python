@@ -97,11 +97,24 @@ up whatever it needs.
 
 == HOW TO WORK (bug-fix flow) ==
 
+0. **Pick the BACKEND the bug is on — reproduce on that one.** The connector has
+   three backends and a bug on one won't reproduce on another. Choose from the
+   issue:
+   - **kernel** (`use_kernel=True`) — only if the issue is specifically about the
+     Rust kernel / `use_kernel`. Repro in `tests/e2e/test_kernel_backend.py` and run
+     it alone (it needs the real wheel; see the `-m "not realkernel"` note above).
+   - **SEA** (`use_sea=True`) — if the issue implicates SEA, or the area is
+     backend-parametrized (add the `{"use_sea": True}` param case).
+   - **Thrift** (the default, no kwarg) — everything else; this is the common case.
+   See CONTRIBUTING.md → "Backends and test tiers" for the full matrix (selection
+   kwarg + where each backend's tests live).
+
 1. **Write the failing E2E test FIRST — before you deep-dive the fix.** Your first
-   substantive action is a `tests/e2e/` test that REPRODUCES the bug. Do only the
-   minimal reading needed to write it (find the API to call + how the e2e tests
-   connect). Run it with `-k` and confirm it **fails for the right reason** (the
-   bug — not a compile/setup/skip). A *skipped* test is not a reproduction.
+   substantive action is a `tests/e2e/` test (on the backend from step 0) that
+   REPRODUCES the bug. Do only the minimal reading needed to write it (find the API
+   to call + how the e2e tests connect). Run it with `-k` and confirm it **fails for
+   the right reason** (the bug — not a compile/setup/skip). A *skipped* test is not
+   a reproduction.
    - **Reproduction is a HARD GATE.** If after a focused effort (a few attempts,
      not dozens) you cannot get a test that fails for the right reason — it only
      skips, you can't reach the warehouse, or you can't trigger the bug — **STOP

@@ -144,6 +144,33 @@ The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR ve
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 
+#### Backends and test tiers
+
+The connector has **three execution backends**, selected per connection. When you
+reproduce or fix a bug, use the backend the bug is actually on — a Thrift bug won't
+reproduce on a kernel connection, and vice versa:
+
+| Backend | Select via (connect kwarg / `extra_params`) | Where its tests live |
+| --- | --- | --- |
+| **Thrift** (default) | *(nothing — the default path)* | the general `tests/e2e` suite (the `{}` parametrize case) and mocked `tests/unit` |
+| **SEA** | `use_sea=True` | the general `tests/e2e` suite (the `{"use_sea": True}` parametrize case) |
+| **Kernel** (Rust, optional) | `use_kernel=True` | the dedicated `tests/e2e/test_kernel_backend.py` / `test_kernel_tls.py`, plus the offline routing test `tests/unit/test_session.py -m realkernel` |
+
+Notes that matter when running the suite:
+
+- **Kernel is an opt-in extra**, not part of the default install. `use_kernel=True`
+  needs `pip install "databricks-sql-connector[kernel]"` (or `poetry install
+  --all-extras`); without it the connector raises a clear "install the `[kernel]`
+  extra" error. Most bugs are on the **Thrift/SEA** path — reproduce those there;
+  only reach for kernel when the issue is specifically about `use_kernel`.
+- **`realkernel` tests must run in their own pytest invocation.** When the real
+  kernel wheel is installed (`--all-extras`), several unit tests fake
+  `databricks_sql_kernel` in `sys.modules`; the `@pytest.mark.realkernel` guard test
+  detects that shadowing and **fails loudly**. So a *broad* unit run with the wheel
+  present must **deselect it**: `poetry run python -m pytest tests/unit -m "not
+  realkernel"`, and run the real-wheel tests separately with `-m realkernel` (this is
+  exactly how CI splits them — see `code-coverage.yml` / `code-quality-checks.yml`).
+
 
 ### Code formatting
 
