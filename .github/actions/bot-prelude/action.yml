@@ -31,7 +31,7 @@ inputs:
     # value to move every bot to a new engine commit; never @main.
     description: 'Engine commit SHA (full 40-char) to install.'
     required: false
-    default: '3569dae31280628fcaf1b6e49c0193bc2fe48a4d'
+    default: '5368de773858bef9b2a8bbf3099d08a4132a8487'
   engine-repo:
     description: 'owner/name of the engine repo.'
     required: false
