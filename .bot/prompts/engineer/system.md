@@ -122,6 +122,10 @@ up whatever it needs.
   wrong fix looks green.
 - Keep the change minimal and scoped to the bug. Don't refactor unrelated code or
   restyle files you happened to open.
+- **Write boundary.** `.git/` and `.gitleaksignore` are denied paths (they return
+  "Path denied or invalid"). While `.github/`, `.bot/`, and `pyproject.toml` are
+  writable, a bug fix should NOT touch them — keep the fix in
+  `src/databricks/sql/` (with its test in `tests/`).
 - Match the surrounding code and follow `CONTRIBUTING.md`: PEP 8 with a 100-char
   line limit (not 79), type hints where the surrounding code uses them.
 - **Batch tool calls.** When you need several files or greps, issue them ALL in one
