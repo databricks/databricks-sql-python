@@ -142,6 +142,13 @@ jobs:
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          # Live-warehouse connection env so a followup fixup can also run the
+          # REQUIRED E2E repro/verification test (see engineer/system.md). Mirrors
+          # the author run + code-coverage.yml; job is in `environment: azure-prod`.
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+          DATABRICKS_CATALOG: peco
+          DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
           RUNNER_TEMP: ${{ runner.temp }}
           # The agent's working tree AND the .bot/ lookup root. run.py resolves
           # the config at <REPO_ROOT>/.bot/config.yaml. The engine has NO path

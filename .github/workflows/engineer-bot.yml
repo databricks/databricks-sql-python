@@ -185,6 +185,16 @@ jobs:
         env:
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          # Live-warehouse connection env for the agent's REQUIRED E2E repro test
+          # (see .bot/prompts/engineer/system.md — the bug-fix flow reproduces the
+          # bug via a tests/e2e test against a real warehouse; a mocked unit test
+          # alone cannot prove the live server behaves correctly). Mirrors the
+          # e2e job in code-coverage.yml; the job already runs in `environment:
+          # azure-prod`, so these secrets are in scope.
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+          DATABRICKS_CATALOG: peco
+          DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
           REPO_ROOT: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
           FLOW: ${{ steps.ctx.outputs.flow }}
