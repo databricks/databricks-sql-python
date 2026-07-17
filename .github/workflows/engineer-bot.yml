@@ -80,6 +80,12 @@ jobs:
         uses: ./.github/actions/setup-poetry
         with:
           python-version: '3.11'
+          # Match code-coverage.yml's e2e job: install optional extras (notably
+          # pyarrow, declared optional=true behind the `pyarrow` extra) so the
+          # agent's REQUIRED live E2E repro test runs against the same runtime as
+          # the e2e suite it mirrors. Without this, arrow-touching e2e tests
+          # ModuleNotFoundError/skip instead of failing red-for-the-right-reason.
+          install-args: "--all-extras"
 
       # setup-poetry runs `poetry lock` (to reconcile the lock with the internal
       # JFrog source it injects), which REWRITES tracked poetry.lock / pyproject.toml

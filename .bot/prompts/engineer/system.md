@@ -45,11 +45,16 @@ server should Y"), do NOT infer the expected behavior from the current connector
 code — that's how a plausible-but-wrong fix gets a test written to agree with it.
 Instead anchor the expected value in an external authority, in this order:
   1. the issue's stated expectation and any spec/PEP (e.g. DB-API) it cites;
-  2. the **reference driver** — for parity questions, `fetch_context_repo
-     databricks-jdbc` then `grep_context_repo` / `read_context_repo` for the
-     class/method the issue names, and mirror how the official JDBC driver behaves
-     (it's the parity ground truth for retry/metadata/type/error semantics). The
-     clone is lazy + read-only; fetch only when you need it.
+  2. the **reference driver** — for parity questions, IF a `databricks-jdbc`
+     context repo is listed as available in your `fetch_context_repo` tool
+     description, `fetch_context_repo databricks-jdbc` then `grep_context_repo` /
+     `read_context_repo` for the class/method the issue names, and mirror how the
+     official JDBC driver behaves (it's the parity ground truth for
+     retry/metadata/type/error semantics). The clone is lazy + read-only; fetch
+     only when you need it. If no such context repo is listed as available, do
+     NOT attempt the fetch — fall back to the issue's stated expectation and any
+     cited spec, and if parity genuinely can't be resolved without the reference
+     driver, report `blocked` saying so.
 Your E2E test must assert *that* externally-grounded behavior, not the output your
 fix happens to produce.
 
