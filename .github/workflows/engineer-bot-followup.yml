@@ -94,6 +94,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      # setup-poetry runs `poetry lock` (to reconcile the lock with the internal
+      # JFrog source it injects), which REWRITES tracked poetry.lock / pyproject.toml
+      # in the working tree. The venv is already built, so the tree no longer needs
+      # that churn — revert it, else the followup's fixup commit (or its leftover
+      # check) would sweep up these bot-untouched dirty files. Keep ONLY the
+      # agent's edits in the tree.
+      - name: Revert poetry lock/pyproject churn (keep only the agent's edits)
+        run: git checkout -- poetry.lock pyproject.toml || true
+
       # Shared prelude: mint the engineer-bot token (pushes fixup commits, posts
       # replies) + the engine-scoped token, set up Node, install the engine.
       - name: Bot prelude (tokens + Node + engine install)
