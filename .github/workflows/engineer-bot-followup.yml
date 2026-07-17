@@ -148,9 +148,13 @@ jobs:
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # Live-warehouse connection env so a followup fixup can also run the
-          # REQUIRED E2E repro/verification test (see engineer/system.md). Mirrors
-          # the author run + code-coverage.yml; job is in `environment: azure-prod`.
+          # Live-warehouse connection env, provisioned for parity with the author
+          # run + code-coverage.yml (job is in `environment: azure-prod`). NOTE:
+          # unlike the author phase, the followup prompt
+          # (.bot/prompts/engineer-followup/system.md) tells the agent to run only
+          # the mocked `tests/unit` suite and NOT tests/e2e. These vars are wired
+          # for consistency with the author run, not an E2E step the followup runs;
+          # if followups should ever repair/run E2E repros, update that prompt too.
           DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
           DATABRICKS_CATALOG: peco

@@ -78,6 +78,17 @@ warehouse connection env is set. Run tests through poetry:
   - Your E2E test (fastest loop): `poetry run python -m pytest tests/e2e/<file> -k <name>`
   - A unit test:                  `poetry run python -m pytest tests/unit/<file> -k <name>`
 
+**This runner installs `--all-extras`, so the REAL `databricks-sql-kernel` wheel
+is present.** The unit suite fakes `databricks_sql_kernel` in `sys.modules`
+(`tests/unit/test_kernel_client.py`), which shadows the real wheel in a shared
+session — and the `@pytest.mark.realkernel` routing test
+(`tests/unit/test_session.py::TestUseKernelRoutesThroughRealWheel`) `pytest.fail`s
+loudly when it detects that shadowing. So whenever you run a BROADER unit
+selection than a single `-k` test — a whole file, or `tests/unit` — append
+`-m "not realkernel"` (matching how `.github/workflows/code-coverage.yml` guards
+the same `--all-extras` install). Skipping this produces a confusing false red
+that has nothing to do with your fix.
+
 **Always `-k`-filter to your own test** — do NOT run the whole `tests/e2e` suite:
 this job provides a live connection but does not seed the full per-run fixture set
 the broader suite expects, so unrelated E2E tests would fail or skip and that noise
