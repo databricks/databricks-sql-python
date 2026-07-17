@@ -173,6 +173,36 @@ jobs:
           fi
           { echo "ISSUE_TITLE<<$DELIM"; printf '%s\n' "$TITLE"; echo "$DELIM"; } >> "$GITHUB_ENV"
 
+      - name: Write E2E connection config (token survives the agent env scrub)
+        id: e2e_config
+        # The bug-fix flow's REQUIRED tests/e2e repro authenticates via the repo's
+        # conftest, which reads DATABRICKS_TOKEN. But the author agent runs pytest
+        # in a subprocess whose env is scrubbed of every credential-shaped var
+        # (engine shared/env_scrub.py strips *TOKEN*/*SECRET*/…), so DATABRICKS_TOKEN
+        # never reaches the test — the connection then has access_token=None and
+        # hangs. Workaround (per the engine's centralize-bot-workflows design doc):
+        # write the connection details to a file and pass its PATH in
+        # DATABRICKS_TEST_CONFIG_FILE, a var the scrub deliberately preserves; the
+        # conftest reads it as a fallback. Written here (an ordinary step, token in
+        # scope) with jq so the secret is never shell-interpolated.
+        env:
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+        run: |
+          CONFIG_PATH="$RUNNER_TEMP/e2e-connection.json"
+          jq -n \
+            --arg host "$DATABRICKS_SERVER_HOSTNAME" \
+            --arg http_path "$DATABRICKS_HTTP_PATH" \
+            --arg access_token "$DATABRICKS_TOKEN" \
+            --arg ingestion_user "$DATABRICKS_USER" \
+            --arg catalog "peco" \
+            '{host: $host, http_path: $http_path, access_token: $access_token, ingestion_user: $ingestion_user, catalog: $catalog}' \
+            > "$CONFIG_PATH"
+          chmod 600 "$CONFIG_PATH"
+          echo "path=$CONFIG_PATH" >> "$GITHUB_OUTPUT"
+
       - name: Run author
         id: author
         # Run from RUNNER_TEMP so the engine-rendered prompt's context file
@@ -201,6 +231,12 @@ jobs:
           DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
           DATABRICKS_CATALOG: peco
           DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+          # The connection TOKEN can't ride a plain env var into the agent's test
+          # subprocess (env_scrub strips *TOKEN*). Pass the path to the config file
+          # written above instead — this var name survives the scrub, and the
+          # conftest reads access_token from it. (host/http_path/catalog/user are
+          # not credential-shaped, so they still arrive via the env vars above.)
+          DATABRICKS_TEST_CONFIG_FILE: ${{ steps.e2e_config.outputs.path }}
           REPO_ROOT: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
           FLOW: ${{ steps.ctx.outputs.flow }}
