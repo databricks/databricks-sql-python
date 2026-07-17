@@ -88,7 +88,12 @@ jobs:
       # bot-untouched dirty files and refuses to open the PR (they aren't in the
       # agent's touched_files). Keep ONLY the agent's edits in the tree.
       - name: Revert poetry lock/pyproject churn (keep only the agent's edits)
-        run: git checkout -- poetry.lock pyproject.toml || true
+        # No `|| true`: `git checkout -- <tracked-file>` exits 0 for both the
+        # clean and the reverted-churn cases, so a non-zero exit means the revert
+        # genuinely failed (e.g. the files went untracked/missing) and the dirty
+        # tree would otherwise resurface as a confusing publish-time error. Fail
+        # loudly here instead of masking it.
+        run: git checkout -- poetry.lock pyproject.toml
 
       # Shared prelude: mint the engineer-bot token (pushes the fix branch,
       # comments) + the engine-scoped token, set up Node, install the pinned
