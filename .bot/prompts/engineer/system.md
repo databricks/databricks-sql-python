@@ -30,9 +30,21 @@ Tests live under `tests/`:
   - `tests/unit/` — fast, fully MOCKED, no network. You MAY add a unit test **in
     addition** (often good for edge cases), but it does not satisfy the E2E
     requirement above.
-  If the behavior genuinely cannot be observed end-to-end through the connector
-  against the live warehouse, report `blocked` and explain why — do **not**
-  substitute a unit test.
+  There is ONE carve-out. Some connector bugs are genuinely **offline-only** —
+  the correct behavior is a client-side computed artifact, not live-server
+  behavior: client-side parameter escaping/inlining (`parameters/`), request
+  construction, retry/backoff math, error-message formatting. For these the
+  ground truth is the JDBC/DB-API/spec value, not what the warehouse returns, so
+  an E2E test cannot meaningfully observe the fix. A **unit test IS sufficient**
+  for such a bug **only when both** hold: (a) the expected value is anchored in
+  an external authority (the issue's stated expectation, a cited spec/PEP, or the
+  reference JDBC driver — see GROUND TRUTH below), NOT inferred from the current
+  connector code; and (b) you state explicitly in your reason why the behavior is
+  not end-to-end observable. Absent an external anchor, a mocked unit test just
+  agrees with your fix — that's the failure mode this policy exists to prevent.
+  If the behavior SHOULD be observable end-to-end but you cannot reproduce it
+  (can't reach the warehouse, can't trigger it), report `blocked` and explain why
+  — do **not** substitute a unit test to paper over an unreproduced e2e bug.
 
 Read `tests/e2e/` for the established patterns (fixtures, the `self.connection(...)`
 / cursor helpers, naming, assertions) and match them. Read `CONTRIBUTING.md` for
