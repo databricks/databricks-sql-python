@@ -148,17 +148,14 @@ jobs:
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # Live-warehouse connection env, provisioned for parity with the author
-          # run + code-coverage.yml (job is in `environment: azure-prod`). NOTE:
-          # unlike the author phase, the followup prompt
-          # (.bot/prompts/engineer-followup/system.md) tells the agent to run only
-          # the mocked `tests/unit` suite and NOT tests/e2e. These vars are wired
-          # for consistency with the author run, not an E2E step the followup runs;
-          # if followups should ever repair/run E2E repros, update that prompt too.
-          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
-          DATABRICKS_CATALOG: peco
-          DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+          # NOTE: no live-warehouse connection env (DATABRICKS_SERVER_HOSTNAME /
+          # DATABRICKS_HTTP_PATH / DATABRICKS_CATALOG / DATABRICKS_USER) is wired
+          # here. The followup prompt (.bot/prompts/engineer-followup/system.md)
+          # runs only the mocked `tests/unit` suite and forbids tests/e2e, so the
+          # agent never consumes those vars — provisioning them would add live
+          # credentials to an LLM-driven step for no functional benefit. If
+          # followups should ever repair/run E2E repros, add them back here AND
+          # update that prompt.
           RUNNER_TEMP: ${{ runner.temp }}
           # The agent's working tree AND the .bot/ lookup root. run.py resolves
           # the config at <REPO_ROOT>/.bot/config.yaml. The engine has NO path
