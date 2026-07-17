@@ -33,9 +33,15 @@ jobs:
     #  - skip fork PRs — keep the model + App token out of untrusted code's reach;
     #  - operate only on non-fork OPEN PRs carrying the `engineer-bot` label
     #    (maintainer-applied opt-in; label requires triage+);
-    #  - comment path: trusted commenters only (OWNER/MEMBER/COLLABORATOR, or a
-    #    bot — reviewer-bot/Copilot), never the engineer-bot's own comments, and
-    #    never a reviewer-bot reconcile loopback;
+    #  - comment path: trusted commenters only
+    #    (OWNER/MEMBER/COLLABORATOR/CONTRIBUTOR, or a bot — reviewer-bot/Copilot),
+    #    never the engineer-bot's own comments, and never a reviewer-bot reconcile
+    #    loopback. CONTRIBUTOR is included because a maintainer with PRIVATE org
+    #    membership is reported as `author_association: CONTRIBUTOR` in the webhook
+    #    payload (even though REST shows MEMBER) — without it, such a maintainer's
+    #    review comments SILENTLY fail this gate and the bot never engages. Low
+    #    risk: this path already requires a non-fork, OPEN, `engineer-bot`-labeled
+    #    PR (a maintainer-applied opt-in);
     #  - labeled path: the `engineer-bot` label was just applied by a human.
     if: >-
       github.event.pull_request.head.repo.fork == false
@@ -47,7 +53,7 @@ jobs:
           && !startsWith(github.event.comment.user.login, 'peco-engineer-bot')
           && !contains(github.event.comment.body, '<!-- pr-review-bot:v1 reconcile -->')
           && (
-            contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+            contains(fromJson('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.comment.author_association)
             || (
               github.event.comment.user.type == 'Bot'
               && (
