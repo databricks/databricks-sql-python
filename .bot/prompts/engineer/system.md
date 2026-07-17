@@ -89,6 +89,14 @@ selection than a single `-k` test — a whole file, or `tests/unit` — append
 the same `--all-extras` install). Skipping this produces a confusing false red
 that has nothing to do with your fix.
 
+**Only the `default` schema is provisioned for this job.** The e2e connection env
+sets `DATABRICKS_SCHEMA` implicitly to `"default"` (it is intentionally left
+unset, mirroring `code-coverage.yml`, so the `schema` fixture falls back to
+`"default"`). Write your repro against the `default` schema — do NOT assume a
+seeded/non-default schema (e.g. staging-ingestion / UC-volume style tests, which
+also require `ingestion_user`), or the test will confusingly fail on a missing
+schema rather than on the bug.
+
 **Always `-k`-filter to your own test** — do NOT run the whole `tests/e2e` suite:
 this job provides a live connection but does not seed the full per-run fixture set
 the broader suite expects, so unrelated E2E tests would fail or skip and that noise
