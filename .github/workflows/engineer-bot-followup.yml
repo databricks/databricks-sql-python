@@ -99,11 +99,15 @@ jobs:
         uses: ./.github/actions/setup-poetry
         with:
           python-version: '3.11'
-          # Match code-coverage.yml's e2e job: install optional extras (notably
-          # pyarrow, declared optional=true behind the `pyarrow` extra) so the
-          # agent's REQUIRED live E2E repro test runs against the same runtime as
-          # the e2e suite it mirrors. Without this, arrow-touching e2e tests
-          # ModuleNotFoundError/skip instead of failing red-for-the-right-reason.
+          # Match code-coverage.yml's --all-extras install so the agent's mocked
+          # `tests/unit` self-verify runs against the same runtime as CI. The key
+          # extra here is the REAL `databricks-sql-kernel` wheel: with it present,
+          # broader unit selections must pass `-m "not realkernel"` (see the
+          # followup prompt, .bot/prompts/engineer-followup/system.md), otherwise
+          # the realkernel routing test fails loudly on the sys.modules fake that
+          # shadows the wheel. (Unlike engineer-bot.yml, this job runs NO e2e test
+          # — it wires no live-warehouse env, per the NOTE below — so the e2e
+          # repro is NOT the reason extras are installed here.)
           install-args: "--all-extras"
 
       # setup-poetry runs `poetry lock` (to reconcile the lock with the internal
