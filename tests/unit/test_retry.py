@@ -55,14 +55,15 @@ class TestRetry:
         t_mock.assert_called_with(2)
 
     @patch("time.sleep")
-    def test_sleep__large_retry_after_is_capped_at_delay_max(self, t_mock, retry_policy):
-        # A large server Retry-After is clamped down to delay_max, which acts as
-        # a ceiling on the wait. delay_max defaults to 30 in these fixtures.
+    def test_sleep__large_retry_after_is_honored_as_is(self, t_mock, retry_policy):
+        # A server-returned Retry-After is the source of truth and must be
+        # honored as-is; delay_max does not cap it. delay_max defaults to 30 in
+        # these fixtures, so 120 would be clamped if the ceiling still applied.
         retry_policy._retry_start_time = time.time()
         retry_policy.history = []
         retry_policy.sleep(HTTPResponse(status=503, headers={"Retry-After": "120"}))
 
-        t_mock.assert_called_with(retry_policy.delay_max)
+        t_mock.assert_called_with(120)
 
     @patch("time.sleep")
     def test_sleep__no_retry_after_header__multiple_retries(self, t_mock, retry_policy):
