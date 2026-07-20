@@ -12,7 +12,6 @@ from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.telemetry.models.event import StatementType
 
-
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
@@ -680,7 +679,10 @@ class ThriftDatabricksClient(DatabricksClient):
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -1053,11 +1055,13 @@ class ThriftDatabricksClient(DatabricksClient):
             statement=operation,
             runAsync=True,
             # For async operation we don't want the direct results
-            getDirectResults=None
-            if async_op
-            else ttypes.TSparkGetDirectResults(
-                maxRows=max_rows,
-                maxBytes=max_bytes,
+            getDirectResults=(
+                None
+                if async_op
+                else ttypes.TSparkGetDirectResults(
+                    maxRows=max_rows,
+                    maxBytes=max_bytes,
+                )
             ),
             canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,

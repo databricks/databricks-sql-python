@@ -227,10 +227,8 @@ class ResultSetFilter:
         if not case_sensitive:
             allowed_values = [v.upper() for v in allowed_values]
         # Helper lambda to get column value based on case sensitivity
-        get_column_value = (
-            lambda row: row[column_index].upper()
-            if not case_sensitive
-            else row[column_index]
+        get_column_value = lambda row: (
+            row[column_index].upper() if not case_sensitive else row[column_index]
         )
 
         # Filter rows based on allowed values

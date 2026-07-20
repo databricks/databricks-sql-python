@@ -161,9 +161,11 @@ class SeaHttpClient:
             pool_class = HTTPSConnectionPool
             pool_kwargs.update(
                 {
-                    "cert_reqs": ssl.CERT_REQUIRED
-                    if self.ssl_options.tls_verify
-                    else ssl.CERT_NONE,
+                    "cert_reqs": (
+                        ssl.CERT_REQUIRED
+                        if self.ssl_options.tls_verify
+                        else ssl.CERT_NONE
+                    ),
                     "ca_certs": self.ssl_options.tls_trusted_ca_file,
                     "cert_file": self.ssl_options.tls_client_cert_file,
                     "key_file": self.ssl_options.tls_client_cert_key_file,

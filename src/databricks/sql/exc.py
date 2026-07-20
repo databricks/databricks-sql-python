@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 ### PEP-249 Mandated ###
 # https://peps.python.org/pep-0249/#exceptions
 class Error(Exception):
@@ -155,7 +156,8 @@ class CursorAlreadyClosedError(RequestError):
 
 class TelemetryRateLimitError(Exception):
     """Raised when telemetry endpoint returns 429 or 503, indicating rate limiting or service unavailable.
-    This exception is used exclusively by the circuit breaker to track telemetry rate limiting events."""
+    This exception is used exclusively by the circuit breaker to track telemetry rate limiting events.
+    """
 
 
 class TelemetryNonRateLimitError(Exception):

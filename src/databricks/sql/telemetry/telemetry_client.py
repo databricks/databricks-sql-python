@@ -490,9 +490,9 @@ class TelemetryClientFactory:
     on the telemetry endpoint.
     """
 
-    _clients: Dict[
-        str, _TelemetryClientHolder
-    ] = {}  # Map of host_url -> TelemetryClientHolder
+    _clients: Dict[str, _TelemetryClientHolder] = (
+        {}
+    )  # Map of host_url -> TelemetryClientHolder
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.RLock()  # Thread safety for factory operations
@@ -639,13 +639,13 @@ class TelemetryClientFactory:
                             client_context=client_context,
                             extra_headers=extra_headers,
                         )
-                        TelemetryClientFactory._clients[
-                            host_url
-                        ] = _TelemetryClientHolder(client)
+                        TelemetryClientFactory._clients[host_url] = (
+                            _TelemetryClientHolder(client)
+                        )
                     else:
-                        TelemetryClientFactory._clients[
-                            host_url
-                        ] = _TelemetryClientHolder(NoopTelemetryClient())
+                        TelemetryClientFactory._clients[host_url] = (
+                            _TelemetryClientHolder(NoopTelemetryClient())
+                        )
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail

@@ -245,7 +245,7 @@ class DatabricksRetryPolicy(Retry):
         return self._command_type
 
     @command_type.setter
-    def command_type(self, value: CommandType) -> None:
+    def command_type(self, value: Optional[CommandType]) -> None:
         self._command_type = value
 
     @property

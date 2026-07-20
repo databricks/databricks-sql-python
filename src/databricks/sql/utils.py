@@ -876,7 +876,7 @@ def _create_python_tuple(t_col_value_wrapper):
 
 
 def concat_table_chunks(
-    table_chunks: List[Union["pyarrow.Table", ColumnTable]]
+    table_chunks: List[Union["pyarrow.Table", ColumnTable]],
 ) -> Union["pyarrow.Table", ColumnTable]:
     if len(table_chunks) == 0:
         return table_chunks
@@ -914,7 +914,7 @@ def _concat_arrow_tables(table_chunks: List["pyarrow.Table"]) -> "pyarrow.Table"
 
 
 def serialize_query_tags(
-    query_tags: Optional[Dict[str, Optional[str]]]
+    query_tags: Optional[Dict[str, Optional[str]]],
 ) -> Optional[str]:
     """
     Serialize query_tags dictionary to a string format.

@@ -9,23 +9,28 @@ packages = [{ include = "databricks", from = "src" }]
 include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
-python = "^3.8.0"
-# Keep the cap at <0.23.0. thrift ships sdist-only, and thrift 0.23.0's
-# setup.py calls sys.exit(0) on the build-success path, which kills the PEP
-# 517 build backend before pip writes output.json. On the OLD setuptools
-# shipped by DBR LTS (14.3 / 15.4) this is a hard `pip install` failure --
-# the SEV0 ES-1960554 incident (4.2.7 widened this to <0.24.0 and was yanked;
-# see PR #840). Do NOT re-widen until a fixed thrift (0.23.1 / 0.24.0, per
-# THRIFT-6067 / apache/thrift#3584) ships. The `DBR LTS Install` CI check
-# (.github/workflows/dbr-lts-install.yml) installs the built wheel on real DBR
-# LTS clusters and catches this regression when dependency pins change.
-thrift = "~=0.22.0"
+python = "^3.10"
+# Floor is 0.24.0 -- the first release that both clears the open Apache Thrift
+# CVEs (CVE-2025-48431 + the CVE-2026-41602..41636 set, all fixed in 0.23.0)
+# AND is safe to install on DBR LTS. History: 0.23.0 fixed the CVEs but ships
+# sdist-only and its setup.py calls sys.exit(0) on the build-success path,
+# killing the PEP 517 backend on the OLD setuptools bundled by DBR LTS -- the
+# SEV0 ES-1960554 (4.2.7 widened to <0.24.0 and was yanked; PR #840), which is
+# why we held at ~=0.22.0. thrift 0.24.0 (THRIFT-6067) resolves this: it ships
+# prebuilt manylinux2014 wheels (cp310-cp314) + macOS/musl/Windows, so pip uses
+# a wheel and never runs setup.py on DBR LTS -- the build-time break cannot
+# trigger. The `DBR LTS Install` CI check (.github/workflows/dbr-lts-install.yml)
+# installs the built artifact on real DBR LTS clusters and is the authoritative
+# gate for this. Cap at <0.25.0: thrift is pre-1.0, each 0.x minor can carry
+# breaking changes or packaging regressions (see 0.23.0), so bump this
+# deliberately once a new minor ships and the DBR-LTS gate proves it safe.
+thrift = "~=0.24.0"
 pandas = [
-    { version = ">=1.2.5,<4.0.0", python = ">=3.8,<3.13" },
+    { version = ">=1.2.5,<4.0.0", python = ">=3.10,<3.13" },
     { version = ">=2.2.3,<4.0.0", python = ">=3.13" }
 ]
 lz4 = [
-    { version = "^4.0.2", python = ">=3.8,<3.14" },
+    { version = "^4.0.2", python = ">=3.10,<3.14" },
     { version = "^4.4.5", python = ">=3.14" }
 ]
 requests = "^2.18.1"
@@ -34,15 +39,6 @@ openpyxl = "^3.0.10"
 urllib3 = ">=1.26"
 python-dateutil = "^2.8.0"
 pyarrow = [
-    # The <3.10 band is capped at <23 because pyarrow>=23 dropped
-    # Python 3.9 (it requires >=3.10). Without the cap, poetry tries to
-    # unify this entry with the kernel's transitive pyarrow>=23.0.1,<24
-    # across the 3.8–3.10 slice and `poetry lock` fails ("pyarrow is
-    # forbidden"). The cap removes no installable version — the newest
-    # pyarrow with a 3.9 wheel is 21.x — it just makes that explicit to
-    # the solver so the optional [kernel] extra (python>=3.10) can
-    # coexist. See the kernel dep + [kernel] extra below.
-    { version = ">=14.0.1,<23", python = ">=3.8,<3.10", optional=true },
     { version = ">=14.0.1", python = ">=3.10,<3.13", optional=true },
     { version = ">=18.0.0", python = ">=3.13,<3.14", optional=true },
     { version = ">=22.0.0", python = ">=3.14", optional=true }
@@ -86,15 +82,21 @@ pyarrow = ["pyarrow"]
 kernel = ["databricks-sql-kernel"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.1.2"
+pytest = "^9.0.3"
 mypy = "^1.10.1"
 pylint = ">=2.12.0"
-black = "^22.3.0"
+black = "^26.3.1"
 pytest-dotenv = "^0.5.2"
 pytest-cov = "^4.0.0"
 pytest-xdist = "^3.0.0"
+# tests/unit/test_parameters.py imports pytz directly. It used to arrive
+# transitively via pandas, but pandas 3.0 (resolved on Python >=3.11)
+# dropped pytz as a required dependency -- it is now only a pandas extra.
+# Declare it explicitly here so the test suite does not depend on pandas's
+# transitive graph, which differs across the Python matrix.
+pytz = ">=2020.1"
 numpy = [
-    { version = ">=1.16.6", python = ">=3.8,<3.11" },
+    { version = ">=1.16.6", python = ">=3.10,<3.11" },
     { version = ">=1.23.4", python = ">=3.11" },
 ]
 
