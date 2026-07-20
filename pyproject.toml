@@ -10,34 +10,21 @@ include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-# Keep the cap at <0.23.0. thrift ships sdist-only, and thrift 0.23.0's
-# setup.py calls sys.exit(0) on the build-success path, which kills the PEP
-# 517 build backend before pip writes output.json. On the OLD setuptools
-# shipped by DBR LTS (14.3 / 15.4) this is a hard `pip install` failure --
-# the SEV0 ES-1960554 incident (4.2.7 widened this to <0.24.0 and was yanked;
-# see PR #840). Do NOT re-widen until a fixed thrift (0.23.1 / 0.24.0, per
-# THRIFT-6067 / apache/thrift#3584) ships. The `DBR LTS Install` CI check
-# (.github/workflows/dbr-lts-install.yml) installs the built wheel on real DBR
-# LTS clusters and catches this regression when dependency pins change.
-#
-# SECURITY NOTE: thrift 0.22.0 IS affected by open Apache Thrift advisories
-# (CVE-2025-48431 and the CVE-2026-41602..41636 set), all fixed in 0.23.0.
-# We accept them here for two reasons:
-#   (1) Apache Thrift is one monorepo shipping ~20 language libraries; the PyPI
-#       `thrift` package is built only from `lib/py`. Each of these CVEs is in
-#       a NON-Python binding -- verified against the upstream advisories:
-#       Node.js (41636), Go (41602), c_glib/C (48431), Java (41603), Swift
-#       (41604, 41605) -- so none touches the Python code paths we ship.
-#   (2) The only fix (0.23.0) is the version that caused ES-1960554, so we
-#       cannot take it until a build-safe thrift ships (see above).
-# NOTE these advisories are INVISIBLE to the OSV-Scanner gate: OSV and
-# Dependabot match by PyPI purl, but these CVEs are filed only against the
-# upstream CPE (cpe:2.3:a:apache:thrift) with no PyPI-package coordinate, so
-# neither reports them. This is a point-in-time, per-CVE determination -- a
-# FUTURE thrift CVE could land in `lib/py`. The weekly Security Scan therefore
-# runs a supplementary NVD-CPE check for thrift (see securityScan.yml) so a
-# Python-affecting thrift CVE surfaces instead of being silently missed.
-thrift = "~=0.22.0"
+# Floor is 0.24.0 -- the first release that both clears the open Apache Thrift
+# CVEs (CVE-2025-48431 + the CVE-2026-41602..41636 set, all fixed in 0.23.0)
+# AND is safe to install on DBR LTS. History: 0.23.0 fixed the CVEs but ships
+# sdist-only and its setup.py calls sys.exit(0) on the build-success path,
+# killing the PEP 517 backend on the OLD setuptools bundled by DBR LTS -- the
+# SEV0 ES-1960554 (4.2.7 widened to <0.24.0 and was yanked; PR #840), which is
+# why we held at ~=0.22.0. thrift 0.24.0 (THRIFT-6067) resolves this: it ships
+# prebuilt manylinux2014 wheels (cp310-cp314) + macOS/musl/Windows, so pip uses
+# a wheel and never runs setup.py on DBR LTS -- the build-time break cannot
+# trigger. The `DBR LTS Install` CI check (.github/workflows/dbr-lts-install.yml)
+# installs the built artifact on real DBR LTS clusters and is the authoritative
+# gate for this. Cap at <0.25.0: thrift is pre-1.0, each 0.x minor can carry
+# breaking changes or packaging regressions (see 0.23.0), so bump this
+# deliberately once a new minor ships and the DBR-LTS gate proves it safe.
+thrift = "~=0.24.0"
 pandas = [
     { version = ">=1.2.5,<4.0.0", python = ">=3.10,<3.13" },
     { version = ">=2.2.3,<4.0.0", python = ">=3.13" }
