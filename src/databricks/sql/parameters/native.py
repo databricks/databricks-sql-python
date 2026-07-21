@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Optional, Sequence, Any
+from typing import Any, Dict, Optional, Sequence, Union
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -9,11 +9,6 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameterValue,
     TSparkParameterValueArg,
 )
-
-import datetime
-import decimal
-from enum import Enum, auto
-from typing import Dict, List, Union
 
 
 class ParameterApproach(Enum):
