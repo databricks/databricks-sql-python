@@ -1,6 +1,7 @@
 # Release History
 
-# Unreleased
+# 4.4.0 (2026-07-22)
+- Raised the minimum supported Python version to 3.10, dropping the end-of-life 3.8/3.9, to update the lockfile and clear CVE-flagged dependencies in the repo (databricks/databricks-sql-python#798)
 - Fix: `REMOVE` staging operations no longer require `staging_allowed_local_path` to be set, since removing a remote file does not touch the local filesystem (databricks/databricks-sql-python#726)
 - Report `cursor.rowcount` for DML on the Thrift backend: INSERT/UPDATE/DELETE/MERGE now set `rowcount` to the server's affected-row count instead of the hardcoded `-1`; SELECT (and statements the server does not report a count for) still return `-1`. `executemany` aggregates the count across all parameter sets per PEP 249 ([#784](https://github.com/databricks/databricks-sql-python/issues/784))
 
