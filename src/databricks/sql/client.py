@@ -16,6 +16,7 @@ from databricks.sql import __version__
 from databricks.sql import *
 from databricks.sql.exc import (
     OperationalError,
+    RequestError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
     InterfaceError,
@@ -1759,9 +1760,37 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-        self.active_command_id = None
         if self.active_result_set:
             self._close_and_clear_active_result_set()
+        elif self.active_command_id is not None and self.connection.open:
+            # Async submission whose result was never fetched (no
+            # get_execution_result call), so the result-set close path never
+            # fired. Issue an explicit close_command to free the server-side
+            # statement handle instead of leaking it until session close.
+            # Gate on connection.open (mirroring ResultSet.close) so we don't
+            # attempt a network call on an already-torn-down session.
+            try:
+                self.backend.close_command(self.active_command_id)
+            except RequestError as e:
+                if len(e.args) > 1 and isinstance(e.args[1], CursorAlreadyClosedError):
+                    # Already-closed handle (e.g. a prior cancel() or concurrent
+                    # session teardown) is an expected, benign case — mirror
+                    # ResultSet.close and log at info, not warning.
+                    logger.info("Operation was canceled by a prior request")
+                else:
+                    logger.warning("close_command on cursor close failed: %s", e)
+            except Exception as exc:
+                # Unlike the RequestError branch above (an expected, often
+                # transient network failure), reaching here means something we
+                # did not anticipate — surface the full traceback so it is
+                # diagnosable rather than indistinguishable from a benign
+                # network blip.
+                logger.warning(
+                    "close_command on cursor close failed unexpectedly: %s",
+                    exc,
+                    exc_info=True,
+                )
+        self.active_command_id = None
 
     @property
     def query_id(self) -> Optional[str]:
