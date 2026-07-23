@@ -227,15 +227,18 @@ class Auth(unittest.TestCase):
         # the test does not depend on a specific port being free. A fixed port
         # that happens to be occupied would fail to bind and take the
         # can't-find-free-port branch instead of the timeout path we exercise.
+        # Keep the test fast: shorten the callback wait via the constructor
+        # keyword (the actual new surface this PR introduces) rather than
+        # mutating the private attribute after the fact. This also exercises the
+        # Optional[int] fall-back logic. The production default is minutes; the
+        # bug is that WITHOUT any bound the wait is infinite.
         oauth_manager = OAuthManager(
             port_range=[0],
             client_id="mock-id",
             idp_endpoint=InHouseOAuthEndpointCollection(),
             http_client=MagicMock(),
+            redirect_callback_timeout_seconds=2,
         )
-        # Keep the test fast: shorten the callback wait. The production default
-        # is minutes; the bug is that WITHOUT any bound the wait is infinite.
-        oauth_manager._redirect_callback_timeout_seconds = 2
 
         # No callback is ever delivered to the redirect server. Run the flow in
         # a daemon thread and join with a wall-clock bound so a regression to

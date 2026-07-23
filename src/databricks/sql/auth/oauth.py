@@ -206,9 +206,11 @@ class OAuthManager:
                 msg = (
                     f"Timed out after {self._redirect_callback_timeout_seconds} "
                     f"seconds waiting for the OAuth redirect callback at "
-                    f"{redirect_url}. No browser completed the login flow — this "
-                    "is expected in a headless environment (e.g. a notebook or "
-                    "job with no browser). See issue #458."
+                    f"{redirect_url}. The login flow was not completed in time — "
+                    "either the interactive login was not finished within the "
+                    "timeout, or this is a headless environment (e.g. a notebook "
+                    "or job with no browser) where no browser can complete the "
+                    "flow. See issue #458."
                 )
             else:
                 msg = f"No path parameters were returned to the callback at {redirect_url}"
