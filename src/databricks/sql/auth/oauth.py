@@ -1,4 +1,5 @@
 import base64
+import errno
 import hashlib
 import json
 import logging
@@ -204,7 +205,11 @@ class OAuthManager:
                 self.redirect_port = port
                 break
             except OSError as e:
-                if e.errno == 48:
+                # errno.EADDRINUSE resolves to the platform's value (48 on
+                # macOS, 98 on Linux), so a port-in-use bind failure is
+                # recognized cross-platform. Otherwise last_error stays None on
+                # Linux and `raise last_error` below becomes `raise None`.
+                if e.errno == errno.EADDRINUSE:
                     logger.info(f"Port {port} is in use")
                     last_error = e
             except Exception as e:

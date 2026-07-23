@@ -350,10 +350,9 @@ class Auth(unittest.TestCase):
             # closing the probe socket and the HTTPServer bind inside
             # __get_authorization_code, another process can claim the port. That
             # would take the can't-bind branch instead of the stalled-request-
-            # line path this test exercises (and the source's errno==48 check is
-            # macOS-only, so on Linux the bind failure surfaces as a TypeError
-            # rather than the RuntimeError asserted below). Re-probe a fresh port
-            # and retry on that rare race so the test stays deterministic in CI.
+            # line path this test exercises, surfacing a bind error rather than
+            # the RuntimeError asserted below. Re-probe a fresh port and retry
+            # on that rare race so the test stays deterministic in CI.
             worker, result = None, {}
             for _ in range(5):
                 probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
