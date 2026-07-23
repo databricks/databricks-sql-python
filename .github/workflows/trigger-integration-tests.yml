@@ -466,6 +466,9 @@ jobs:
     runs-on:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Check if driver source changed
         id: changed
