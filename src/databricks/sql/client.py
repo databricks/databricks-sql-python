@@ -16,6 +16,7 @@ from databricks.sql import __version__
 from databricks.sql import *
 from databricks.sql.exc import (
     OperationalError,
+    RequestError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
     InterfaceError,
@@ -1770,6 +1771,14 @@ class Cursor:
             # attempt a network call on an already-torn-down session.
             try:
                 self.backend.close_command(self.active_command_id)
+            except RequestError as e:
+                if isinstance(e.args[1], CursorAlreadyClosedError):
+                    # Already-closed handle (e.g. a prior cancel() or concurrent
+                    # session teardown) is an expected, benign case — mirror
+                    # ResultSet.close and log at info, not warning.
+                    logger.info("Operation was canceled by a prior request")
+                else:
+                    logger.warning("close_command on cursor close failed: %s", e)
             except Exception as exc:
                 logger.warning("close_command on cursor close failed: %s", exc)
         self.active_command_id = None
