@@ -205,13 +205,22 @@ class OAuthManager:
                 self.redirect_port = port
                 break
             except OSError as e:
+                # Record every bind-time OSError so the fall-through
+                # `raise last_error` below always re-raises a real exception.
+                # If we only recorded the port-in-use case, an unexpected error
+                # on every port (e.g. EACCES, EADDRNOTAVAIL) would leave
+                # last_error == None and turn `raise last_error` into
+                # `raise None`, masking the real failure with a confusing
+                # TypeError.
+                last_error = e
                 # errno.EADDRINUSE resolves to the platform's value (48 on
                 # macOS, 98 on Linux), so a port-in-use bind failure is
-                # recognized cross-platform. Otherwise last_error stays None on
-                # Linux and `raise last_error` below becomes `raise None`.
+                # recognized cross-platform and downgraded to an info log while
+                # we try the next port.
                 if e.errno == errno.EADDRINUSE:
                     logger.info(f"Port {port} is in use")
-                    last_error = e
+                else:
+                    logger.warning(f"Unexpected error binding port {port}: {e}")
             except webbrowser.Error as e:
                 # No browser could be launched at all (webbrowser.get() found no
                 # runnable browser). This is a strong, reliable headless signal
