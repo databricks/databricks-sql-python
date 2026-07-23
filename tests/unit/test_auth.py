@@ -237,7 +237,10 @@ class Auth(unittest.TestCase):
             client_id="mock-id",
             idp_endpoint=InHouseOAuthEndpointCollection(),
             http_client=MagicMock(),
-            redirect_callback_timeout_seconds=2,
+            # Sub-second so this real-wallclock wait stays negligible in the
+            # fast/mocked unit suite. The wait IS the timeout, so there is no
+            # setup racing against it that a shorter bound could make flaky.
+            redirect_callback_timeout_seconds=0.5,
         )
 
         # No callback is ever delivered to the redirect server. Run the flow in
@@ -325,7 +328,10 @@ class Auth(unittest.TestCase):
                 client_id="mock-id",
                 idp_endpoint=InHouseOAuthEndpointCollection(),
                 http_client=MagicMock(),
-                redirect_callback_timeout_seconds=2,
+                # Sub-second: bounds the stalled request-line read. Keeps the
+                # per-attempt wait negligible so even the rare TOCTOU retry loop
+                # stays fast in the mocked unit suite.
+                redirect_callback_timeout_seconds=0.5,
             )
 
             result = {}

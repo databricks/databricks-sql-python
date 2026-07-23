@@ -220,7 +220,13 @@ class OAuthManager:
                 # timeout. We do NOT fail fast merely on a falsy open_new return
                 # value: that is unreliable across platforms (it can be falsy
                 # even when a browser did open) and would break working
-                # interactive logins. See issue #458. Placed before the generic
+                # interactive logins. Note this fast-fail only covers the case
+                # where webbrowser.get() raises; the more common headless case
+                # (no browser registered, so open_new() returns False without
+                # raising) is NOT caught here and instead falls through to the
+                # bounded redirect-callback timeout below, which is the real
+                # safeguard against blocking forever. See issue #458. Placed
+                # before the generic
                 # ``except Exception`` so this RuntimeError propagates instead of
                 # being swallowed and retried against the remaining ports.
                 msg = (
