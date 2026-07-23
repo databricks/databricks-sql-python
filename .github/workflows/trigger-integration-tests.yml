@@ -469,7 +469,7 @@ jobs:
       labels: linux-ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
     steps:
       - name: Check if driver source changed
         id: changed
@@ -515,3 +515,39 @@ jobs:
           repository: databricks/databricks-driver-test
           event-type: coverage-fanout
           client-payload: '{"reference_repo": "${{ github.repository }}", "pr_number": "${{ github.event.pull_request.number }}", "pr_url": "${{ github.event.pull_request.html_url }}"}'
+
+      - name: Signal dispatch failure
+        # Best-effort fan-out: the PR is already merged, so there is no
+        # required check to turn red. Without this handler a broken dispatch
+        # (rotated App secret, App uninstalled, driver-test API error) fails
+        # the step but surfaces nowhere and the coverage fan-out silently
+        # never runs. Emit a workflow warning and comment on the merged PR so
+        # the failure is noticeable. Uses the default token (checks/PR write
+        # via job permissions), not the App token, since App-token generation
+        # is itself a likely failure point.
+        if: failure() && steps.changed.outputs.source == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            core.warning(
+              `Failed to dispatch coverage-fanout to databricks-driver-test; ` +
+              `the multi-language coverage fan-out did not run. See ${runUrl}`
+            );
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body:
+                  `⚠️ Failed to dispatch the multi-language coverage fan-out ` +
+                  `to \`databricks-driver-test\` after this PR merged. Coverage ` +
+                  `was not extended for this change. ` +
+                  `[Workflow run](${runUrl})`,
+              });
+            } catch (e) {
+              core.warning(`Could not comment on the merged PR: ${e.message}`);
+            }
