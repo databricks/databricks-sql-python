@@ -525,7 +525,12 @@ jobs:
         # the failure is noticeable. Uses the default token (checks/PR write
         # via job permissions), not the App token, since App-token generation
         # is itself a likely failure point.
-        if: failure() && steps.changed.outputs.source == 'true'
+        # Gate on source != 'false' rather than == 'true': if the detection
+        # step itself fails, `source` is never set (empty, not 'true'), and a
+        # == 'true' gate would skip this handler too, so that failure would
+        # surface nowhere. Empty and 'true' both satisfy != 'false'; only a
+        # clean 'false' (no source change, nothing dispatched) stays silent.
+        if: failure() && steps.changed.outputs.source != 'false'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           github-token: ${{ github.token }}
