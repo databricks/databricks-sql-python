@@ -300,15 +300,6 @@ class Auth(unittest.TestCase):
             "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
         }
 
-        # Discover a currently-free port and target it explicitly. Unlike the
-        # accept-wait test above, this one needs the connecting client to know
-        # where to reach the redirect server; port_range=[0] would leave the
-        # redirect URL pointing at port 0.
-        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        probe.bind(("localhost", 0))
-        free_port = probe.getsockname()[1]
-        probe.close()
-
         stalled_sockets = []
 
         def connect_but_stall(auth_req_uri):
@@ -323,31 +314,57 @@ class Auth(unittest.TestCase):
 
         mock_open_new.side_effect = connect_but_stall
 
-        oauth_manager = OAuthManager(
-            port_range=[free_port],
-            client_id="mock-id",
-            idp_endpoint=InHouseOAuthEndpointCollection(),
-            http_client=MagicMock(),
-            redirect_callback_timeout_seconds=2,
-        )
+        def run_flow(port):
+            # Target a specific free port so the connecting client above knows
+            # where to reach the redirect server; unlike the accept-wait test,
+            # port_range=[0] can't be used here because the source builds the
+            # redirect URL from the requested port, so it would point the client
+            # at localhost:0.
+            oauth_manager = OAuthManager(
+                port_range=[port],
+                client_id="mock-id",
+                idp_endpoint=InHouseOAuthEndpointCollection(),
+                http_client=MagicMock(),
+                redirect_callback_timeout_seconds=2,
+            )
 
-        result = {}
+            result = {}
 
-        def run():
-            try:
-                oauth_manager.get_tokens(
-                    hostname="foo.cloud.databricks.com", scope="offline_access sql"
-                )
-                result["outcome"] = "returned"
-            except BaseException as e:  # noqa: BLE001
-                result["outcome"] = "raised"
-                result["error"] = e
+            def run():
+                try:
+                    oauth_manager.get_tokens(
+                        hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                    )
+                    result["outcome"] = "returned"
+                except BaseException as e:  # noqa: BLE001
+                    result["outcome"] = "raised"
+                    result["error"] = e
 
-        worker = threading.Thread(target=run, daemon=True)
-        worker.start()
-        worker.join(timeout=30)
+            worker = threading.Thread(target=run, daemon=True)
+            worker.start()
+            worker.join(timeout=30)
+            return worker, result
 
         try:
+            # Pre-selecting a fixed port has a small TOCTOU window: between
+            # closing the probe socket and the HTTPServer bind inside
+            # __get_authorization_code, another process can claim the port. That
+            # would take the can't-bind branch instead of the stalled-request-
+            # line path this test exercises (and the source's errno==48 check is
+            # macOS-only, so on Linux the bind failure surfaces as a TypeError
+            # rather than the RuntimeError asserted below). Re-probe a fresh port
+            # and retry on that rare race so the test stays deterministic in CI.
+            worker, result = None, {}
+            for _ in range(5):
+                probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                probe.bind(("localhost", 0))
+                free_port = probe.getsockname()[1]
+                probe.close()
+
+                worker, result = run_flow(free_port)
+                if isinstance(result.get("error"), RuntimeError):
+                    break
+
             self.assertFalse(
                 worker.is_alive(),
                 "OAuth callback server blocked indefinitely on a client that "
