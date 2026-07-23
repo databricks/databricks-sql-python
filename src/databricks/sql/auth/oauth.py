@@ -212,6 +212,25 @@ class OAuthManager:
                 if e.errno == errno.EADDRINUSE:
                     logger.info(f"Port {port} is in use")
                     last_error = e
+            except webbrowser.Error as e:
+                # No browser could be launched at all (webbrowser.get() found no
+                # runnable browser). This is a strong, reliable headless signal
+                # (e.g. a notebook/job with no display), so fail fast with a
+                # clear error instead of waiting out the full redirect-callback
+                # timeout. We do NOT fail fast merely on a falsy open_new return
+                # value: that is unreliable across platforms (it can be falsy
+                # even when a browser did open) and would break working
+                # interactive logins. See issue #458. Placed before the generic
+                # ``except Exception`` so this RuntimeError propagates instead of
+                # being swallowed and retried against the remaining ports.
+                msg = (
+                    "Could not launch a web browser to complete the U2M OAuth "
+                    f"login flow ({e}). This looks like a headless environment "
+                    "(e.g. a notebook or job with no browser), where browser-"
+                    "based OAuth cannot complete. See issue #458."
+                )
+                logger.error(msg)
+                raise RuntimeError(msg) from e
             except Exception as e:
                 logger.error("unexpected error: %s", e)
         if self.redirect_port is None:

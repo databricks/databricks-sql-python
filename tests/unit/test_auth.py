@@ -381,6 +381,63 @@ class Auth(unittest.TestCase):
             for sock in stalled_sockets:
                 sock.close()
 
+    @patch("databricks.sql.auth.oauth.webbrowser.open_new")
+    @patch.object(OAuthManager, "_OAuthManager__fetch_well_known_config")
+    def test_get_tokens_fails_fast_when_no_browser_available(
+        self, mock_fetch_config, mock_open_new
+    ):
+        """When no browser can be launched at all (webbrowser.open_new raises
+        webbrowser.Error), the flow must fail fast with a clear headless error
+        rather than waiting out the full redirect-callback timeout. See issue
+        #458."""
+        import webbrowser
+
+        mock_fetch_config.return_value = {
+            "authorization_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/authorize",
+            "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
+        }
+        mock_open_new.side_effect = webbrowser.Error("no browser available")
+
+        # A large timeout: if the fail-fast path regressed, joining below would
+        # hit the wall-clock bound and the test would fail loudly instead of
+        # silently waiting minutes.
+        oauth_manager = OAuthManager(
+            port_range=[0],
+            client_id="mock-id",
+            idp_endpoint=InHouseOAuthEndpointCollection(),
+            http_client=MagicMock(),
+            redirect_callback_timeout_seconds=600,
+        )
+
+        import threading
+
+        result = {}
+
+        def run():
+            try:
+                oauth_manager.get_tokens(
+                    hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                )
+                result["outcome"] = "returned"
+            except BaseException as e:  # noqa: BLE001
+                result["outcome"] = "raised"
+                result["error"] = e
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=30)
+
+        self.assertFalse(
+            worker.is_alive(),
+            "OAuth flow did not fail fast when no browser was available",
+        )
+        self.assertEqual(result.get("outcome"), "raised")
+        self.assertIsInstance(result.get("error"), RuntimeError)
+        error_message = str(result.get("error"))
+        self.assertIn("browser", error_message.lower())
+        # The fail-fast path must not surface the accept-wait timeout message.
+        self.assertNotIn("Timed out", error_message)
+
 
 class TestClientCredentialsTokenSource:
     @pytest.fixture

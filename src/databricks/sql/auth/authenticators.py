@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 from databricks.sql.common.http import HttpHeader
 from databricks.sql.auth.oauth import (
     OAuthManager,
@@ -63,7 +63,6 @@ class DatabricksOAuthProvider(AuthProvider):
         scopes: List[str],
         http_client,
         auth_type: str = "databricks-oauth",
-        redirect_callback_timeout_seconds: Optional[int] = None,
     ):
         try:
             idp_endpoint = get_oauth_endpoints(hostname, auth_type == "azure-oauth")
@@ -75,15 +74,11 @@ class DatabricksOAuthProvider(AuthProvider):
             # Convert to the corresponding scopes in the corresponding IdP
             cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
 
-            # Pass through the (optional) callback-timeout override so this
-            # private provider can surface it later if a public connection
-            # knob is added; None falls back to OAuthManager's default.
             self.oauth_manager = OAuthManager(
                 port_range=redirect_port_range,
                 client_id=client_id,
                 idp_endpoint=idp_endpoint,
                 http_client=http_client,
-                redirect_callback_timeout_seconds=redirect_callback_timeout_seconds,
             )
             self._hostname = hostname
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(cloud_scopes)
