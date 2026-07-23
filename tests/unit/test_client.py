@@ -90,6 +90,38 @@ class ClientTestSuite(unittest.TestCase):
         "enable_telemetry": False,
     }
 
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_del_does_not_raise_when_session_never_set(self, mock_session_class):
+        """A constructor-stage failure must not leave __del__ raising on GC.
+
+        When the Session constructor raises before ``self.session`` is assigned
+        in Connection.__init__, the original error must propagate, and __del__ on
+        the half-constructed Connection must not raise (which Python reports as an
+        'Exception ignored in __del__' referencing the missing ``session``
+        attribute). See https://github.com/databricks/databricks-sql-python/issues/746
+        """
+        mock_session_class.side_effect = ValueError("bad auth")
+
+        unraisable = []
+        original_hook = sys.unraisablehook
+        sys.unraisablehook = lambda args: unraisable.append(args)
+        try:
+            with self.assertRaises(ValueError):
+                client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+            # Force collection of the half-constructed Connection so __del__ runs.
+            gc.collect()
+        finally:
+            sys.unraisablehook = original_hook
+
+        messages = [
+            "{}: {}".format(type(u.exc_value).__name__, u.exc_value)
+            for u in unraisable
+        ]
+        self.assertEqual(
+            unraisable, [], "Exception(s) raised in __del__: {}".format(messages)
+        )
+
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_thrift_client_class):
         """Test that closing a connection properly closes commands.
