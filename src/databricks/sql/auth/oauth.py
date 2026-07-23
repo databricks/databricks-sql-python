@@ -73,7 +73,9 @@ class OAuthManager:
     # ``redirect_callback_timeout_seconds`` argument below is an internal-only
     # override for callers constructing ``OAuthManager`` directly (private API);
     # it is not plumbed through ``DatabricksOAuthProvider`` or the public
-    # connection kwargs.
+    # connection kwargs. It accepts a ``float`` so callers (and tests) may pass
+    # fractional-second timeouts; this class default is a whole number of
+    # seconds.
     REDIRECT_CALLBACK_TIMEOUT_SECONDS = 60 * 5
 
     def __init__(
@@ -82,7 +84,7 @@ class OAuthManager:
         client_id: str,
         idp_endpoint: OAuthEndpointCollection,
         http_client,
-        redirect_callback_timeout_seconds: Optional[int] = None,
+        redirect_callback_timeout_seconds: Optional[float] = None,
     ):
         self.port_range = port_range
         self.client_id = client_id
