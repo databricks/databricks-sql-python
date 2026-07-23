@@ -161,6 +161,67 @@ class ClientTestSuite(unittest.TestCase):
                     # Should NOT have called backend.close_command (already closed)
                     mock_backend.close_command.assert_not_called()
 
+    def test_cursor_close_frees_command_when_no_result_set(self):
+        """Closing a cursor with an unfetched async command frees the server handle.
+
+        When active_result_set is None but active_command_id is set (an async
+        submission whose result was never fetched), close() must issue an
+        explicit backend.close_command so the server-side statement handle is
+        not leaked. This branch is backend-agnostic (Thrift/SEA/kernel).
+        """
+        mock_backend = Mock(spec=ThriftDatabricksClient)
+        mock_connection = Mock()
+        cursor = client.Cursor(connection=mock_connection, backend=mock_backend)
+
+        command_id = Mock(spec=CommandId)
+        cursor.active_command_id = command_id
+        cursor.active_result_set = None
+
+        cursor.close()
+
+        mock_backend.close_command.assert_called_once_with(command_id)
+        self.assertIsNone(cursor.active_command_id)
+
+    def test_cursor_close_skips_command_when_connection_closed(self):
+        """Closing a cursor after its session is gone must not call close_command.
+
+        Mirrors ResultSet.close, which gates backend.close_command on
+        connection.open, to avoid a network call on a dead session (and a
+        spurious warning) during shutdown ordering.
+        """
+        mock_backend = Mock(spec=ThriftDatabricksClient)
+        mock_connection = Mock()
+        mock_connection.open = False
+        cursor = client.Cursor(connection=mock_connection, backend=mock_backend)
+
+        cursor.active_command_id = Mock(spec=CommandId)
+        cursor.active_result_set = None
+
+        cursor.close()
+
+        mock_backend.close_command.assert_not_called()
+        self.assertIsNone(cursor.active_command_id)
+
+    def test_cursor_close_does_not_double_close_when_result_set_present(self):
+        """Closing a cursor with an active result set must NOT call close_command.
+
+        The result-set close path is responsible for freeing the handle in that
+        case, so the elif branch must not fire (no double-close).
+        """
+        mock_backend = Mock(spec=ThriftDatabricksClient)
+        mock_connection = Mock()
+        cursor = client.Cursor(connection=mock_connection, backend=mock_backend)
+
+        cursor.active_command_id = Mock(spec=CommandId)
+        result_set = Mock(spec=ResultSet)
+        cursor.active_result_set = result_set
+
+        cursor.close()
+
+        result_set.close.assert_called_once()
+        mock_backend.close_command.assert_not_called()
+        self.assertIsNone(cursor.active_command_id)
+
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)

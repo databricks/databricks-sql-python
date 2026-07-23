@@ -1761,11 +1761,13 @@ class Cursor:
         self.open = False
         if self.active_result_set:
             self._close_and_clear_active_result_set()
-        elif self.active_command_id is not None:
+        elif self.active_command_id is not None and self.connection.open:
             # Async submission whose result was never fetched (no
             # get_execution_result call), so the result-set close path never
             # fired. Issue an explicit close_command to free the server-side
             # statement handle instead of leaking it until session close.
+            # Gate on connection.open (mirroring ResultSet.close) so we don't
+            # attempt a network call on an already-torn-down session.
             try:
                 self.backend.close_command(self.active_command_id)
             except Exception as exc:
