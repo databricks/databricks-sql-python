@@ -62,10 +62,13 @@ class RefreshableTokenSource(ABC):
 
 
 class OAuthManager:
-    # Maximum time (in seconds) to wait for the browser OAuth redirect callback
-    # before giving up. Without this, the local callback server would block
-    # forever in a headless environment (e.g. a notebook/job with no browser),
-    # making the connection appear to hang indefinitely. See issue #458.
+    # Default maximum time (in seconds) to wait for the browser OAuth redirect
+    # callback before giving up. Without a bound, the local callback server
+    # would block forever in a headless environment (e.g. a notebook/job with
+    # no browser), making the connection appear to hang indefinitely. See issue
+    # #458. This is generous for interactive logins (slow MFA, IdP re-auth, SSO
+    # redirects); environments that need longer can override it by passing
+    # ``redirect_callback_timeout_seconds`` to ``__init__``.
     REDIRECT_CALLBACK_TIMEOUT_SECONDS = 60 * 5
 
     def __init__(
@@ -74,12 +77,18 @@ class OAuthManager:
         client_id: str,
         idp_endpoint: OAuthEndpointCollection,
         http_client,
+        redirect_callback_timeout_seconds: Optional[int] = None,
     ):
         self.port_range = port_range
         self.client_id = client_id
         self.redirect_port = None
         self.idp_endpoint = idp_endpoint
         self.http_client = http_client
+        # Fall back to the class default when not overridden. Set as an instance
+        # attribute so the rest of the flow reads a single source of truth via
+        # ``self.REDIRECT_CALLBACK_TIMEOUT_SECONDS``.
+        if redirect_callback_timeout_seconds is not None:
+            self.REDIRECT_CALLBACK_TIMEOUT_SECONDS = redirect_callback_timeout_seconds
 
     @staticmethod
     def __token_urlsafe(nbytes=32):
