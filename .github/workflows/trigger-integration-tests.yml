@@ -473,7 +473,7 @@ jobs:
     steps:
       - name: Check if driver source changed
         id: changed
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # pinned
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const files = await github.paginate(github.rest.pulls.listFiles, {
@@ -492,12 +492,13 @@ jobs:
       - name: Generate GitHub App token (databricks-driver-test)
         if: steps.changed.outputs.source == 'true'
         id: app-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # pinned
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
         with:
           app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
           private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
           owner: databricks
           repositories: databricks-driver-test
+          permission-contents: write
 
       - name: Dispatch coverage-fanout
         if: steps.changed.outputs.source == 'true'
