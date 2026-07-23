@@ -44,7 +44,7 @@ name: Trigger Integration Tests
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, closed]
   merge_group:  # Trigger when added to merge queue
 
 jobs:
@@ -125,7 +125,7 @@ jobs:
   # checks would block every PR that doesn't bother labelling.
   # =============================================================================
   skip-integration-tests-pr:
-    if: github.event_name == 'pull_request' && github.event.action != 'labeled'
+    if: github.event_name == 'pull_request' && github.event.action != 'labeled' && github.event.action != 'closed'
     runs-on:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest
@@ -449,3 +449,57 @@ jobs:
                 }
               });
             }
+
+  # =============================================================================
+  # After merge: trigger the multi-language coverage fan-out.
+  # Fires when a PR lands on main (merge queue or direct merge) and touched
+  # driver source. Dispatches `coverage-fanout` to databricks-driver-test, whose
+  # coverage-fanout-tracker.yml opens a tracking issue and runs the
+  # language-agnostic fan-out (a spec authored from THIS PR's diff, conformed as
+  # tests across every driver) as peco-engineer-bot.
+  # =============================================================================
+  trigger-coverage-fanout:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    steps:
+      - name: Check if driver source changed
+        id: changed
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # pinned
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            // The whole repo IS the driver. Count a merge as source-affecting when it changes a file under src/.
+            // Docs/CI/test-only merges do not warrant a full multi-language fan-out.
+            const isSource = (f) => f.startsWith('src/');
+            const srcChanged = files.some((f) => isSource(f.filename));
+            console.log(`driver source changed: ${srcChanged}`);
+            core.setOutput('source', srcChanged.toString());
+
+      - name: Generate GitHub App token (databricks-driver-test)
+        if: steps.changed.outputs.source == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # pinned
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-driver-test
+
+      - name: Dispatch coverage-fanout
+        if: steps.changed.outputs.source == 'true'
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: databricks/databricks-driver-test
+          event-type: coverage-fanout
+          client-payload: '{"reference_repo": "${{ github.repository }}", "pr_number": "${{ github.event.pull_request.number }}", "pr_url": "${{ github.event.pull_request.html_url }}"}'
