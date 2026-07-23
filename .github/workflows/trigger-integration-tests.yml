@@ -457,6 +457,18 @@ jobs:
   # coverage-fanout-tracker.yml opens a tracking issue and runs the
   # language-agnostic fan-out (a spec authored from THIS PR's diff, conformed as
   # tests across every driver) as peco-engineer-bot.
+  #
+  # Fork-PR limitation: for a PR opened from an external fork, GitHub runs the
+  # `pull_request` (closed/merged) event with NO repository secrets and a
+  # read-only GITHUB_TOKEN. That means both the App-token generation step and
+  # the "Signal dispatch failure" fallback (which uses github.token to comment)
+  # cannot run for fork merges, so those merges are intentionally excluded from
+  # the fan-out — no dispatch and, by design, no failure comment. Coverage for a
+  # fork contribution is instead picked up by the next source-affecting merge
+  # from a maintainer branch, or the fan-out can be dispatched manually against
+  # databricks-driver-test. Wiring this off a `push`-to-`main` trigger (which
+  # does have secret access) would restore fork coverage but is a larger change
+  # and is deliberately out of scope here.
   # =============================================================================
   trigger-coverage-fanout:
     if: |
