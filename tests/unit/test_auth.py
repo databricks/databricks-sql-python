@@ -262,7 +262,13 @@ class Auth(unittest.TestCase):
         )
         self.assertEqual(result.get("outcome"), "raised")
         self.assertIsInstance(result.get("error"), RuntimeError)
-        self.assertIn("No path parameters were returned", str(result.get("error")))
+        # The headless timeout path must surface a clear, timeout-specific error
+        # (not the generic received-but-empty callback message). See issue #458.
+        error_message = str(result.get("error"))
+        self.assertIn("Timed out", error_message)
+        self.assertIn(
+            str(oauth_manager.REDIRECT_CALLBACK_TIMEOUT_SECONDS), error_message
+        )
 
 
 class TestClientCredentialsTokenSource:

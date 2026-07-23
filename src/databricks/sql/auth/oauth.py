@@ -136,6 +136,7 @@ class OAuthManager:
         handler = OAuthHttpSingleRequestHandler("Databricks Sql Connector")
 
         last_error = None
+        callback_timed_out = False
         for port in self.port_range:
             try:
                 with HTTPServer(("", port), handler) as httpd:
@@ -143,6 +144,16 @@ class OAuthManager:
                     # that a headless environment (no browser to complete the
                     # flow) fails with a clear error instead of hanging forever.
                     httpd.timeout = self.REDIRECT_CALLBACK_TIMEOUT_SECONDS
+
+                    # HTTPServer.handle_request() returns normally (via
+                    # handle_timeout()) when the wait elapses without a
+                    # connection, so record that case to distinguish it from a
+                    # received-but-empty callback below.
+                    def _on_timeout():
+                        nonlocal callback_timed_out
+                        callback_timed_out = True
+
+                    httpd.handle_timeout = _on_timeout
                     redirect_url = OAuthManager.__get_redirect_url(port)
                     auth_req_uri, _, _ = client.prepare_authorization_request(
                         authorization_url=auth_url,
@@ -174,7 +185,16 @@ class OAuthManager:
             raise last_error
 
         if not handler.request_path:
-            msg = f"No path parameters were returned to the callback at {redirect_url}"
+            if callback_timed_out:
+                msg = (
+                    f"Timed out after {self.REDIRECT_CALLBACK_TIMEOUT_SECONDS} "
+                    f"seconds waiting for the OAuth redirect callback at "
+                    f"{redirect_url}. No browser completed the login flow — this "
+                    "is expected in a headless environment (e.g. a notebook or "
+                    "job with no browser). See issue #458."
+                )
+            else:
+                msg = f"No path parameters were returned to the callback at {redirect_url}"
             logger.error(msg)
             raise RuntimeError(msg)
         # This is a kludge because the parsing library expects https callbacks
