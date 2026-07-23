@@ -485,7 +485,14 @@ jobs:
             // The whole repo IS the driver. Count a merge as source-affecting when it changes a file under src/.
             // Docs/CI/test-only merges do not warrant a full multi-language fan-out.
             const isSource = (f) => f.startsWith('src/');
-            const srcChanged = files.some((f) => isSource(f.filename));
+            // GitHub caps pulls.listFiles at 3000 files per PR (even via paginate). If a merge is that
+            // large the list is truncated, so a src/ file could sort beyond the cap and be missed. Since
+            // the whole gate hinges on this boolean, treat a truncated result set as source-affecting.
+            const truncated = files.length >= 3000;
+            const srcChanged = truncated || files.some((f) => isSource(f.filename));
+            if (truncated) {
+              console.log('listFiles hit the 3000-file cap; treating merge as source-affecting.');
+            }
             console.log(`driver source changed: ${srcChanged}`);
             core.setOutput('source', srcChanged.toString());
 
