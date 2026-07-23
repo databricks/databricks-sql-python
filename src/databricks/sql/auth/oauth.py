@@ -62,6 +62,12 @@ class RefreshableTokenSource(ABC):
 
 
 class OAuthManager:
+    # Maximum time (in seconds) to wait for the browser OAuth redirect callback
+    # before giving up. Without this, the local callback server would block
+    # forever in a headless environment (e.g. a notebook/job with no browser),
+    # making the connection appear to hang indefinitely. See issue #458.
+    REDIRECT_CALLBACK_TIMEOUT_SECONDS = 60 * 5
+
     def __init__(
         self,
         port_range: List[int],
@@ -133,6 +139,10 @@ class OAuthManager:
         for port in self.port_range:
             try:
                 with HTTPServer(("", port), handler) as httpd:
+                    # Bound how long we wait for the browser redirect callback so
+                    # that a headless environment (no browser to complete the
+                    # flow) fails with a clear error instead of hanging forever.
+                    httpd.timeout = self.REDIRECT_CALLBACK_TIMEOUT_SECONDS
                     redirect_url = OAuthManager.__get_redirect_url(port)
                     auth_req_uri, _, _ = client.prepare_authorization_request(
                         authorization_url=auth_url,

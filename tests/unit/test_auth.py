@@ -207,6 +207,63 @@ class Auth(unittest.TestCase):
 
         self.assertEqual(auth_provider.external_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
+    @patch("databricks.sql.auth.oauth.webbrowser.open_new")
+    @patch.object(OAuthManager, "_OAuthManager__fetch_well_known_config")
+    def test_get_tokens_does_not_hang_when_no_callback_received(
+        self, mock_fetch_config, mock_open_new
+    ):
+        """When the U2M browser OAuth callback never arrives (e.g. a headless
+        notebook/job with a null token), the local redirect server must not
+        block forever. It should time out and surface a clear error rather than
+        hang. See issue #458."""
+        mock_fetch_config.return_value = {
+            "authorization_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/authorize",
+            "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
+        }
+        # Do not actually launch a browser during the test.
+        mock_open_new.return_value = True
+
+        oauth_manager = OAuthManager(
+            port_range=[8030],
+            client_id="mock-id",
+            idp_endpoint=InHouseOAuthEndpointCollection(),
+            http_client=MagicMock(),
+        )
+        # Keep the test fast: shorten the callback wait. The production default
+        # is minutes; the bug is that WITHOUT any bound the wait is infinite.
+        oauth_manager.REDIRECT_CALLBACK_TIMEOUT_SECONDS = 2
+
+        # No callback is ever delivered to the redirect server. Run the flow in
+        # a daemon thread and join with a wall-clock bound so a regression to
+        # the infinite-block behaviour fails this test loudly instead of hanging
+        # the whole suite.
+        import threading
+
+        result = {}
+
+        def run():
+            try:
+                oauth_manager.get_tokens(
+                    hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                )
+                result["outcome"] = "returned"
+            except BaseException as e:  # noqa: BLE001
+                result["outcome"] = "raised"
+                result["error"] = e
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=30)
+
+        self.assertFalse(
+            worker.is_alive(),
+            "OAuth callback server blocked indefinitely waiting for a callback "
+            "that never arrives (issue #458)",
+        )
+        self.assertEqual(result.get("outcome"), "raised")
+        self.assertIsInstance(result.get("error"), RuntimeError)
+        self.assertIn("No path parameters were returned", str(result.get("error")))
+
 
 class TestClientCredentialsTokenSource:
     @pytest.fixture
