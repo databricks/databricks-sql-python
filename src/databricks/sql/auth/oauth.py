@@ -249,14 +249,19 @@ class OAuthManager:
                 logger.error(msg)
                 raise RuntimeError(msg) from e
             except Exception as e:
-                # Record here too (like the OSError branch above) so the
-                # fall-through `raise last_error` always re-raises a real
-                # exception. If a non-OSError/non-webbrowser.Error is raised on
-                # every port, last_error would otherwise stay None and turn
-                # `raise last_error` into `raise None`, masking the real failure
-                # with a confusing TypeError.
-                last_error = e
+                # A non-OSError/non-webbrowser.Error raised here is not
+                # port-related (e.g. an OAuth2Error from
+                # prepare_authorization_request, or an unexpected programming
+                # bug). Binding the same call to a different local port cannot
+                # help, so retrying it against every remaining port would only
+                # multiply latency and log noise and then re-raise the *last*
+                # attempt's error, obscuring the original failure. Fail fast
+                # instead, preserving the original exception and traceback via a
+                # bare `raise`. This also sidesteps the `raise None` hazard that
+                # the OSError branch guards against, since we never fall through
+                # to `raise last_error` for this case.
                 logger.error("unexpected error: %s", e)
+                raise
         if self.redirect_port is None:
             logger.error(
                 f"Tried all the ports {self.port_range} for oauth redirect, but can't find free port"
