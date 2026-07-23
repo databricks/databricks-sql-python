@@ -342,6 +342,38 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert len(result) == x_dimension * y_dimension
 
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+        ],
+    )
+    def test_execute_async__close_without_fetch_frees_handle(self, extra_params):
+        """Closing a cursor whose async command result was never fetched must free
+        the server-side statement handle (issue #791). Otherwise the handle leaks
+        until the session closes."""
+        with self.cursor(extra_params) as cursor:
+            cursor.execute_async("SELECT 1")
+
+            # Capture the server-side command id before we close the cursor.
+            command_id = cursor.active_command_id
+            assert command_id is not None
+
+            backend = cursor.backend
+
+            # Sanity: the handle is live and pollable before close.
+            backend.get_query_state(command_id)
+
+            # User decides not to wait for the result and closes the cursor
+            # without ever calling get_async_execution_result().
+            cursor.close()
+
+            # After close, the server-side handle must have been freed, so a
+            # re-poll of the saved command id should raise a server error.
+            # Pre-fix (leak): this poll succeeds. Post-fix: it raises.
+            with pytest.raises((RequestError, OperationalError, DatabaseError)):
+                backend.get_query_state(command_id)
+
 
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
 # tests

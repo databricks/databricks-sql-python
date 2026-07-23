@@ -1759,9 +1759,18 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-        self.active_command_id = None
         if self.active_result_set:
             self._close_and_clear_active_result_set()
+        elif self.active_command_id is not None:
+            # Async submission whose result was never fetched (no
+            # get_execution_result call), so the result-set close path never
+            # fired. Issue an explicit close_command to free the server-side
+            # statement handle instead of leaking it until session close.
+            try:
+                self.backend.close_command(self.active_command_id)
+            except Exception as exc:
+                logger.warning("close_command on cursor close failed: %s", exc)
+        self.active_command_id = None
 
     @property
     def query_id(self) -> Optional[str]:
