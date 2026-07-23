@@ -151,6 +151,11 @@ class OAuthManager:
 
     def __get_authorization_code(self, client, auth_url, scope, state, challenge):
         handler = OAuthHttpSingleRequestHandler("Databricks Sql Connector")
+        # Bound the read of the accepted connection too (not just the accept
+        # wait below). StreamRequestHandler.setup() applies this to the accepted
+        # socket via settimeout(), so a client that connects but never completes
+        # the request line can no longer block indefinitely.
+        handler.timeout = self._redirect_callback_timeout_seconds
 
         last_error = None
         callback_timed_out = False
@@ -162,12 +167,13 @@ class OAuthManager:
                     # flow) fails with a clear error instead of hanging forever.
                     # NOTE: httpd.timeout bounds only the wait to ACCEPT an
                     # incoming connection (it is the select() timeout used by
-                    # handle_request). It does not bound the subsequent read of
-                    # the HTTP request by the handler, so a client that connects
-                    # but never completes the request line could still block. On
-                    # this short-lived loopback server that residual gap is
-                    # acceptable; the headless "no connection ever arrives" case
-                    # (issue #458) is fully covered.
+                    # handle_request). The subsequent read of the HTTP request
+                    # line is bounded separately by the handler.timeout set
+                    # above (applied to the accepted socket by
+                    # StreamRequestHandler.setup()), so a client that connects
+                    # but never completes the request can no longer block. The
+                    # headless "no connection ever arrives" case (issue #458) is
+                    # covered by this accept-wait timeout.
                     httpd.timeout = self._redirect_callback_timeout_seconds
 
                     # HTTPServer.handle_request() returns normally (via
