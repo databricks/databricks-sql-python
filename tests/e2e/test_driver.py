@@ -371,11 +371,20 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
             # without ever calling get_async_execution_result().
             cursor.close()
 
-            # After close, the server-side handle must have been freed, so a
-            # re-poll of the saved command id should raise a server error.
-            # Pre-fix (leak): this poll succeeds. Post-fix: it raises.
-            with pytest.raises((RequestError, OperationalError, DatabaseError)):
-                backend.get_query_state(command_id)
+            # After close, the server-side handle must have been freed. How a
+            # re-poll of the saved command id surfaces that is backend-specific:
+            #   - Thrift raises a server error on the closed handle.
+            #   - SEA's get_query_state() does a plain GET and returns the
+            #     status.state, so a freed statement may come back as a terminal
+            #     CLOSED/CANCELLED state instead of raising.
+            # Accept either signal as proof the handle was freed. Pre-fix (leak),
+            # the poll instead returns a live/terminal-success state.
+            try:
+                state = backend.get_query_state(command_id)
+            except (RequestError, OperationalError, DatabaseError):
+                pass
+            else:
+                assert state in (CommandState.CLOSED, CommandState.CANCELLED)
 
 
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core

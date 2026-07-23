@@ -1772,7 +1772,7 @@ class Cursor:
             try:
                 self.backend.close_command(self.active_command_id)
             except RequestError as e:
-                if isinstance(e.args[1], CursorAlreadyClosedError):
+                if len(e.args) > 1 and isinstance(e.args[1], CursorAlreadyClosedError):
                     # Already-closed handle (e.g. a prior cancel() or concurrent
                     # session teardown) is an expected, benign case — mirror
                     # ResultSet.close and log at info, not warning.

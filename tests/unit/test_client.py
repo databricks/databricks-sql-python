@@ -222,6 +222,32 @@ class ClientTestSuite(unittest.TestCase):
         mock_backend.close_command.assert_not_called()
         self.assertIsNone(cursor.active_command_id)
 
+    def test_cursor_close_tolerates_single_arg_request_error(self):
+        """A RequestError with only one positional arg must not escape close().
+
+        Some RequestErrors (e.g. from unified_http_client during shutdown) are
+        built with a single message arg, so e.args[1] would IndexError. close()
+        must guard the length check and swallow the error like any other
+        close_command failure.
+        """
+        from databricks.sql.exc import RequestError
+
+        mock_backend = Mock(spec=ThriftDatabricksClient)
+        mock_backend.close_command.side_effect = RequestError(
+            "HTTP client is closing or has been closed"
+        )
+        mock_connection = Mock()
+        cursor = client.Cursor(connection=mock_connection, backend=mock_backend)
+
+        cursor.active_command_id = Mock(spec=CommandId)
+        cursor.active_result_set = None
+
+        # Should not raise despite the single-arg RequestError.
+        cursor.close()
+
+        mock_backend.close_command.assert_called_once()
+        self.assertIsNone(cursor.active_command_id)
+
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
