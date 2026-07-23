@@ -539,8 +539,9 @@ jobs:
               `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
               `/actions/runs/${context.runId}`;
             core.warning(
-              `Failed to dispatch coverage-fanout to databricks-driver-test; ` +
-              `the multi-language coverage fan-out did not run. See ${runUrl}`
+              `Failed to run the coverage fan-out for databricks-driver-test ` +
+              `(source detection or dispatch step failed); the multi-language ` +
+              `coverage fan-out did not run. See ${runUrl}`
             );
             try {
               await github.rest.issues.createComment({
@@ -548,8 +549,9 @@ jobs:
                 repo: context.repo.repo,
                 issue_number: context.payload.pull_request.number,
                 body:
-                  `⚠️ Failed to dispatch the multi-language coverage fan-out ` +
-                  `to \`databricks-driver-test\` after this PR merged. Coverage ` +
+                  `⚠️ Failed to run the multi-language coverage fan-out ` +
+                  `to \`databricks-driver-test\` after this PR merged ` +
+                  `(source detection or dispatch step failed). Coverage ` +
                   `was not extended for this change. ` +
                   `[Workflow run](${runUrl})`,
               });
