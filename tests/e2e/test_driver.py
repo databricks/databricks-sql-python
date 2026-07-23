@@ -346,6 +346,9 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
         "extra_params",
         [
             {},
+            {
+                "use_sea": True,
+            },
         ],
     )
     def test_execute_async__close_without_fetch_frees_handle(self, extra_params):
