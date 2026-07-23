@@ -464,6 +464,15 @@ jobs:
       github.event.action == 'closed' &&
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'main'
+    # Serialize by PR so a manual re-run (e.g. recovery after the failure
+    # comment fires, or an accidental Actions "Re-run") cannot overlap with an
+    # in-flight run and double-dispatch coverage-fanout. cancel-in-progress is
+    # false so a queued re-run waits rather than killing the original; the
+    # tracker in databricks-driver-test is the source of truth for dedup across
+    # sequential re-runs.
+    concurrency:
+      group: coverage-fanout-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest
