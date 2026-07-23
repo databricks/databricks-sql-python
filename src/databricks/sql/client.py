@@ -462,6 +462,12 @@ class Connection:
         self.close()
 
     def __del__(self):
+        # If construction failed before ``self.session`` was assigned (e.g. the
+        # Session constructor raised), there is nothing to close. Guard against
+        # the missing attribute so __del__ doesn't raise during garbage
+        # collection. See https://github.com/databricks/databricks-sql-python/issues/746
+        if not hasattr(self, "session"):
+            return
         if self.open:
             logger.debug(
                 "Closing unclosed connection for session "
