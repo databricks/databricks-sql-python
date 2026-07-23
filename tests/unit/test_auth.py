@@ -235,7 +235,7 @@ class Auth(unittest.TestCase):
         )
         # Keep the test fast: shorten the callback wait. The production default
         # is minutes; the bug is that WITHOUT any bound the wait is infinite.
-        oauth_manager.REDIRECT_CALLBACK_TIMEOUT_SECONDS = 2
+        oauth_manager._redirect_callback_timeout_seconds = 2
 
         # No callback is ever delivered to the redirect server. Run the flow in
         # a daemon thread and join with a wall-clock bound so a regression to
@@ -271,7 +271,7 @@ class Auth(unittest.TestCase):
         error_message = str(result.get("error"))
         self.assertIn("Timed out", error_message)
         self.assertIn(
-            str(oauth_manager.REDIRECT_CALLBACK_TIMEOUT_SECONDS), error_message
+            str(oauth_manager._redirect_callback_timeout_seconds), error_message
         )
 
 

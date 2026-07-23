@@ -67,8 +67,12 @@ class OAuthManager:
     # would block forever in a headless environment (e.g. a notebook/job with
     # no browser), making the connection appear to hang indefinitely. See issue
     # #458. This is generous for interactive logins (slow MFA, IdP re-auth, SSO
-    # redirects); environments that need longer can override it by passing
-    # ``redirect_callback_timeout_seconds`` to ``__init__``.
+    # redirects) and is a fixed ceiling for connector end users: there is no
+    # public ``connect()``/``Connection`` parameter to change it. The
+    # ``redirect_callback_timeout_seconds`` argument below is an internal-only
+    # override for callers constructing ``OAuthManager`` directly (private API);
+    # it is not plumbed through ``DatabricksOAuthProvider`` or the public
+    # connection kwargs.
     REDIRECT_CALLBACK_TIMEOUT_SECONDS = 60 * 5
 
     def __init__(
@@ -84,11 +88,15 @@ class OAuthManager:
         self.redirect_port = None
         self.idp_endpoint = idp_endpoint
         self.http_client = http_client
-        # Fall back to the class default when not overridden. Set as an instance
-        # attribute so the rest of the flow reads a single source of truth via
-        # ``self.REDIRECT_CALLBACK_TIMEOUT_SECONDS``.
-        if redirect_callback_timeout_seconds is not None:
-            self.REDIRECT_CALLBACK_TIMEOUT_SECONDS = redirect_callback_timeout_seconds
+        # Fall back to the class default when not overridden. Kept as a
+        # lowercase instance attribute (distinct from the ALL_CAPS class
+        # constant that provides the default) so the rest of the flow reads a
+        # single, clearly per-instance source of truth.
+        self._redirect_callback_timeout_seconds = (
+            redirect_callback_timeout_seconds
+            if redirect_callback_timeout_seconds is not None
+            else self.REDIRECT_CALLBACK_TIMEOUT_SECONDS
+        )
 
     @staticmethod
     def __token_urlsafe(nbytes=32):
@@ -152,7 +160,7 @@ class OAuthManager:
                     # Bound how long we wait for the browser redirect callback so
                     # that a headless environment (no browser to complete the
                     # flow) fails with a clear error instead of hanging forever.
-                    httpd.timeout = self.REDIRECT_CALLBACK_TIMEOUT_SECONDS
+                    httpd.timeout = self._redirect_callback_timeout_seconds
 
                     # HTTPServer.handle_request() returns normally (via
                     # handle_timeout()) when the wait elapses without a
@@ -196,7 +204,7 @@ class OAuthManager:
         if not handler.request_path:
             if callback_timed_out:
                 msg = (
-                    f"Timed out after {self.REDIRECT_CALLBACK_TIMEOUT_SECONDS} "
+                    f"Timed out after {self._redirect_callback_timeout_seconds} "
                     f"seconds waiting for the OAuth redirect callback at "
                     f"{redirect_url}. No browser completed the login flow — this "
                     "is expected in a headless environment (e.g. a notebook or "
