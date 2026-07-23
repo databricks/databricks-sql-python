@@ -1780,7 +1780,16 @@ class Cursor:
                 else:
                     logger.warning("close_command on cursor close failed: %s", e)
             except Exception as exc:
-                logger.warning("close_command on cursor close failed: %s", exc)
+                # Unlike the RequestError branch above (an expected, often
+                # transient network failure), reaching here means something we
+                # did not anticipate — surface the full traceback so it is
+                # diagnosable rather than indistinguishable from a benign
+                # network blip.
+                logger.warning(
+                    "close_command on cursor close failed unexpectedly: %s",
+                    exc,
+                    exc_info=True,
+                )
         self.active_command_id = None
 
     @property
