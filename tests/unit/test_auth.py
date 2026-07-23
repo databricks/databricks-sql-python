@@ -277,6 +277,94 @@ class Auth(unittest.TestCase):
             str(oauth_manager._redirect_callback_timeout_seconds), error_message
         )
 
+    @patch("databricks.sql.auth.oauth.webbrowser.open_new")
+    @patch.object(OAuthManager, "_OAuthManager__fetch_well_known_config")
+    def test_get_tokens_does_not_hang_when_callback_connects_but_never_completes(
+        self, mock_fetch_config, mock_open_new
+    ):
+        """A client that connects to the local redirect server but never sends a
+        complete HTTP request line must not block forever either. This is the
+        separate defense the PR adds via ``handler.timeout``: setup() applies it
+        to the accepted socket, so the stalled request-line read raises
+        socket.timeout, which socketserver swallows via handle_error. Because no
+        callback path is ever recorded (request_path stays None) and this is not
+        the accept-wait timeout (callback_timed_out stays False), the flow raises
+        the generic "No path parameters" error rather than the "Timed out" one.
+        See oauth.py __get_authorization_code."""
+        import socket
+        import threading
+        from urllib.parse import urlparse, parse_qs
+
+        mock_fetch_config.return_value = {
+            "authorization_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/authorize",
+            "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
+        }
+
+        # Discover a currently-free port and target it explicitly. Unlike the
+        # accept-wait test above, this one needs the connecting client to know
+        # where to reach the redirect server; port_range=[0] would leave the
+        # redirect URL pointing at port 0.
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.bind(("localhost", 0))
+        free_port = probe.getsockname()[1]
+        probe.close()
+
+        stalled_sockets = []
+
+        def connect_but_stall(auth_req_uri):
+            # Instead of launching a browser, open a bare TCP connection to the
+            # local redirect server (parsed out of the authorization request's
+            # redirect_uri) and never send a request line, so the accepted
+            # socket's read stalls until handler.timeout fires.
+            redirect_uri = parse_qs(urlparse(auth_req_uri).query)["redirect_uri"][0]
+            port = urlparse(redirect_uri).port
+            stalled_sockets.append(socket.create_connection(("localhost", port)))
+            return True
+
+        mock_open_new.side_effect = connect_but_stall
+
+        oauth_manager = OAuthManager(
+            port_range=[free_port],
+            client_id="mock-id",
+            idp_endpoint=InHouseOAuthEndpointCollection(),
+            http_client=MagicMock(),
+            redirect_callback_timeout_seconds=2,
+        )
+
+        result = {}
+
+        def run():
+            try:
+                oauth_manager.get_tokens(
+                    hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                )
+                result["outcome"] = "returned"
+            except BaseException as e:  # noqa: BLE001
+                result["outcome"] = "raised"
+                result["error"] = e
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=30)
+
+        try:
+            self.assertFalse(
+                worker.is_alive(),
+                "OAuth callback server blocked indefinitely on a client that "
+                "connected but never completed the request line",
+            )
+            self.assertEqual(result.get("outcome"), "raised")
+            self.assertIsInstance(result.get("error"), RuntimeError)
+            # A stalled request-line read is NOT the accept-wait timeout:
+            # request_path stays None and callback_timed_out stays False, so the
+            # generic message is raised, not the "Timed out" one.
+            error_message = str(result.get("error"))
+            self.assertIn("No path parameters", error_message)
+            self.assertNotIn("Timed out", error_message)
+        finally:
+            for sock in stalled_sockets:
+                sock.close()
+
 
 class TestClientCredentialsTokenSource:
     @pytest.fixture
