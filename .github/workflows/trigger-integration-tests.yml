@@ -492,6 +492,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
     steps:
       - name: Check if driver source changed
         id: changed
