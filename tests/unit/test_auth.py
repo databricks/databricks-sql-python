@@ -223,8 +223,12 @@ class Auth(unittest.TestCase):
         # Do not actually launch a browser during the test.
         mock_open_new.return_value = True
 
+        # Bind to an OS-assigned ephemeral port (0) rather than a fixed port so
+        # the test does not depend on a specific port being free. A fixed port
+        # that happens to be occupied would fail to bind and take the
+        # can't-find-free-port branch instead of the timeout path we exercise.
         oauth_manager = OAuthManager(
-            port_range=[8030],
+            port_range=[0],
             client_id="mock-id",
             idp_endpoint=InHouseOAuthEndpointCollection(),
             http_client=MagicMock(),
