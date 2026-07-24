@@ -493,6 +493,11 @@ jobs:
             });
             // The whole repo IS the driver. Count a merge as source-affecting when it changes a file under src/.
             // Docs/CI/test-only merges do not warrant a full multi-language fan-out.
+            // Note this is intentionally NARROWER than the PR-level IT gate (trigger-tests-pr /
+            // merge-queue-python), which also treats pyproject.toml / poetry.lock as driver-affecting
+            // ("dep bumps can break the integration suite"). Dependency-only merges are DELIBERATELY
+            // excluded here: the fan-out authors a conformance spec from THIS PR's source diff, and a
+            // dep-only bump produces no driver-behavior diff to conform into tests across drivers.
             const isSource = (f) => f.startsWith('src/');
             // GitHub caps pulls.listFiles at 3000 files per PR (even via paginate). If a merge is that
             // large the list is truncated, so a src/ file could sort beyond the cap and be missed. Since
