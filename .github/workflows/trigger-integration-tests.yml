@@ -18,14 +18,14 @@ name: Trigger Integration Tests
 #     gate. Only PRs whose tests dispatch (or auto-pass when no driver
 #     files changed) can proceed to `main`.
 #
-# Check-run names: databricks-driver-test's python-proxy-tests.yml is
-# a `mode: [thrift, kernel]` matrix that posts two named checks per
+# Check-run names: databricks-driver-test's databricks-sql-python-proxy-tests.yml
+# is a `mode: [thrift, kernel]` matrix that posts two named checks per
 # run — `Python Proxy Tests / thrift` and `Python Proxy Tests / kernel`.
 # Every synthetic-success / auto-pass / dispatch-failure step below
 # posts both names so the matrix legs always have a matching baseline
 # check on the PR. The list of modes lives in the `MODES` constant
 # at the top of each script block; keep it in sync with the matrix
-# axis in databricks-driver-test/.github/workflows/python-proxy-tests.yml.
+# axis in databricks-driver-test/.github/workflows/databricks-sql-python-proxy-tests.yml.
 #
 # Required external setup (outside this workflow):
 #
@@ -44,7 +44,7 @@ name: Trigger Integration Tests
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, closed]
   merge_group:  # Trigger when added to merge queue
 
 jobs:
@@ -125,7 +125,7 @@ jobs:
   # checks would block every PR that doesn't bother labelling.
   # =============================================================================
   skip-integration-tests-pr:
-    if: github.event_name == 'pull_request' && github.event.action != 'labeled'
+    if: github.event_name == 'pull_request' && github.event.action != 'labeled' && github.event.action != 'closed'
     runs-on:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest
@@ -321,7 +321,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: 'Integration tests triggered. [View workflow run](https://github.com/databricks/databricks-driver-test/actions/workflows/python-proxy-tests.yml).'
+              body: 'Integration tests triggered. [View workflow runs](https://github.com/databricks/databricks-driver-test/actions/workflows/databricks-sql-python-proxy-tests.yml). Results post back here as the "Python Proxy Tests / thrift" and "Python Proxy Tests / kernel" checks.'
             });
 
   # =============================================================================
@@ -448,4 +448,136 @@ jobs:
                   summary: `An error occurred while dispatching Python integration tests (${mode}). Check the workflow run logs.`
                 }
               });
+            }
+
+  # =============================================================================
+  # After merge: trigger the multi-language coverage fan-out.
+  # Fires when a PR lands on main (merge queue or direct merge) and touched
+  # driver source. Dispatches `coverage-fanout` to databricks-driver-test, whose
+  # coverage-fanout-tracker.yml opens a tracking issue and runs the
+  # language-agnostic fan-out (a spec authored from THIS PR's diff, conformed as
+  # tests across every driver) as peco-engineer-bot.
+  #
+  # Fork-PR limitation: for a PR opened from an external fork, GitHub runs the
+  # `pull_request` (closed/merged) event with NO repository secrets and a
+  # read-only GITHUB_TOKEN. That means both the App-token generation step and
+  # the "Signal dispatch failure" fallback (which uses github.token to comment)
+  # cannot run for fork merges, so those merges are intentionally excluded from
+  # the fan-out — no dispatch and, by design, no failure comment. Coverage for a
+  # fork contribution is instead picked up by the next source-affecting merge
+  # from a maintainer branch, or the fan-out can be dispatched manually against
+  # databricks-driver-test. Wiring this off a `push`-to-`main` trigger (which
+  # does have secret access) would restore fork coverage but is a larger change
+  # and is deliberately out of scope here.
+  # =============================================================================
+  trigger-coverage-fanout:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    # Serialize by PR so a manual re-run (e.g. recovery after the failure
+    # comment fires, or an accidental Actions "Re-run") cannot overlap with an
+    # in-flight run and double-dispatch coverage-fanout. cancel-in-progress is
+    # false so a queued re-run waits rather than killing the original; the
+    # tracker in databricks-driver-test is the source of truth for dedup across
+    # sequential re-runs.
+    concurrency:
+      group: coverage-fanout-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check if driver source changed
+        id: changed
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            // The whole repo IS the driver. Count a merge as source-affecting when it changes a file under src/.
+            // Docs/CI/test-only merges do not warrant a full multi-language fan-out.
+            const isSource = (f) => f.startsWith('src/');
+            // GitHub caps pulls.listFiles at 3000 files per PR (even via paginate). If a merge is that
+            // large the list is truncated, so a src/ file could sort beyond the cap and be missed. Since
+            // the whole gate hinges on this boolean, treat a truncated result set as source-affecting.
+            const truncated = files.length >= 3000;
+            const srcChanged = truncated || files.some((f) => isSource(f.filename));
+            if (truncated) {
+              console.log('listFiles hit the 3000-file cap; treating merge as source-affecting.');
+            }
+            console.log(`driver source changed: ${srcChanged}`);
+            core.setOutput('source', srcChanged.toString());
+
+      - name: Generate GitHub App token (databricks-driver-test)
+        if: steps.changed.outputs.source == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-driver-test
+          permission-contents: write
+
+      - name: Dispatch coverage-fanout
+        if: steps.changed.outputs.source == 'true'
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: databricks/databricks-driver-test
+          event-type: coverage-fanout
+          client-payload: '{"reference_repo": "${{ github.repository }}", "pr_number": "${{ github.event.pull_request.number }}", "pr_url": "${{ github.event.pull_request.html_url }}"}'
+
+      - name: Signal dispatch failure
+        # Best-effort fan-out: the PR is already merged, so there is no
+        # required check to turn red. Without this handler a broken dispatch
+        # (rotated App secret, App uninstalled, driver-test API error) fails
+        # the step but surfaces nowhere and the coverage fan-out silently
+        # never runs. Emit a workflow warning and comment on the merged PR so
+        # the failure is noticeable. Uses the default token (checks/PR write
+        # via job permissions), not the App token, since App-token generation
+        # is itself a likely failure point.
+        # Gate on source != 'false' rather than == 'true': if the detection
+        # step itself fails, `source` is never set (empty, not 'true'), and a
+        # == 'true' gate would skip this handler too, so that failure would
+        # surface nowhere. Empty and 'true' both satisfy != 'false'; only a
+        # clean 'false' (no source change, nothing dispatched) stays silent.
+        if: failure() && steps.changed.outputs.source != 'false'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            core.warning(
+              `Failed to run the coverage fan-out for databricks-driver-test ` +
+              `(source detection or dispatch step failed); the multi-language ` +
+              `coverage fan-out did not run. See ${runUrl}`
+            );
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body:
+                  `⚠️ Failed to run the multi-language coverage fan-out ` +
+                  `to \`databricks-driver-test\` after this PR merged ` +
+                  `(source detection or dispatch step failed). Coverage ` +
+                  `was not extended for this change. ` +
+                  `[Workflow run](${runUrl})`,
+              });
+            } catch (e) {
+              core.warning(`Could not comment on the merged PR: ${e.message}`);
             }
