@@ -18,14 +18,14 @@ name: Trigger Integration Tests
 #     gate. Only PRs whose tests dispatch (or auto-pass when no driver
 #     files changed) can proceed to `main`.
 #
-# Check-run names: databricks-driver-test's python-proxy-tests.yml is
-# a `mode: [thrift, kernel]` matrix that posts two named checks per
+# Check-run names: databricks-driver-test's databricks-sql-python-proxy-tests.yml
+# is a `mode: [thrift, kernel]` matrix that posts two named checks per
 # run — `Python Proxy Tests / thrift` and `Python Proxy Tests / kernel`.
 # Every synthetic-success / auto-pass / dispatch-failure step below
 # posts both names so the matrix legs always have a matching baseline
 # check on the PR. The list of modes lives in the `MODES` constant
 # at the top of each script block; keep it in sync with the matrix
-# axis in databricks-driver-test/.github/workflows/python-proxy-tests.yml.
+# axis in databricks-driver-test/.github/workflows/databricks-sql-python-proxy-tests.yml.
 #
 # Required external setup (outside this workflow):
 #
@@ -321,7 +321,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: 'Integration tests triggered. [View workflow run](https://github.com/databricks/databricks-driver-test/actions/workflows/python-proxy-tests.yml).'
+              body: 'Integration tests triggered. [View workflow runs](https://github.com/databricks/databricks-driver-test/actions/workflows/databricks-sql-python-proxy-tests.yml). Results post back here as the "Python Proxy Tests / thrift" and "Python Proxy Tests / kernel" checks.'
             });
 
   # =============================================================================
