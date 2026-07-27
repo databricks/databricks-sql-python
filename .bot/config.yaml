@@ -86,6 +86,10 @@ author:
     issue_url: ISSUE_URL
   context_files:
     - issue_body.txt   # {{issue_body}}
+  # Close the loop: the author phase READS this log (newest-first, capped) into its
+  # system prompt as accumulated lessons, so retrospective learnings actually steer
+  # future fixes. MUST match retrospective.log_path below (write half ↔ read half).
+  knowledge_log: .claude/knowledge/learning-log.md
 
 # Engine orchestration for the author phase. `bug-fix` runs the plan →
 # author_tests → fix pipeline (write a failing test → fix the code → re-run to
@@ -94,3 +98,20 @@ author:
 # testing specifics (commands, layout, fixtures) live in prompts/engineer/
 # system.md, not here.
 flow: bug-fix
+
+# Daily-cron learning extraction (retrospective flow). Run by engineer-bot-learning.yml
+# via `python -m databricks_bot_engine.engineer_bot.retrospective`: over an adaptive
+# look-back window the engine ITSELF gathers merged PRs (diff + review comments) AND
+# recent engineer-bot author-run logs, and if the model finds durable learnings opens
+# ONE rolling PR appending a dated section to log_path. Human-gated — never commits the
+# canonical log directly. Omitting this block makes the retrospective a no-op.
+#
+# No `system_prompt` override: the engine ships the authoritative batch-aware base
+# (engineer_prompts.RETRO_SYSTEM_PROMPT); a `.bot/prompts/` override is optional.
+# No `context_files` — the daily-cron engine enumerates its own sources via the
+# GitHub API (context_files is an AUTHOR-phase key only).
+retrospective:
+  log_path: .claude/knowledge/learning-log.md   # MUST match author.knowledge_log above
+  branch_prefix: ai/learning-pr-                 # rolling PR lands on the derived stable branch `ai/learning-pr`
+  pr_label: engineer-bot-learning
+  author_workflow: engineer-bot.yml              # Track B: which workflow's author runs to mine
