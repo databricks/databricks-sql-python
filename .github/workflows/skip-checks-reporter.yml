@@ -42,9 +42,64 @@ jobs:
       labels: linux-ubuntu-latest
     permissions:
       checks: write
+      contents: read
+      pull-requests: read
     steps:
+      # The reporter triggers on EVERY pull_request run of "Trigger Integration
+      # Tests" (opened/synchronize/reopened/labeled/closed), but the
+      # workflow_run payload does NOT expose the originating sub-action, so we
+      # cannot filter on it directly. Recover the needed context from the PR
+      # and post the synthetic success only for the opened/synchronize/reopened
+      # scope the old inline job covered:
+      #   - skip when the PR is closed (outside the old job's scope), and
+      #   - skip when a real label preview is running for this head (an internal
+      #     PR carrying the integration-test label): trigger-tests-pr dispatches
+      #     the real suite and driver-test posts the real check for the same
+      #     app + name + head_sha, so a premature success placeholder would race
+      #     that check and could mask a real preview failure.
+      # Fork PRs KEEP the placeholder even when labeled: their label preview
+      # cannot dispatch (no secret access), so nothing else posts the required
+      # check for them. This is a read-only lookup (no checkout / no execution
+      # of PR-controlled content) and does not weaken the SECURITY note above.
+      - name: Decide whether to post the placeholder
+        id: gate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          script: |
+            let prs = context.payload.workflow_run.pull_requests || [];
+            let number = prs.length ? prs[0].number : null;
+            if (number === null) {
+              // Fork PRs: workflow_run.pull_requests is empty. Resolve by SHA.
+              const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: process.env.HEAD_SHA,
+              });
+              number = data.length ? data[0].number : null;
+            }
+            if (number === null) {
+              // No PR resolvable (unexpected) — default to posting so the
+              // required check isn't left unfulfilled.
+              core.setOutput('post', 'true');
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: number,
+            });
+            const isFork = pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+            const hasLabel = pr.labels.some(l => l.name === 'integration-test');
+            const isClosed = pr.state === 'closed';
+            const skip = isClosed || (hasLabel && !isFork);
+            console.log(`PR #${number} fork=${isFork} label=${hasLabel} closed=${isClosed} -> post=${!skip}`);
+            core.setOutput('post', (!skip).toString());
+
       - name: Generate GitHub App token (this repo)
         id: app-token
+        if: steps.gate.outputs.post == 'true'
         uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
         with:
           app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
@@ -53,6 +108,7 @@ jobs:
           repositories: databricks-sql-python
 
       - name: Post skipped Python Integration Tests check
+        if: steps.gate.outputs.post == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
