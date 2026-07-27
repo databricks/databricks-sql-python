@@ -116,55 +116,16 @@ jobs:
               body: body
             });
 
-  # =============================================================================
-  # For PRs: Always pass the Python Integration Tests check on
-  # non-label events. The real run happens in the merge queue (or via
-  # explicit label preview). Without this, the required
-  # `Python Integration Tests` check would block every PR that doesn't
-  # bother labelling.
-  # =============================================================================
-  skip-integration-tests-pr:
-    if: github.event_name == 'pull_request' && github.event.action != 'labeled' && github.event.action != 'closed'
-    runs-on:
-      group: databricks-protected-runner-group
-      labels: linux-ubuntu-latest
-    permissions:
-      checks: write
-    steps:
-      - name: Skip Python Integration Tests
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            // On FORK PRs GitHub forces GITHUB_TOKEN to read-only regardless of
-            // the declared `checks: write`, so checks.create 403s ("Resource
-            // not accessible by integration"). Expected — a fork can't post
-            // check-runs on the base repo. Swallow the 403 for forks so this
-            // poster doesn't show a spurious failure; the real Python
-            // Integration Tests required check is posted by the merge_group run
-            // (full perms) when a maintainer queues the PR. Other errors fail loudly.
-            const isFork = context.payload.pull_request.head.repo.fork;
-            try {
-              await github.rest.checks.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'Python Integration Tests',
-                head_sha: context.payload.pull_request.head.sha,
-                status: 'completed',
-                conclusion: 'success',
-                completed_at: new Date().toISOString(),
-                output: {
-                  title: 'Skipped on PR — runs in merge queue',
-                  summary: 'Python Integration Tests are skipped on PRs and run as a required gate in the merge queue. Add the `integration-test` label to preview them on this PR.'
-                }
-              });
-            } catch (e) {
-              if (isFork && e.status === 403) {
-                core.notice('Fork PR: cannot post the Python Integration Tests check-run (read-only token). It will be posted by the merge queue at merge time.');
-              } else {
-                throw e;
-              }
-            }
+  # NOTE: the PR-open "skipped" placeholder for the required
+  # `Python Integration Tests` check is NOT posted here. It is posted by the
+  # companion workflow `skip-checks-reporter.yml`, which runs on `workflow_run`
+  # in the base-repo context so it can post the check as the driver-test app —
+  # the app the branch ruleset PINS the required check to — on EVERY PR head,
+  # including fork PRs (whose own `pull_request` run gets a read-only token and
+  # cannot post checks at all). A `pull_request`-triggered `github.token` stub
+  # here posted the check as `github-actions`, which is a DIFFERENT check
+  # context and did NOT satisfy the app-pinned gate — so the required check sat
+  # unfulfilled and PRs stayed blocked. See skip-checks-reporter.yml.
 
   # =============================================================================
   # For PRs: Dispatch real tests when integration-test label is added.
@@ -333,6 +294,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Mint the driver-test App token UNCONDITIONALLY. The required
+      # `Python Integration Tests` check is pinned in the ruleset to this app's
+      # integration id, so EVERY check this job posts — the real result (posted
+      # back by driver-test on dispatch), the no-op auto-pass, and the
+      # dispatch-failure — must be attributed to the same app, or it lands on a
+      # different check context and never satisfies the pinned gate (leaving the
+      # merge queue stuck). merge_group runs on the base repo with full secret
+      # access, so the mint always succeeds here.
+      - name: Generate GitHub App Token (internal repo)
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-driver-test
+
       - name: Check if driver files changed
         id: changed
         env:
@@ -352,9 +330,9 @@ jobs:
         if: steps.changed.outputs.changed != 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          # Default workflow token — see the trigger-tests-pr job's
-          # equivalent step above for the rationale.
-          github-token: ${{ github.token }}
+          # App token, not github.token — the pinned required check is only
+          # satisfied by a check posted BY the driver-test app.
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             await github.rest.checks.create({
               owner: context.repo.owner,
@@ -386,16 +364,6 @@ jobs:
             exit 1
           fi
 
-      - name: Generate GitHub App Token (internal repo)
-        if: steps.changed.outputs.changed == 'true'
-        id: app-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
-        with:
-          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
-          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
-          owner: databricks
-          repositories: databricks-driver-test
-
       - name: Dispatch Python tests
         if: steps.changed.outputs.changed == 'true'
         uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
@@ -418,9 +386,10 @@ jobs:
         if: failure() && steps.changed.outputs.changed == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          # Use the default workflow token, not the App token — see
-          # the rationale in the trigger-tests-pr job above.
-          github-token: ${{ github.token }}
+          # App token, not github.token — a github-actions failure check lands on
+          # a different context than the pinned gate, leaving the required check
+          # pending until the queue times out instead of failing fast.
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             await github.rest.checks.create({
               owner: context.repo.owner,
