@@ -74,8 +74,6 @@ jobs:
       # bot-prelude (install-bot-engine reuses its PIP_INDEX_URL / JFROG_ACCESS_TOKEN).
       - name: Set up JFrog (pip)
         uses: ./.github/actions/setup-jfrog
-        with:
-          uv: "true"
 
       - name: Setup Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
