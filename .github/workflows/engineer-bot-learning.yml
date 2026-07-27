@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       since:
-        description: 'ISO lower bound to bound (shorten) the window and recover a wedged flow. Empty = adaptive cursor.'
+        description: 'ISO lower bound to shorten the window and recover a wedged flow. Empty = adaptive cursor.'
         type: string
         default: ''
       window-hours:
