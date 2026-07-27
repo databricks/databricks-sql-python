@@ -68,13 +68,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Route pip through the JFrog proxy for the engine install (the retrospective
-      # reads diffs via the API; it doesn't build/run the connector, so no poetry
-      # deps needed — just a Python interpreter + the engine). MUST run before
-      # bot-prelude (install-bot-engine reuses its PIP_INDEX_URL / JFROG_ACCESS_TOKEN).
-      - name: Set up JFrog (pip)
-        uses: ./.github/actions/setup-jfrog
-
+      # No JFrog setup step here: install-bot-engine (via bot-prelude) does its own
+      # keyless OIDC→JFrog mint and passes the credential through job-local files +
+      # per-command --index-url flags. It deliberately never reads PIP_INDEX_URL /
+      # JFROG_ACCESS_TOKEN from the environment, so a setup-jfrog step would be both
+      # redundant AND a credential leak (setup-jfrog exports a token-bearing
+      # PIP_INDEX_URL to $GITHUB_ENV, exposing it to every later step — including the
+      # one that runs the model). Mirrors the read-only sibling reviewer-bot.yml.
       - name: Setup Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
