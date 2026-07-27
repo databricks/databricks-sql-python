@@ -116,16 +116,61 @@ jobs:
               body: body
             });
 
-  # NOTE: the PR-open "skipped" placeholder for the required
-  # `Python Integration Tests` check is NOT posted here. It is posted by the
-  # companion workflow `skip-checks-reporter.yml`, which runs on `workflow_run`
-  # in the base-repo context so it can post the check as the driver-test app —
-  # the app the branch ruleset PINS the required check to — on EVERY PR head,
-  # including fork PRs (whose own `pull_request` run gets a read-only token and
-  # cannot post checks at all). A `pull_request`-triggered `github.token` stub
-  # here posted the check as `github-actions`, which is a DIFFERENT check
-  # context and did NOT satisfy the app-pinned gate — so the required check sat
-  # unfulfilled and PRs stayed blocked. See skip-checks-reporter.yml.
+  # =============================================================================
+  # For internal PRs: post the "skipped" placeholder for the required
+  # `Python Integration Tests` check on non-label events. The real run happens in
+  # the merge queue (or via explicit label preview).
+  #
+  # CRITICAL: post as the driver-test APP, not github.token. The ruleset pins the
+  # required check to that app's integration id; a github.token (github-actions)
+  # check of the same name is a DIFFERENT context and does NOT satisfy the gate,
+  # so the required check would sit "waiting for status" forever.
+  #
+  # Fork PRs are handled by the companion `skip-checks-reporter.yml` (workflow_run):
+  # a fork's `pull_request` run has a read-only token and no secrets, so it can
+  # neither mint the app token nor post any check here. This job self-guards to
+  # internal PRs (head repo == base repo); the reporter covers forks from the
+  # base-repo context. Internal PRs are posted HERE (not via the reporter) so the
+  # placeholder appears without depending on the workflow_run copy being on the
+  # default branch.
+  # =============================================================================
+  skip-integration-tests-pr:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action != 'labeled' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    steps:
+      - name: Generate GitHub App token (this repo)
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-sql-python
+
+      - name: Skip Python Integration Tests
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Python Integration Tests',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Skipped on PR — runs in merge queue',
+                summary: 'Python Integration Tests are skipped on PRs and run as the required gate in the merge queue. Add the `integration-test` label to preview them on this PR.'
+              }
+            });
 
   # =============================================================================
   # For PRs: Dispatch real tests when integration-test label is added.

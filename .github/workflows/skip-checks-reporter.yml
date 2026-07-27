@@ -1,21 +1,24 @@
 name: Report Integration Test Skip
 
 # Posts the PR-open "skipped" placeholder for the required
-# `Python Integration Tests` check, as the driver-test GitHub App.
+# `Python Integration Tests` check on FORK PRs, as the driver-test GitHub App.
 #
-# Why a separate workflow (and not an inline job in trigger-integration-tests.yml):
-#   - The branch ruleset pins the required `Python Integration Tests` check to the
-#     driver-test app's integration id (driver-integration-test). Only a check
-#     posted BY that app satisfies the gate — a `github.token` (github-actions)
-#     check of the same name does NOT (it is a different check context).
-#   - A PR from a fork runs its `pull_request` workflows with a READ-ONLY GITHUB_TOKEN
-#     and no access to secrets, so it cannot mint the app token and cannot post any
-#     check on its own head. That would leave fork PRs unable to enter the merge queue
-#     without a maintainer label.
-#   - `workflow_run` workflows always execute in THIS (base) repo's context using the
-#     workflow definition from the default branch, with full secret access — even when
-#     the run that triggered them came from a fork. That lets us post the app-attributed
-#     placeholder on any PR head, fork or not, so every PR can auto-enqueue.
+# Division of labour:
+#   - INTERNAL PRs: the placeholder is posted inline by trigger-integration-tests.yml's
+#     `skip-integration-tests-pr` job (it can mint the app token directly). Posting it
+#     there means it works from the PR branch immediately, without waiting for this
+#     workflow_run file to reach the default branch.
+#   - FORK PRs: a fork's `pull_request` run has a READ-ONLY GITHUB_TOKEN and no secrets,
+#     so it cannot mint the app token or post any check on its own head. This
+#     workflow_run workflow instead runs in THIS (base) repo's context with full secret
+#     access even for fork-triggered runs, so it can post the app-attributed placeholder
+#     on a fork PR's head. This job self-guards to fork runs to avoid double-posting on
+#     internal PRs (which the inline job already covers).
+#
+# Why the app (not github.token): the ruleset pins the required
+# `Python Integration Tests` check to the driver-test app's integration id. Only a
+# check posted BY that app satisfies the gate — a github.token (github-actions) check
+# of the same name is a different context and does NOT.
 #
 # SECURITY: this workflow runs with secrets in a privileged context. It MUST NOT check
 # out or execute any PR/fork-controlled content. It only calls checks.create with a
@@ -25,8 +28,7 @@ name: Report Integration Test Skip
 #
 # The real integration suite is unaffected: it runs as the required gate on the
 # `merge_group` commit (and as a label preview on internal PRs), dispatched by
-# trigger-integration-tests.yml. This workflow only posts the pre-merge placeholder.
-# Mirrors databricks-sql-go / databricks-sql-nodejs.
+# trigger-integration-tests.yml. Mirrors databricks-sql-go / databricks-sql-nodejs.
 
 on:
   workflow_run:
@@ -35,8 +37,11 @@ on:
 
 jobs:
   report-skip:
-    # Only for PR-triggered runs; the merge_group run posts the real required check.
-    if: github.event.workflow_run.event == 'pull_request'
+    # Fork PR-triggered runs only. Internal PRs are posted inline by
+    # trigger-integration-tests.yml; the merge_group run posts the real required check.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name != github.event.workflow_run.repository.full_name
     runs-on:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest
@@ -45,22 +50,14 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      # The reporter triggers on EVERY pull_request run of "Trigger Integration
-      # Tests" (opened/synchronize/reopened/labeled/closed), but the
-      # workflow_run payload does NOT expose the originating sub-action, so we
-      # cannot filter on it directly. Recover the needed context from the PR
-      # and post the synthetic success only for the opened/synchronize/reopened
-      # scope the old inline job covered:
-      #   - skip when the PR is closed (outside the old job's scope), and
-      #   - skip when a real label preview is running for this head (an internal
-      #     PR carrying the integration-test label): trigger-tests-pr dispatches
-      #     the real suite and driver-test posts the real check for the same
-      #     app + name + head_sha, so a premature success placeholder would race
-      #     that check and could mask a real preview failure.
-      # Fork PRs KEEP the placeholder even when labeled: their label preview
-      # cannot dispatch (no secret access), so nothing else posts the required
-      # check for them. This is a read-only lookup (no checkout / no execution
-      # of PR-controlled content) and does not weaken the SECURITY note above.
+      # This job is fork-only (see the job `if:`), so the placeholder is always
+      # appropriate EXCEPT when the fork PR is already closed. A fork PR's label
+      # preview cannot dispatch the real suite (no secret access), so nothing
+      # else posts the required check for it — keep the placeholder even when
+      # labeled. Skip only closed PRs. Resolve the PR by SHA because a fork's
+      # workflow_run payload has an empty pull_requests array. Read-only lookup
+      # (no checkout / no execution of PR content) — does not weaken the SECURITY
+      # note above.
       - name: Decide whether to post the placeholder
         id: gate
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -90,12 +87,9 @@ jobs:
               repo: context.repo.repo,
               pull_number: number,
             });
-            const isFork = pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
-            const hasLabel = pr.labels.some(l => l.name === 'integration-test');
             const isClosed = pr.state === 'closed';
-            const skip = isClosed || (hasLabel && !isFork);
-            console.log(`PR #${number} fork=${isFork} label=${hasLabel} closed=${isClosed} -> post=${!skip}`);
-            core.setOutput('post', (!skip).toString());
+            console.log(`PR #${number} closed=${isClosed} -> post=${!isClosed}`);
+            core.setOutput('post', (!isClosed).toString());
 
       - name: Generate GitHub App token (this repo)
         id: app-token
