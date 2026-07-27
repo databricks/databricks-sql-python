@@ -346,7 +346,18 @@ jobs:
       # dispatch-failure — must be attributed to the same app, or it lands on a
       # different check context and never satisfies the pinned gate (leaving the
       # merge queue stuck). merge_group runs on the base repo with full secret
-      # access, so the mint always succeeds here.
+      # access, so the mint normally succeeds here.
+      #
+      # If the mint ITSELF fails (secret rotation, app uninstall, transient
+      # create-github-app-token error) the job aborts before it can post any
+      # check. That case is uncloseable in-workflow — only this app can post to
+      # the app-pinned context, so no fallback identity (github.token included)
+      # can substitute; a same-named github.token check lands on a DIFFERENT
+      # context and neither satisfies nor fails the gate. It is fail-CLOSED, not a
+      # bypass: the merge queue's check_response_timeout evicts an entry whose
+      # required check never reports (it does not merge), and a mint failure also
+      # surfaces as a red workflow run. Mitigation is out-of-band (alerting on the
+      # token-mint step), not another in-workflow check.
       - name: Generate GitHub App Token (internal repo)
         id: app-token
         uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
