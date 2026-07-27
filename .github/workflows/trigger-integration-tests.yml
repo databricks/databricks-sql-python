@@ -365,7 +365,14 @@ jobs:
           app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
           private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
           owner: databricks
-          repositories: databricks-driver-test
+          # Two repos: dispatch targets databricks-driver-test, while the
+          # auto-pass / dispatch-failure steps post the pinned check-run onto
+          # THIS repo (context.repo == databricks-sql-python in a merge_group
+          # run). A token scoped to driver-test alone 403s on those
+          # checks.create calls, leaving the required gate unposted.
+          repositories: |
+            databricks-driver-test
+            databricks-sql-python
 
       - name: Check if driver files changed
         id: changed
