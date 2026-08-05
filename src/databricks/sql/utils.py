@@ -771,7 +771,7 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
             converted_column_table.append(
                 tuple(v if v is None else datetime.date.fromisoformat(v) for v in col)
             )
-        elif description[i][1] == "timestamp":
+        elif description[i][1] in ("timestamp", "timestamp_ntz"):
             converted_column_table.append(
                 tuple((v if v is None else parser.parse(v)) for v in col)
             )

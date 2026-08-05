@@ -2454,21 +2454,44 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @unittest.skipIf(pyarrow is None, "Requires pyarrow")
     def test_col_to_description(self):
         test_cases = [
-            ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}, "variant"),
-            ("normal_col", {}, "string"),
+            (
+                "variant_col",
+                ttypes.TTypeId.STRING_TYPE,
+                {b"Spark:DataType:SqlName": b"VARIANT"},
+                "variant",
+            ),
+            (
+                "timestamp_ntz_col",
+                ttypes.TTypeId.TIMESTAMP_TYPE,
+                {b"Spark:DataType:SqlName": b"TIMESTAMP_NTZ"},
+                "timestamp_ntz",
+            ),
+            (
+                "timestamp_col",
+                ttypes.TTypeId.TIMESTAMP_TYPE,
+                {b"Spark:DataType:SqlName": b"TIMESTAMP"},
+                "timestamp",
+            ),
+            ("normal_col", ttypes.TTypeId.STRING_TYPE, {}, "string"),
             (
                 "weird_field",
+                ttypes.TTypeId.STRING_TYPE,
                 {b"Spark:DataType:SqlName": b"Some unexpected value"},
                 "string",
             ),
-            ("missing_field", None, "string"),  # None field case
+            (
+                "missing_field",
+                ttypes.TTypeId.STRING_TYPE,
+                None,
+                "string",
+            ),  # None field case
         ]
 
-        for column_name, field_metadata, expected_type in test_cases:
+        for column_name, primitive_type, field_metadata, expected_type in test_cases:
             with self.subTest(column_name=column_name, expected_type=expected_type):
                 col = ttypes.TColumnDesc(
                     columnName=column_name,
-                    typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
+                    typeDesc=self._make_type_desc(primitive_type),
                 )
 
                 field = (
