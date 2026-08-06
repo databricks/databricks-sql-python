@@ -91,6 +91,77 @@ DEFAULT_ARRAY_SIZE = 100000
 
 NO_NATIVE_PARAMS: List = []
 
+# All recognized **kwargs keys consumed by Connection.__init__ and the callees it
+# dispatches to (build_client_context, Session.__init__, get_python_sql_connector_auth_provider).
+# Any key passed by the caller that is NOT in this set will trigger a warning.
+KNOWN_KWARGS: frozenset = frozenset(
+    {
+        # client.py
+        "access_token",
+        "enable_metric_view_metadata",
+        "_disable_pandas",
+        "enable_query_result_lz4_compression",
+        "use_cloud_fetch",
+        "telemetry_batch_size",
+        "enable_telemetry",
+        "force_enable_telemetry",
+        "use_inline_params",
+        "staging_allowed_local_path",
+        "fetch_autocommit_from_server",
+        "pool_maxsize",
+        "use_hybrid_disposition",
+        # session.py
+        "_port",
+        "user_agent_entry",
+        "_user_agent_entry",
+        "use_sea",
+        # SSL / TLS options (session.py, utils.py, auth/auth.py)
+        "_tls_no_verify",
+        "_tls_verify_hostname",
+        "_tls_trusted_ca_file",
+        "_tls_client_cert_file",
+        "_tls_client_cert_key_file",
+        "_tls_client_cert_key_password",
+        "_use_cert_as_auth",
+        "_enable_ssl",
+        "_skip_routing_headers",
+        # auth/auth.py
+        "auth_type",
+        "username",
+        "password",
+        "oauth_client_id",
+        "oauth_redirect_port",
+        "azure_client_id",
+        "azure_client_secret",
+        "azure_tenant_id",
+        "azure_workspace_resource_id",
+        "experimental_oauth_persistence",
+        "credentials_provider",
+        "identity_federation_client_id",
+        # utils.py / build_client_context
+        "_socket_timeout",
+        "_retry_stop_after_attempts_count",
+        "_retry_delay_min",
+        "_retry_delay_max",
+        "_retry_stop_after_attempts_duration",
+        "_retry_delay_default",
+        "_retry_dangerous_codes",
+        "_proxy_auth_method",
+        "_pool_connections",
+        "_pool_maxsize",
+        "telemetry_circuit_breaker_enabled",
+        # thrift_backend.py
+        "_connection_uri",
+        "_use_arrow_native_decimals",
+        "_use_arrow_native_timestamps",
+        "max_download_threads",
+        "_enable_v3_retries",
+        "_retry_max_redirects",
+        # sea/utils/http_client.py
+        "max_connections",
+    }
+)
+
 # Transaction isolation level constants (extension to PEP 249)
 TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ = "REPEATABLE_READ"
 
@@ -284,6 +355,10 @@ class Connection:
             server_hostname,
             http_path,
         )
+
+        unknown = set(kwargs.keys()) - KNOWN_KWARGS
+        if unknown:
+            logger.warning("Unrecognized connection parameter(s): %s", unknown)
 
         if access_token:
             access_token_kv = {"access_token": access_token}
