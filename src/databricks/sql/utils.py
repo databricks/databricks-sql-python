@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence, TYPE_CHECKING
 
 from dateutil import parser
 import datetime
@@ -21,11 +21,18 @@ except ImportError:
 from databricks.sql import OperationalError
 from databricks.sql.exc import ProgrammingError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TRowSet,
-    TSparkArrowResultLink,
-    TSparkRowSetType,
-)
+
+if TYPE_CHECKING:
+    # Type-annotation-only imports (deferred by ``from __future__ import
+    # annotations``). ``TSparkRowSetType`` is used at runtime only inside
+    # ``ThriftResultSetQueueFactory.build_queue``, which is a Thrift-only code
+    # path and imports it locally. This keeps the Apache Thrift ``thrift``
+    # package out of the SEA/kernel load path (see ``test_lazy_thrift_import``).
+    from databricks.sql.thrift_api.TCLIService.ttypes import (
+        TRowSet,
+        TSparkArrowResultLink,
+        TSparkRowSetType,
+    )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.types import CommandId
 from databricks.sql.telemetry.models.event import StatementType
@@ -98,6 +105,10 @@ class ThriftResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue
         """
+
+        # Function-local import: this factory is only used by the Thrift
+        # backend, so deferring keeps ``thrift`` out of the SEA/kernel path.
+        from databricks.sql.thrift_api.TCLIService.ttypes import TSparkRowSetType
 
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(

@@ -1,5 +1,17 @@
+from __future__ import annotations
+
 import time
-from typing import Dict, Tuple, List, Optional, Any, Union, Sequence, BinaryIO
+from typing import (
+    Dict,
+    Tuple,
+    List,
+    Optional,
+    Any,
+    Union,
+    Sequence,
+    BinaryIO,
+    TYPE_CHECKING,
+)
 import pandas
 
 try:
@@ -25,8 +37,6 @@ from databricks.sql.exc import (
     DatabaseError,
 )
 
-from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
     ParamEscaper,
@@ -49,7 +59,7 @@ from databricks.sql.parameters.native import (
     ParameterApproach,
 )
 
-from databricks.sql.result_set import ResultSet, ThriftResultSet
+from databricks.sql.result_set import ResultSet
 from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -60,11 +70,18 @@ from databricks.sql.auth.common import ClientContext
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TOpenSessionResp,
-    TSparkParameter,
-    TOperationState,
-)
+if TYPE_CHECKING:
+    # Type-annotation-only imports (deferred by ``from __future__ import
+    # annotations``). ``get_protocol_version`` and ``_prepare_native_parameters``
+    # are typed with these Thrift-generated types, but the Thrift backend and
+    # its result set are imported lazily (only on the Thrift connect path), so
+    # importing this module -- and connecting with the SEA or kernel backend --
+    # never imports the Apache Thrift ``thrift`` package. See
+    # ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService.ttypes import (
+        TOpenSessionResp,
+        TSparkParameter,
+    )
 from databricks.sql.telemetry.telemetry_client import (
     TelemetryHelper,
     TelemetryClientFactory,
@@ -93,6 +110,24 @@ NO_NATIVE_PARAMS: List = []
 
 # Transaction isolation level constants (extension to PEP 249)
 TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ = "REPEATABLE_READ"
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve the Thrift backend class as a module attribute.
+
+    ``client.py`` itself never instantiates ``ThriftDatabricksClient`` (the
+    backend is chosen in ``Session.open``), but the name is exposed here as a
+    module attribute so it can be resolved without importing the Apache Thrift
+    ``thrift`` package at module load -- which is what keeps the SEA/kernel
+    connect path Thrift-free (see ``test_lazy_thrift_import``). It also
+    preserves the long-standing test seam
+    ``patch("databricks.sql.client.ThriftDatabricksClient")``.
+    """
+    if name == "ThriftDatabricksClient":
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+
+        return ThriftDatabricksClient
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class Connection:

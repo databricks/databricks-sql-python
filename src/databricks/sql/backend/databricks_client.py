@@ -7,7 +7,13 @@ if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
 
-from databricks.sql.thrift_api.TCLIService import ttypes
+    # Type-annotation-only import (deferred by ``from __future__ import
+    # annotations``). ``execute_command`` is typed with ``TSparkParameter`` for
+    # backwards compatibility, but this abstract base -- and the SEA/kernel
+    # implementations of it -- never import the Apache Thrift ``thrift`` package
+    # at load time. See ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService import ttypes
+
 from databricks.sql.backend.types import SessionId, CommandId, CommandState
 
 
