@@ -99,11 +99,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.prelude.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          # Only the `<workspace>/serving-endpoints/` prefix matters:
-          # sdk_agent.translate_endpoint rewrites this to `.../serving-endpoints/anthropic`
-          # and discards the model path segment. The effective model comes from
-          # .bot/config.yaml `retrospective.model` (or the engine default).
-          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/anthropic/invocations
+          # Use the concrete `.../serving-endpoints/<model>/invocations` form (same
+          # as reviewer-bot.yml / engineer-bot.yml). sdk_agent.translate_endpoint
+          # strips it to the `.../serving-endpoints/anthropic` base the CLI needs.
+          # Do NOT use `.../serving-endpoints/anthropic/invocations` here: that hits
+          # translate_endpoint's already-v2 early-return, which keeps the trailing
+          # `invocations`, so the CLI appends `/v1/messages` →
+          # `.../anthropic/invocations/v1/messages` → HTTP 400 (unsupported path).
+          # The effective model is set by the engine default (no retrospective.model).
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
           SINCE: ${{ inputs.since }}
