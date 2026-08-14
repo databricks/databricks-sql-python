@@ -119,17 +119,11 @@ class Connection:
                 the Thrift backend.
             :param use_kernel: `bool`, optional (default is False)
                 Route the connection through the Rust kernel
-                (``databricks-sql-kernel`` via PyO3). Requires the
-                kernel extension to be installed separately — the
-                wheel is not yet published on PyPI, so today the
-                only supported install path is a local
-                ``maturin develop --release`` build from the
-                ``databricks-sql-kernel`` repo into the same venv.
-                Raises ``ImportError`` if the extension is not
-                available. In active development — PAT auth only
-                today; OAuth / federation / external credentials
-                and native parameter binding land in follow-ups.
-                Mutually exclusive with ``use_sea``.
+                (``databricks-sql-kernel`` via PyO3). Install the
+                connector's ``kernel`` extra to include the extension.
+                Supports PAT, OAuth M2M/U2M, and workload identity
+                federation; custom credentials providers are not
+                supported. Mutually exclusive with ``use_sea``.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
@@ -169,6 +163,10 @@ class Connection:
             oauth_redirect_port: `int`, optional
                 port of the oauth redirect uri (localhost). This is required when custom oauth client_id
                 `oauth_client_id` is set
+
+            identity_federation_client_id: `str`, optional
+                Service-principal client ID for mandatory SP-wide workload identity
+                token exchange. Supported by both the default and kernel backends.
 
             user_agent_entry: `str`, optional
                 A custom tag to append to the User-Agent header. This is typically used by partners to identify their applications.. If not specified, it will use the default user agent PyDatabricksSqlConnector

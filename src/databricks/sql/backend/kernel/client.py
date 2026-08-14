@@ -206,7 +206,8 @@ class KernelDatabricksClient(DatabricksClient):
         # Forwarded to the kernel Session in ``open_session``.
         self._http_headers = http_headers or []
         # Raw auth-relevant connect() kwargs (auth_type,
-        # oauth_client_id/secret, redirect port, credentials_provider).
+        # oauth_client_id/secret, redirect port, credentials_provider,
+        # identity_federation_client_id).
         # The kernel auth bridge needs these to build OAuth kwargs — the
         # OAuth secret is consumed during ``auth_provider`` construction
         # and isn't recoverable from the built provider.
