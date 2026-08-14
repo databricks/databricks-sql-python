@@ -21,6 +21,10 @@ Three auth shapes are supported on the kernel path:
   kernel's ``auth_type='oauth-u2m'`` and the kernel runs the browser
   flow itself.
 
+``identity_federation_client_id`` is forwarded with whichever auth shape
+wins resolution. It selects mandatory SP-wide workload-identity token
+exchange in the kernel; omitting it preserves BYOT / account-wide behavior.
+
 A user-supplied custom ``credentials_provider`` is **rejected** on the
 kernel path with ``NotSupportedError``: it's an opaque token source
 with no extractable raw credentials, so the kernel can't own the
@@ -125,10 +129,10 @@ def kernel_auth_kwargs(
 
     ``auth_options`` carries the raw connect() kwargs relevant to auth
     (``auth_type``, ``oauth_client_id``, ``oauth_client_secret``,
-    ``oauth_redirect_port``, ``credentials_provider``). They drive the
-    OAuth decisions because the OAuth secret is consumed during
-    ``AuthProvider`` construction and can't be read back off the built
-    provider.
+    ``oauth_redirect_port``, ``credentials_provider``,
+    ``identity_federation_client_id``). They drive the OAuth decisions
+    because the OAuth secret is consumed during ``AuthProvider``
+    construction and can't be read back off the built provider.
 
     Resolution order:
 
@@ -161,6 +165,7 @@ def kernel_auth_kwargs(
 
     client_id = opts.get("oauth_client_id")
     client_secret = opts.get("oauth_client_secret")
+    federation_client_id = opts.get("identity_federation_client_id")
     auth_type = opts.get("auth_type")
     has_m2m = bool(client_id and client_secret)
 
@@ -191,6 +196,8 @@ def kernel_auth_kwargs(
         scopes = _normalize_scopes(opts.get("oauth_scopes"))
         if scopes is not None:
             kwargs["oauth_scopes"] = scopes
+        if federation_client_id:
+            kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
     # 2. PAT (including TokenFederationProvider-wrapped PAT).
@@ -201,7 +208,10 @@ def kernel_auth_kwargs(
                 "PAT auth provider did not produce a Bearer Authorization "
                 "header; cannot route through the kernel's PAT path"
             )
-        return {"auth_type": "pat", "access_token": token}
+        kwargs = {"auth_type": "pat", "access_token": token}
+        if federation_client_id:
+            kwargs["identity_federation_client_id"] = federation_client_id
+        return kwargs
 
     # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
     if auth_type in ("databricks-oauth", "azure-oauth"):
@@ -214,6 +224,8 @@ def kernel_auth_kwargs(
         scopes = _normalize_scopes(opts.get("oauth_scopes"))
         if scopes is not None:
             kwargs["oauth_scopes"] = scopes
+        if federation_client_id:
+            kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
     # 4. Custom credentials_provider — the connector's primary M2M path

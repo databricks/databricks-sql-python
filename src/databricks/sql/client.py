@@ -170,6 +170,10 @@ class Connection:
                 port of the oauth redirect uri (localhost). This is required when custom oauth client_id
                 `oauth_client_id` is set
 
+            identity_federation_client_id: `str`, optional
+                Service-principal client ID for mandatory SP-wide workload identity
+                token exchange. Supported by both the default and kernel backends.
+
             user_agent_entry: `str`, optional
                 A custom tag to append to the User-Agent header. This is typically used by partners to identify their applications.. If not specified, it will use the default user agent PyDatabricksSqlConnector
 

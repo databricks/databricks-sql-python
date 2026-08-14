@@ -52,7 +52,8 @@ Notes:
   `cp310-abi3`). On older interpreters the `[kernel]` extra installs
   nothing and `use_kernel=True` raises an `ImportError`.
 - The extra also pulls in PyArrow, which the kernel result path requires.
-- Authentication supports PAT (`access_token`), OAuth M2M, and OAuth U2M.
+- Authentication supports PAT (`access_token`), OAuth M2M/U2M, and SP-wide
+  workload identity federation (`identity_federation_client_id`).
 
 
 ```bash

@@ -164,8 +164,9 @@ class Session:
             # original credentials. On this path we intentionally did
             # NOT build the connector's own OAuth provider (see __init__
             # above), so these raw kwargs are the only source of the
-            # OAuth client id/secret. These are kernel-only; the Thrift
-            # / SEA backends are unaffected.
+            # OAuth client id/secret and optional federation client id.
+            # These are kernel-only; the Thrift / SEA backends are
+            # unaffected.
             kernel_auth_options = {
                 "auth_type": kwargs.get("auth_type"),
                 "oauth_client_id": kwargs.get("oauth_client_id"),
@@ -173,6 +174,9 @@ class Session:
                 "oauth_redirect_port": kwargs.get("oauth_redirect_port"),
                 "oauth_scopes": kwargs.get("oauth_scopes"),
                 "credentials_provider": kwargs.get("credentials_provider"),
+                "identity_federation_client_id": kwargs.get(
+                    "identity_federation_client_id"
+                ),
             }
             # Forward the connector's retry-tuning kwargs so the kernel's
             # own retry policy honours them (the kernel owns the retry
