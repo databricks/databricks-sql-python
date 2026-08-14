@@ -272,6 +272,46 @@ class TestKernelOAuthU2M:
         assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
 
 
+class TestKernelIdentityFederationClientId:
+    @pytest.mark.parametrize(
+        "auth_provider,auth_options",
+        [
+            pytest.param(AccessTokenAuthProvider("dapi-xyz"), {}, id="pat"),
+            pytest.param(
+                _FakeOAuthProvider(),
+                {"oauth_client_id": "sp-uuid", "oauth_client_secret": "shh"},
+                id="m2m",
+            ),
+            pytest.param(
+                _FakeOAuthProvider(),
+                {"auth_type": "databricks-oauth"},
+                id="u2m",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "federation_client_id",
+        [
+            pytest.param(None, id="omitted"),
+            pytest.param("", id="empty"),
+            pytest.param("federation-client", id="supplied"),
+        ],
+    )
+    def test_forwards_only_non_empty_value(
+        self, auth_provider, auth_options, federation_client_id
+    ):
+        options = dict(auth_options)
+        if federation_client_id is not None:
+            options["identity_federation_client_id"] = federation_client_id
+
+        kwargs = kernel_auth_kwargs(auth_provider, options)
+
+        if federation_client_id:
+            assert kwargs["identity_federation_client_id"] == federation_client_id
+        else:
+            assert "identity_federation_client_id" not in kwargs
+
+
 class TestKernelAuthAmbiguity:
     """Conflicting auth signals must fail loudly at session-open rather
     than silently resolving to one flow (which would surface later as a
