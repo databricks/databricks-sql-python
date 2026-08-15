@@ -20,4 +20,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** Run #31030595544's read-only plan phase spent a turn calling `edit_file` (turn 32) before realizing at turn 34 that edit tools are unavailable during planning.
   **Rule:** In the read-only plan phase the structured plan is the only deliverable — do not attempt `edit_file`/write tools there; defer all edits to the implementation phase to avoid wasted turns.
 
+### 2026-08-15: learnings since 2026-08-14T17:40:48Z
+- **Context:** PR #910 forwarded `identity_federation_client_id` through all three kernel auth-resolution branches (M2M, PAT, U2M) in `auth_bridge.py`, guarded by a truthy `if federation_client_id:` check; the reviewer flagged that the field was uniquely untested even though every other forwarded kwarg was pinned per-path.
+  **Rule:** When a kwarg/field is forwarded identically across N parallel resolution branches, assert it per-branch (plus a negative case for the omitted/empty guard) — a shared behavior tested on only one branch lets a dropped-field regression on the others pass CI silently.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
