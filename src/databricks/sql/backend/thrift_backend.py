@@ -777,8 +777,10 @@ class ThriftDatabricksClient(DatabricksClient):
                     sql_type = field.metadata.get(b"Spark:DataType:SqlName")
                     if sql_type == b"VARIANT":
                         cleaned_type = "variant"
+                    elif sql_type == b"TIMESTAMP_NTZ":
+                        cleaned_type = "timestamp_ntz"
             except Exception as e:
-                logger.debug(f"Could not extract variant type from field: {e}")
+                logger.debug(f"Could not extract type from field metadata: {e}")
 
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
