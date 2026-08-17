@@ -284,9 +284,13 @@ class TestKernelOAuthU2M:
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
-    def test_u2m_custom_client_id_scopes_and_port_honored(self):
-        # A caller overriding the app supplies the full coupled bundle;
-        # every field is forwarded verbatim.
+    def test_u2m_custom_client_id_and_port_honored_scopes_fixed(self):
+        # A caller overriding the app supplies the coupled client_id +
+        # redirect_port, which are forwarded verbatim. oauth_scopes is NOT
+        # caller-overridable: the Thrift path hardcodes PYSQL_OAUTH_SCOPES
+        # for U2M (it never reads an oauth_scopes kwarg), so the kernel
+        # path forwards the same fixed scopes for parity even when the
+        # caller passes their own.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -300,7 +304,7 @@ class TestKernelOAuthU2M:
             "auth_type": "oauth-u2m",
             "client_id": "custom-client",
             "redirect_port": 9999,
-            "oauth_scopes": ["custom-scope", "offline_access"],
+            "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
     def test_u2m_custom_client_id_only_falls_back_to_connector_defaults(self):
@@ -353,12 +357,16 @@ class TestKernelOAuthU2M:
         assert kwargs["redirect_port"] == PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
 
     @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
-    def test_u2m_forwards_custom_scopes(self, auth_type):
+    def test_u2m_ignores_custom_scopes_for_thrift_parity(self, auth_type):
+        # The Thrift path hardcodes PYSQL_OAUTH_SCOPES for U2M and never
+        # reads a caller's oauth_scopes; the kernel path forwards the same
+        # fixed scopes for parity rather than honoring an override the
+        # other backend silently ignores.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {"auth_type": auth_type, "oauth_scopes": ["all-apis", "offline_access"]},
         )
-        assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
+        assert kwargs["oauth_scopes"] == list(PYSQL_OAUTH_SCOPES)
 
 
 class TestKernelIdentityFederationClientId:
