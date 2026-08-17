@@ -1,153 +1,197 @@
-# Connection parameters
+# Connection parameter reference
 
-This is a reference for every keyword argument accepted by
-`databricks.sql.connect(...)` (which forwards straight into
-`Connection.__init__`). For each parameter it lists the type, default,
-which backend(s) actually consume it, and what it does.
+This document lists **every public connection / session parameter** the Python
+connector (`databricks.sql.connect(...)`) accepts, and — because the driver
+ships more than one backend — whether each parameter is honored on the
+**Thrift** backend (the default) or the **Kernel** backend (opt-in via
+`use_kernel=True`).
 
-```python
-from databricks import sql
+The goal is to make protocol gaps explicit: a parameter honored on one backend
+but ignored (or rejected) on the other is called out in the **Note** column.
 
-connection = sql.connect(
-    server_hostname="********.databricks.com",
-    http_path="/sql/1.0/warehouses/abc123",
-    access_token="dapi...",
-    # ...any of the parameters below...
-)
-```
+> **Backend selection.** The connector defaults to Thrift. The **Kernel**
+> backend — a native Rust core exposed via PyO3 — is selected with
+> `use_kernel=True`; it requires **Python ≥ 3.10** and the
+> `databricks-sql-connector[kernel]` extra, and is **early access** (its
+> parameter surface is still landing and may change without notice). Crucially,
+> the session layer forwards only a *curated, named subset* of parameters to
+> the kernel (`Session._create_backend`, `src/databricks/sql/session.py`) — it
+> does **not** splat `**kwargs` — so anything outside that subset is silently
+> ignored on the kernel path. That is why many rows below are ❌ for Kernel.
+>
+> A separate pure-Python **SEA** backend (`use_sea=True`) also exists but is
+> being deprecated, so it is intentionally omitted from this reference.
 
-## The three backends
+## Legend
 
-The connector can talk to Databricks through one of three backend
-implementations. You pick one at connect time:
-
-| Backend | Selected by | Status | Notes |
-| --- | --- | --- | --- |
-| **Thrift** | *(default)* | GA | Thrift-over-HTTP client. Works against SQL warehouses **and** all-purpose (interactive) clusters. |
-| **SEA** | `use_sea=True` | Public preview | Pure-Python client for the [Statement Execution API](https://docs.databricks.com/api/workspace/statementexecution). SQL warehouses only. |
-| **Kernel** | `use_kernel=True` | Early access | Routes through the native Rust core (`databricks-sql-kernel`) via PyO3. Requires Python ≥ 3.10 and the `[kernel]` extra. See the "Rust kernel backend" section of the [README](../README.md). |
-
-`use_sea` and `use_kernel` are **mutually exclusive** — passing both raises
-`ValueError`.
-
-## How to read the backend columns
-
-The **Thrift**, **SEA**, and **Kernel** columns say whether that backend
-actually reads the parameter:
-
-- **✓** — consumed by that backend.
-- **✗** — accepted (it's just `**kwargs`) but ignored by that backend, so it
-  has no effect.
-- **—** — not applicable (e.g. a backend-selection flag).
-
-> **Kernel is early access.** The session layer forwards only a *curated,
-> named subset* of parameters to the kernel (it does **not** splat
-> `**kwargs`). Any parameter marked **✗** for Kernel is silently dropped on
-> that path rather than raising — so it will not take effect. Result-format
-> and transport tuning (cloud fetch, LZ4, download threads, arrow-native
-> decimals/timestamps) is managed inside the kernel and is not user-tunable
-> from here yet. Kernel capabilities are still landing; treat its column as a
-> snapshot of connector `4.4.0`.
+| Symbol | Meaning                                                             |
+| ------ | ------------------------------------------------------------------- |
+| ✅     | Honored — the option is read and forwarded to the backend.          |
+| ❌     | Ignored or rejected — see the Note column.                          |
+| ⚠️     | Partially supported or behaves differently from the other backend.  |
+| —      | Not applicable / no public equivalent / no default on this backend. |
 
 Parameters whose name begins with an underscore (e.g. `_socket_timeout`) are
-**internal / advanced** knobs. They are not part of the stable public API and
-may change without notice, but they are documented here because they are
-commonly used in the field.
+**internal / advanced** knobs — not part of the stable public API, and subject
+to change without notice.
 
-## Parameters
+## Sources of truth
 
-| Parameter | Type | Default | Thrift | SEA | Kernel | Meaning |
-| --- | --- | --- | :---: | :---: | :---: | --- |
-| **Connection target** | | | | | | |
-| `server_hostname` | `str` | *required* | ✓ | ✓ | ✓ | Databricks workspace hostname, e.g. `dbc-12345.cloud.databricks.com`. |
-| `http_path` | `str` | *required* | ✓ | ✓ | ✓ | HTTP path to a SQL warehouse (`/sql/1.0/warehouses/...`) or, for Thrift only, an all-purpose cluster (`/sql/protocolv1/o/.../...`). SEA and Kernel require a warehouse/endpoint path. |
-| `_port` | `int` | `443` | ✓ | ✓ | ✗ | TCP port. Advanced/testing only. |
-| `_connection_uri` | `str` | `None` | ✓ | ✗ | ✗ | Overrides `server_hostname`/`http_path` with a full URI. Internal. |
-| **Authentication** | | | | | | |
-| `access_token` | `str` | `None` | ✓ | ✓ | ✓ | Personal Access Token / bearer token. If omitted, auth falls back to OAuth. |
-| `auth_type` | `str` | `None` | ✓ | ✓ | ✓ | Auth flow selector: `databricks-oauth` (U2M/M2M) or `azure-oauth` (Microsoft Entra ID). Defaults to Databricks OAuth when no token or cert is given. |
-| `oauth_client_id` | `str` | built-in | ✓ | ✓ | ✓ | Custom OAuth client ID. Defaults to the connector's built-in `databricks-sql-python` client. |
-| `oauth_redirect_port` | `int` | `None` | ✓ | ✓ | ✓ | Localhost redirect port for the U2M browser flow. Required when a custom `oauth_client_id` is set. |
-| `oauth_client_secret` | `str` | `None` | ✗ | ✗ | ✓ | OAuth M2M client secret. Only honored on the Kernel path today; the Thrift/SEA connector does not consume it. |
-| `oauth_scopes` | `List[str]` | `["sql", "offline_access"]` | ✗ | ✗ | ✓ | Custom OAuth scopes. Thrift/SEA always use the built-in scope set; only the Kernel path reads a custom value. |
-| `experimental_oauth_persistence` | `OAuthPersistence` | `None` | ✓ | ✓ | ✗ | Storage backend for persisting OAuth tokens across process restarts (beta). Kernel manages its own token lifecycle. |
-| `credentials_provider` | `CredentialsProvider` | `None` | ✓ | ✓ | ✓ | Custom credentials provider for external auth. |
-| `identity_federation_client_id` | `str` | `None` | ✓ | ✓ | ✓ | Token-federation (workload identity federation) client ID. |
-| `azure_client_id` | `str` | `None` | ✓ | ✓ | ✗ | Microsoft Entra ID (Azure AD) service-principal client/app ID (with `auth_type="azure-oauth"`). |
-| `azure_client_secret` | `str` | `None` | ✓ | ✓ | ✗ | Azure service-principal client secret. |
-| `azure_tenant_id` | `str` | `None` | ✓ | ✓ | ✗ | Azure AD tenant ID. |
-| `azure_workspace_resource_id` | `str` | `None` | ✓ | ✓ | ✗ | Azure workspace resource ID. |
-| `_use_cert_as_auth` | `bool` | `False` | ✓ | ✓ | ✗ | Authenticate with a TLS client certificate instead of a token/OAuth. Internal. |
-| `username` / `password` | `str` | `None` | ✗ | ✗ | ✗ | **Removed.** Basic auth is no longer supported; passing either raises `ValueError`. |
-| **TLS / SSL** | | | | | | |
-| `_tls_no_verify` | `bool` | `False` | ✓ | ✓ | ✓ | Disable all TLS verification (cert **and** hostname). Dangerous — testing only. |
-| `_tls_verify_hostname` | `bool` | `True` | ✓ | ✓ | ✓ | Verify the server hostname matches the certificate (cert still verified). |
-| `_tls_trusted_ca_file` | `str` | `None` | ✓ | ✓ | ✓ | Path to a CA bundle for server-cert verification. Defaults to the system trust store. |
-| `_tls_client_cert_file` | `str` | `None` | ✓ | ✓ | ✓ | Path to a client certificate (mutual TLS). |
-| `_tls_client_cert_key_file` | `str` | `None` | ✓ | ✓ | ✓ | Path to the client certificate's private key. |
-| `_tls_client_cert_key_password` | `str` | `None` | ✓ | ✓ | ✓ | Password for an encrypted client-key file. |
-| **Session setup** | | | | | | |
-| `http_headers` | `List[Tuple[str, str]]` | `None` | ✓ | ✓ | ✓ | Extra `(key, value)` HTTP headers sent on every request. |
-| `session_configuration` | `Dict[str, Any]` | `None` | ✓ | ✓ | ✓ | Spark/SQL session parameters (e.g. `{"ansi_mode": "true"}`). Run `SET -v` for the full list. |
-| `catalog` | `str` | `None` | ✓ | ✓ | ✓ | Initial catalog for the session (DBR 9.0+). |
-| `schema` | `str` | `None` | ✓ | ✓ | ✓ | Initial schema for the session (DBR 9.0+). |
-| `query_tags` | `Dict[str, Optional[str]]` | `None` | ✓ | ✓ | ✓ | Key/value tags serialized into the `QUERY_TAGS` session config. (Per-*statement* query tags are not yet supported on Kernel.) |
-| `enable_metric_view_metadata` | `bool` | `False` | ✓ | ✓ | ✓ | Sets `spark.sql.thriftserver.metadata.metricview.enabled` so `cursor.tables()`/`cursor.columns()` surface metric-view metadata. |
-| `user_agent_entry` | `str` | `None` | ✓ | ✓ | ✓ | Custom tag appended to the `User-Agent` header (used by partners to identify their app). |
-| `_user_agent_entry` | `str` | `None` | ✓ | ✓ | ✓ | **Deprecated** alias for `user_agent_entry`; emits a warning. |
-| **Backend selection** | | | | | | |
-| `use_sea` | `bool` | `False` | — | — | — | Route through the pure-Python SEA backend. |
-| `use_kernel` | `bool` | `False` | — | — | — | Route through the Rust kernel backend. Mutually exclusive with `use_sea`. |
-| `use_hybrid_disposition` | `bool` | `False` | ✗ | ✓ | ✗ | SEA only: use the hybrid result disposition instead of inline. |
-| **Result format & data types** | | | | | | |
-| `use_cloud_fetch` | `bool` | `True` | ✓ | ✓ | ✗ | Download large result sets in parallel from cloud storage. Kernel manages result transport internally. |
-| `max_download_threads` | `int` | `10` | ✓ | ✓ | ✗ | Worker threads for cloud-fetch downloads. |
-| `enable_query_result_lz4_compression` | `bool` | `True` | ✓ | ✓ | ✗ | LZ4-compress result payloads. |
-| `_disable_pandas` | `bool` | `False` | ✓ | ✓ | ✗ | Skip the pandas-based Arrow deserialization path (fallback for pandas edge cases). |
-| `_use_arrow_native_complex_types` | `bool` | `True` | ✓ | ✓ | ✓ | Return `ARRAY`/`MAP`/`STRUCT` as native Arrow types instead of JSON strings. |
-| `_use_arrow_native_decimals` | `bool` | `True` | ✓ | ✗ | ✗ | Return `DECIMAL` as a native Arrow type instead of a string. |
-| `_use_arrow_native_timestamps` | `bool` | `True` | ✓ | ✗ | ✗ | Return `TIMESTAMP` as a native Arrow type instead of a string. |
-| **Query parameters & transactions** | | | | | | |
-| `use_inline_params` | `bool` \| `"silent"` | `False` | ✓ | ✓ | ✗ | Render parameters inline into the SQL text (legacy) instead of native bound parameters (DBR 14.1+). `"silent"` suppresses the deprecation warning. |
-| `ignore_transactions` | `bool` | `True` | ✓ | ✓ | ✓ | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op. |
-| `fetch_autocommit_from_server` | `bool` | `False` | ✓ | ✓ | ✓ | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value. |
-| **Volume staging (`PUT`/`GET`)** | | | | | | |
-| `staging_allowed_local_path` | `str` \| `List[str]` | `None` | ✓ | ✓ | ✗ | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET` staging operations. Kernel has no Volume API yet. |
-| **Networking / connection pool** | | | | | | |
-| `_socket_timeout` | `float` | `900` (Thrift) | ✓ | ✗ | ✗ | Socket send/recv/connect timeout, in seconds. |
-| `_pool_connections` | `int` | `10` | ✓ | ✓ | ✓ | Number of urllib3 connection pools on the shared HTTP client. |
-| `_pool_maxsize` | `int` | `20` | ✓ | ✓ | ✓ | Max connections per pool on the shared HTTP client. |
-| `_proxy_auth_method` | `str` | `None` | ✓ | ✓ | ✓ | Proxy authentication scheme: `basic` or `negotiate` (Kerberos). See [`docs/proxy.md`](proxy.md). |
-| **Retry policy** | | | | | | |
-| `_retry_stop_after_attempts_count` | `int` | `30` | ✓ | ✓ | ✓ | Max attempts in a retry sequence. Bounded to `[1, 60]` on Thrift. |
-| `_retry_stop_after_attempts_duration` | `float` | `900` | ✓ | ✓ | ✓ | Max total wall-clock seconds spent retrying. |
-| `_retry_delay_min` | `float` | `1` | ✓ | ✓ | ✓ | Minimum backoff delay between retries (seconds). |
-| `_retry_delay_max` | `float` | `60` | ✓ | ✓ | ✓ | Maximum backoff delay between retries (seconds). |
-| `_retry_delay_default` | `float` | `5` | ✓ | ✓ | ✗ | Delay used when a poll fails due to a TCP/OS error. |
-| `_retry_dangerous_codes` | `List[int]` | `[]` | ✓ | ✓ | ✗ | HTTP status codes for which even non-idempotent commands (e.g. `ExecuteStatement`) are retried. |
-| `_respect_server_retry_after_header` | `bool` | `False` | ✓ | ✓ | ✗ | Honor the server's `Retry-After` header. |
-| `_retry_max_redirects` | `int` | `None` | ✓ | ✓ | ✗ | Max HTTP redirects to follow (must be ≤ `_retry_stop_after_attempts_count`). |
-| `_enable_v3_retries` | `bool` | `True` | ✓ | ✓ | ✗ | Use the urllib3-based v3 retry policy. Setting `False` selects the deprecated legacy policy. |
-| **Telemetry** | | | | | | |
-| `enable_telemetry` | `bool` | `True` | ✓ | ✓ | ✓ | Enable client telemetry collection. |
-| `force_enable_telemetry` | `bool` | `False` | ✓ | ✓ | ✓ | Force telemetry on regardless of the server-side feature flag. |
-| `telemetry_batch_size` | `int` | `100` | ✓ | ✓ | ✓ | Number of telemetry events buffered before a flush. |
-| `_telemetry_circuit_breaker_enabled` | `bool` | `True` | ✓ | ✓ | ✓ | Enable the telemetry circuit breaker. |
+- Public signature ← `Connection.__init__` (`src/databricks/sql/client.py`) and
+  `connect()` (`src/databricks/sql/__init__.py`).
+- Backend routing / kernel-forwarded subset ← `Session._create_backend`
+  (`src/databricks/sql/session.py`).
+- Default values ← the backend clients' `__init__` and the shared
+  `ClientContext` (`src/databricks/sql/auth/common.py`).
+- Thrift wiring ← `src/databricks/sql/backend/thrift_backend.py`; auth ←
+  `src/databricks/sql/auth/auth.py`.
+- Kernel wiring ← `src/databricks/sql/backend/kernel/client.py` and
+  `auth_bridge.py`, plus the `kernel_auth_options` / `kernel_retry_options`
+  forwarding in `session.py`.
+- Shared HTTP / telemetry ← `src/databricks/sql/common/unified_http_client.py`
+  and `build_client_context` (`src/databricks/sql/utils.py`).
 
-## Notes
+---
 
-- **Underscore-prefixed parameters are advanced/internal** and not part of the
-  stable public API. They can change between releases.
-- **`_socket_timeout`** governs the Thrift transport socket. The SEA and
-  Kernel HTTP layers manage their own timeouts and do not read it. (It is also
-  passed to the auth HTTP client, which applies its own retry defaults.)
-- **Retry defaults for auth requests differ.** The values above are the
-  defaults for *query* traffic (from the backend retry policy). The internal
-  auth HTTP client reuses the same `_retry_*` kwargs but applies its own
-  built-in defaults when they are unset.
-- A couple of flags are declared in the code but currently unused (`_enable_ssl`,
-  `_skip_routing_headers`); they are omitted from the table above.
+## Connection identity
 
-*Generated against connector version `4.4.0`. When in doubt, the source of
-truth is `Connection.__init__` in [`src/databricks/sql/client.py`](../src/databricks/sql/client.py)
-and the per-backend clients under `src/databricks/sql/backend/`.*
+| Option            | Type  | Thrift | Kernel | Default Value | Note                                                                                                                    |
+| ----------------- | ----- | :----: | :----: | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `server_hostname` | `str` |   ✅   |   ✅   | — (required)  | Workspace hostname, e.g. `dbc-12345.cloud.databricks.com`.                                                              |
+| `http_path`       | `str` |   ✅   |   ✅   | — (required)  | Thrift accepts a SQL-warehouse path **or** an all-purpose-cluster path; Kernel requires a warehouse/endpoint path.      |
+| `_port`           | `int` |   ✅   |   —    | `443`         | TCP port (advanced). Not threaded to the kernel; it derives host/port from `server_hostname` + `http_path`.             |
+| `_connection_uri` | `str` |   ✅   |   —    | `None`        | Thrift-only internal override of `server_hostname`/`http_path`. No kernel equivalent.                                   |
+| `user_agent_entry`| `str` |   ✅   |   ✅   | `None`        | Custom tag folded into the composed `User-Agent` on both. (`_user_agent_entry` is a deprecated alias that warns.)       |
+
+## Authentication
+
+| Option                                              | Type                 | Thrift | Kernel | Default Value             | Note                                                                                                                                                            |
+| --------------------------------------------------- | -------------------- | :----: | :----: | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `access_token` (PAT)                                | `str`                |   ✅   |   ✅   | `None`                    | Personal Access Token / bearer token. The default auth mode when set; otherwise auth falls back to OAuth.                                                       |
+| `auth_type`                                         | `str`                |   ✅   |   ✅   | `None` ⇒ Databricks OAuth | `databricks-oauth` or `azure-oauth`.                                                                                                                            |
+| `oauth_client_id` (U2M)                             | `str`                |   ✅   |   ✅   | built-in client id        | Custom U2M client id. Forwarded on both; when absent, each path applies its own built-in default.                                                              |
+| `oauth_redirect_port` (U2M)                         | `int`                |   ✅   |   ✅   | `None`                    | Localhost redirect port for the browser flow; required when a custom `oauth_client_id` is set.                                                                  |
+| `oauth_client_secret` (OAuth M2M)                   | `str`                |   ❌   |   ✅   | `None`                    | **Kernel-only in practice.** The Thrift auth path never reads `oauth_client_secret`; use `credentials_provider` or an Azure service principal for M2M on Thrift. |
+| `oauth_scopes`                                      | `List[str]`          |   ❌   |   ✅   | `["sql","offline_access"]`| **Thrift ignores custom scopes** — it always uses the built-in scope set. Only the kernel honors a custom `oauth_scopes`.                                       |
+| `credentials_provider`                              | `CredentialsProvider`|   ✅   |   ✅   | `None`                    | Custom external credentials provider.                                                                                                                          |
+| `identity_federation_client_id`                     | `str`                |   ✅   |   ✅   | `None`                    | Workload identity / token-federation client id (kernel support added in #910).                                                                                 |
+| `experimental_oauth_persistence`                    | `OAuthPersistence`   |   ✅   |   ❌   | `None`                    | **Thrift-only.** The kernel owns its own token lifecycle and does not accept a persistence store.                                                              |
+| `azure_client_id` / `azure_client_secret` / `azure_tenant_id` / `azure_workspace_resource_id` | `str` | ✅ | ❌ | `None` | **Thrift-only.** Azure service-principal / Entra ID OAuth is not forwarded to the kernel.                                                                       |
+| `_use_cert_as_auth` (+ `_tls_client_cert_file`)     | `bool`               |   ✅   |   ❌   | `False`                   | Authenticate with a TLS client certificate instead of a token. Thrift-only.                                                                                    |
+| `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported; passing either raises `ValueError`.                                                                            |
+
+## HTTP client, proxy, retries
+
+| Option                               | Type        | Thrift | Kernel | Default Value | Note                                                                                                                                            |
+| ------------------------------------ | ----------- | :----: | :----: | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_socket_timeout`                    | `float` (s) |   ✅   |   ❌   | `900`         | Socket send/recv/connect timeout. Not forwarded to the kernel, which manages its own request timeout.                                          |
+| `_pool_connections`                  | `int`       |   ✅   |   ⚠️   | `10`          | Number of urllib3 connection pools. Configures the connector's shared Python HTTP client; the kernel's query transport is its own Rust stack.  |
+| `_pool_maxsize`                      | `int`       |   ✅   |   ⚠️   | `20`          | Max connections per pool on the shared Python HTTP client. Same kernel caveat as `_pool_connections`.                                          |
+| `_proxy_auth_method`                 | `str`       |   ✅   |   ⚠️   | `None`        | `basic` or `negotiate` (Kerberos). Applies to the shared Python HTTP client; not threaded to the kernel query transport. See [`proxy.md`](proxy.md). |
+| `_retry_stop_after_attempts_count`   | `int`       |   ✅   |   ✅   | `30`          | Max attempts in a retry sequence. Bounded to `[1, 60]` on Thrift; forwarded to the kernel's retry policy.                                       |
+| `_retry_stop_after_attempts_duration`| `float` (s) |   ✅   |   ✅   | `900`         | Max total wall-clock seconds spent retrying. Forwarded to the kernel.                                                                           |
+| `_retry_delay_min`                   | `float` (s) |   ✅   |   ✅   | `1`           | Minimum backoff delay. Forwarded to the kernel.                                                                                                 |
+| `_retry_delay_max`                   | `float` (s) |   ✅   |   ✅   | `60`          | Maximum backoff delay. Forwarded to the kernel.                                                                                                 |
+| `_retry_delay_default`               | `float` (s) |   ✅   |   ❌   | `5`           | Delay used when a poll fails due to a TCP/OS error. Not forwarded — the kernel's backoff has no flat-default equivalent.                        |
+| `_retry_dangerous_codes`             | `List[int]` |   ✅   |   ❌   | `[]`          | HTTP status codes for which even non-idempotent commands are retried. Thrift-only.                                                             |
+| `_respect_server_retry_after_header` | `bool`      |   ✅   |   ❌   | `False`       | Honor the server's `Retry-After` header. Thrift-only.                                                                                           |
+| `_retry_max_redirects`               | `int`       |   ✅   |   ❌   | `None`        | Max HTTP redirects to follow (must be ≤ `_retry_stop_after_attempts_count`). Thrift-only.                                                       |
+| `_enable_v3_retries`                 | `bool`      |   ✅   |   ❌   | `True`        | Use the urllib3-based v3 retry policy; `False` selects the deprecated legacy policy. Thrift-only.                                               |
+
+## TLS / SSL
+
+> TLS options are assembled into a single `SSLOptions` object in `session.py`
+> and passed to **every** backend, so they are honored on both Thrift and
+> Kernel. Verification is **on by default**; you must pass `_tls_no_verify=True`
+> to disable it.
+
+| Option                          | Type  | Thrift | Kernel | Default Value | Note                                                                       |
+| ------------------------------- | ----- | :----: | :----: | ------------- | -------------------------------------------------------------------------- |
+| `_tls_no_verify`                | `bool`|   ✅   |   ✅   | `False`       | Disable all TLS verification (cert **and** hostname). Dangerous — testing. |
+| `_tls_verify_hostname`          | `bool`|   ✅   |   ✅   | `True`        | Verify the server hostname matches the certificate (cert still verified).  |
+| `_tls_trusted_ca_file`          | `str` |   ✅   |   ✅   | `None`        | Path to a CA bundle. Defaults to the system trust store.                   |
+| `_tls_client_cert_file`         | `str` |   ✅   |   ✅   | `None`        | Client certificate for mutual TLS.                                         |
+| `_tls_client_cert_key_file`     | `str` |   ✅   |   ✅   | `None`        | Private key for the client certificate.                                    |
+| `_tls_client_cert_key_password` | `str` |   ✅   |   ✅   | `None`        | Password for an encrypted client-key file.                                 |
+
+## Results & type rendering
+
+| Option                                | Type   | Thrift | Kernel | Default Value | Note                                                                                                          |
+| ------------------------------------- | ------ | :----: | :----: | ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `use_cloud_fetch`                     | `bool` |   ✅   |   ❌   | `True`        | Download large result sets in parallel from cloud storage. The kernel manages result transport internally.    |
+| `max_download_threads`                | `int`  |   ✅   |   ❌   | `10`          | Worker threads for cloud-fetch downloads. Not forwarded to the kernel.                                        |
+| `enable_query_result_lz4_compression` | `bool` |   ✅   |   ❌   | `True`        | LZ4-compress result payloads. Not forwarded; the kernel handles compression internally.                       |
+| `_disable_pandas`                     | `bool` |   ✅   |   ❌   | `False`       | Skip the pandas-based Arrow deserialization path. Not forwarded to the kernel.                                |
+| `_use_arrow_native_complex_types`     | `bool` |   ✅   |   ✅   | `True`        | Return `ARRAY`/`MAP`/`STRUCT` as native Arrow types instead of JSON strings. Forwarded to the kernel.         |
+| `_use_arrow_native_decimals`          | `bool` |   ✅   |   ❌   | `True`        | Return `DECIMAL` as a native Arrow type instead of a string. Thrift-only.                                     |
+| `_use_arrow_native_timestamps`        | `bool` |   ✅   |   ❌   | `True`        | Return `TIMESTAMP` as a native Arrow type instead of a string. Thrift-only.                                   |
+
+## Session defaults & transactions
+
+| Option                        | Type                              | Thrift | Kernel | Default Value | Note                                                                                                                       |
+| ----------------------------- | --------------------------------- | :----: | :----: | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `session_configuration`       | `Dict[str, Any]`                  |   ✅   |   ✅   | `None`        | Spark/SQL session parameters (e.g. `{"ansi_mode": "true"}`). Delivered via `open_session` on both backends.                |
+| `catalog`                     | `str`                             |   ✅   |   ✅   | `None`        | Initial catalog for the session (DBR 9.0+).                                                                                |
+| `schema`                      | `str`                             |   ✅   |   ✅   | `None`        | Initial schema for the session (DBR 9.0+).                                                                                 |
+| `query_tags`                  | `Dict[str, Optional[str]]`        |   ✅   |   ✅   | `None`        | Serialized into the reserved `QUERY_TAGS` session conf. (Per-*statement* query tags are not yet supported on Kernel.)      |
+| `enable_metric_view_metadata` | `bool`                            |   ✅   |   ✅   | `False`       | Sets `spark.sql.thriftserver.metadata.metricview.enabled` via session config so metric-view metadata surfaces.            |
+| `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ⚠️   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). The kernel uses native binding; inline may differ.  |
+| `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
+| `fetch_autocommit_from_server`| `bool`                            |   ✅   |   ✅   | `False`       | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value.                           |
+| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ❌   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. **Thrift-only** — the kernel has no Volume API yet.          |
+
+## Telemetry
+
+All `*telemetry*` options live in the driver layer (the shared HTTP client and
+`TelemetryClientFactory`), not inside either backend, so they are read
+regardless of `use_kernel`.
+
+| Option                             | Type   | Thrift | Kernel | Default Value | Note                                                     |
+| ---------------------------------- | ------ | :----: | :----: | ------------- | -------------------------------------------------------- |
+| `enable_telemetry`                 | `bool` |   ✅   |   ✅   | `True`        | Enable client telemetry (also gated by a server flag).   |
+| `force_enable_telemetry`           | `bool` |   ✅   |   ✅   | `False`       | Force telemetry on regardless of the server-side flag.   |
+| `telemetry_batch_size`             | `int`  |   ✅   |   ✅   | `100`         | Events buffered before a flush.                          |
+| `_telemetry_circuit_breaker_enabled`| `bool`|   ✅   |   ✅   | `True`        | Enable the telemetry circuit breaker.                    |
+
+> **Telemetry _events_ differ by backend.** The knobs above are backend-agnostic,
+> but because the kernel owns result fetching internally it emits fewer
+> per-statement / CloudFetch telemetry events than the Thrift path.
+
+---
+
+## Summary of gaps
+
+### Supported on Thrift, missing / ignored on Kernel
+
+1. `oauth_client_secret` (Databricks OAuth M2M) and custom `oauth_scopes`.
+2. `experimental_oauth_persistence` (custom OAuth token store).
+3. Azure service-principal / Entra ID OAuth (`azure_client_id`,
+   `azure_client_secret`, `azure_tenant_id`, `azure_workspace_resource_id`).
+4. TLS-client-cert *authentication* (`_use_cert_as_auth`) — note the TLS
+   *transport* options (`_tls_*`) themselves **are** honored on both backends.
+5. Result-transport tuning: `use_cloud_fetch`, `max_download_threads`,
+   `enable_query_result_lz4_compression`, `_disable_pandas`.
+6. Arrow-native rendering for `_use_arrow_native_decimals` /
+   `_use_arrow_native_timestamps` (complex types **are** forwarded).
+7. `staging_allowed_local_path` (Volume `PUT`/`GET`).
+8. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
+   `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
+   `_retry_max_redirects`, `_enable_v3_retries`.
+9. `_socket_timeout`, `_port`, `_connection_uri`.
+
+### Supported on Kernel, no Thrift public equivalent
+
+None — the kernel's parameter surface is currently a subset of Thrift's.
+
+### Behavioral divergences to watch
+
+- **Connection pooling / proxy** (`_pool_connections`, `_pool_maxsize`,
+  `_proxy_auth_method`) configure the connector's shared Python HTTP client
+  (auth/telemetry); the kernel's query traffic uses its own Rust transport.
+- **`use_inline_params`** renders parameters inline on Thrift; the kernel uses
+  native parameter binding.
+
+> All kernel-path behavior reflects the current **early-access** surface and is
+> subject to change. Generated against connector version `4.4.0`; the source of
+> truth is `Connection.__init__` (`src/databricks/sql/client.py`) and the
+> per-backend clients under `src/databricks/sql/backend/`.

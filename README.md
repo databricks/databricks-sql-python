@@ -23,7 +23,7 @@ For the latest documentation, see
 - [Azure Databricks](https://docs.microsoft.com/en-us/azure/databricks/dev-tools/python-sql-connector)
 
 For a full reference of every `sql.connect(...)` keyword argument — type,
-default, per-backend support (Thrift / SEA / Kernel), and meaning — see
+default, per-backend support (Thrift vs Kernel), and meaning — see
 [`docs/connection-parameters.md`](docs/connection-parameters.md).
 
 ## Quickstart
