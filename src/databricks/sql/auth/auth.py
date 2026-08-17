@@ -125,9 +125,10 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
     oauth_redirect_port = kwargs.get("oauth_redirect_port")
     oauth_scopes = kwargs.get("oauth_scopes")
 
-    scopes = oauth_scopes or PYSQL_OAUTH_SCOPES
     if caller_client_id:
         client_id = caller_client_id
+        # Caller owns the bundle: forward their scopes verbatim.
+        scopes = oauth_scopes or PYSQL_OAUTH_SCOPES
         # Foreign client_id with no explicit port falls through to the base
         # (app-neutral) default, NOT the driver's app-specific range.
         redirect_port_range = (
@@ -137,9 +138,15 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         )
     else:
         client_id = default_client_id
-        redirect_port_range = (
-            [oauth_redirect_port] if oauth_redirect_port else default_redirect_port_range
-        )
+        # The caller relies on the driver's default client_id, whose OAuth app
+        # only has the app-specific default scopes/range registered. A caller-
+        # supplied oauth_scopes must NOT override the driver's app-specific
+        # default scopes here, just as a caller-supplied oauth_redirect_port must
+        # NOT override the default range (doing so risks a redirect_uri_mismatch
+        # or scope error, PECOBLR-4039); both only take effect alongside a
+        # caller-supplied oauth_client_id.
+        scopes = PYSQL_OAUTH_SCOPES
+        redirect_port_range = default_redirect_port_range
 
     cfg = ClientContext(
         hostname=normalize_host_name(hostname),
