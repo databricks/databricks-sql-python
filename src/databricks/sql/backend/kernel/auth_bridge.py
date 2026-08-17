@@ -247,7 +247,11 @@ def kernel_auth_kwargs(
     #    http://localhost:{port}, with scheme/host/path fixed. The
     #    connector registers a port *range* for its app but the kernel
     #    accepts a single port, so we forward the first (canonical)
-    #    registered port.
+    #    registered port. A caller-supplied port only overrides that
+    #    default when an explicit client_id is ALSO supplied — matching
+    #    the Thrift path's coupling (a bare oauth_redirect_port paired
+    #    with the default databricks-sql-python app would resolve to an
+    #    unregistered redirect URI and fail the flow).
     if auth_type in ("databricks-oauth", "azure-oauth"):
         is_azure = auth_type == "azure-oauth"
         default_client_id = (
@@ -265,7 +269,7 @@ def kernel_auth_kwargs(
             "client_id": client_id or default_client_id,
             "redirect_port": (
                 int(redirect_port)
-                if redirect_port is not None
+                if client_id and redirect_port is not None
                 else default_port_range[0]
             ),
             "oauth_scopes": (

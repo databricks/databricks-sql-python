@@ -324,13 +324,33 @@ class TestKernelOAuthU2M:
 
     def test_u2m_redirect_port_coerced_to_int(self):
         # oauth_redirect_port may arrive as a string (e.g. from a DSN);
-        # the kernel binding wants an int.
+        # the kernel binding wants an int. The port override is coupled to
+        # an explicit client_id (see the coupling test below), so supply
+        # one here to exercise the coercion path.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
-            {"auth_type": "databricks-oauth", "oauth_redirect_port": "8021"},
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_client_id": "custom-client",
+                "oauth_redirect_port": "8021",
+            },
         )
         assert kwargs["redirect_port"] == 8021
         assert isinstance(kwargs["redirect_port"], int)
+
+    def test_u2m_redirect_port_ignored_without_client_id(self):
+        # A bare oauth_redirect_port (no explicit client_id) must NOT be
+        # forwarded: it would be paired with the default databricks-sql-python
+        # app, whose registered redirect URIs only cover the default port
+        # range, so an arbitrary port would resolve to an unregistered URI
+        # and fail the U2M flow. This mirrors the Thrift path's coupling,
+        # where oauth_redirect_port_range is only overridden when both
+        # oauth_client_id and oauth_redirect_port are supplied.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {"auth_type": "databricks-oauth", "oauth_redirect_port": 9999},
+        )
+        assert kwargs["redirect_port"] == PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
 
     @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
     def test_u2m_forwards_custom_scopes(self, auth_type):
