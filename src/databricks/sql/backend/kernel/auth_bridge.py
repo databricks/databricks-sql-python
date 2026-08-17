@@ -236,12 +236,15 @@ def kernel_auth_kwargs(
     #    authenticate as databricks-sql-connector, breaking parity with
     #    the Thrift path (which authenticates as databricks-sql-python).
     #
-    #    client_id + scopes + redirect_port are coupled per OAuth app —
-    #    each app registers its own redirect URI — so all three are
-    #    resolved together: an explicit caller value wins; otherwise the
-    #    connector's registered databricks-sql-python (or azure) bundle is
-    #    used, mirroring the defaults get_python_sql_connector_auth_provider
-    #    applies on the Thrift path.
+    #    client_id + redirect_port are coupled per OAuth app — each app
+    #    registers its own redirect URI — so both are resolved together:
+    #    an explicit caller value wins; otherwise the connector's
+    #    registered databricks-sql-python (or azure) bundle is used,
+    #    mirroring the defaults get_python_sql_connector_auth_provider
+    #    applies on the Thrift path. scopes are NOT caller-overridable:
+    #    the Thrift path hardcodes PYSQL_OAUTH_SCOPES for U2M (a caller's
+    #    oauth_scopes kwarg is never read there), so we forward the same
+    #    fixed scopes here to keep the two backends in parity.
     #
     #    Only the redirect PORT is routable into the kernel: it derives
     #    http://localhost:{port}, with scheme/host/path fixed. The
@@ -263,7 +266,12 @@ def kernel_auth_kwargs(
             else PYSQL_OAUTH_REDIRECT_PORT_RANGE
         )
         redirect_port = opts.get("oauth_redirect_port")
-        scopes = _normalize_scopes(opts.get("oauth_scopes"))
+        # Validate any caller-supplied oauth_scopes (a bad type is still a
+        # caller error worth flagging) but do NOT forward it: the Thrift
+        # path hardcodes PYSQL_OAUTH_SCOPES for U2M, so we do the same for
+        # parity rather than letting the kernel path honor an override the
+        # other backend silently ignores.
+        _normalize_scopes(opts.get("oauth_scopes"))
         kwargs = {
             "auth_type": "oauth-u2m",
             "client_id": client_id or default_client_id,
@@ -272,9 +280,7 @@ def kernel_auth_kwargs(
                 if client_id and redirect_port is not None
                 else default_port_range[0]
             ),
-            "oauth_scopes": (
-                scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES)
-            ),
+            "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
