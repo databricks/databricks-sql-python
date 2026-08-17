@@ -251,44 +251,19 @@ def kernel_auth_kwargs(
         return kwargs
 
     # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
-    #    Only databricks-oauth reaches here (azure-oauth was rejected up
-    #    front — see the guard near the top of this function).
-    #
-    #    The kernel's core default U2M app is databricks-sql-connector /
-    #    sql offline_access / port 8030 (PECOBLR-4039). The Python
-    #    connector is an OVERRIDE of that default: on this path we forward
-    #    its OWN full bundle rather than letting the kernel fall back to
-    #    the connector default. Forwarding a bare oauth-u2m would
-    #    authenticate as databricks-sql-connector, breaking parity with
-    #    the Thrift path (which authenticates as databricks-sql-python).
-    #
-    #    client_id + redirect_port are coupled per OAuth app — each app
-    #    registers its own redirect URI — so both are resolved together:
-    #    an explicit caller value wins; otherwise the connector's
-    #    registered databricks-sql-python bundle is used, mirroring the
-    #    defaults get_python_sql_connector_auth_provider applies on the
-    #    Thrift path. scopes are NOT caller-overridable: the Thrift path
-    #    hardcodes PYSQL_OAUTH_SCOPES for U2M (a caller's oauth_scopes
-    #    kwarg is never read there), so we forward the same fixed scopes
-    #    here to keep the two backends in parity.
-    #
-    #    Only the redirect PORT is routable into the kernel: it derives
-    #    http://localhost:{port}, with scheme/host/path fixed. The
-    #    connector registers a port *range* for its app but the kernel
-    #    accepts a single port, so we forward the first (canonical)
-    #    registered port. A caller-supplied port only overrides that
-    #    default when an explicit client_id is ALSO supplied — matching
-    #    the Thrift path's coupling (a bare oauth_redirect_port paired
-    #    with the default databricks-sql-python app would resolve to an
-    #    unregistered redirect URI and fail the flow).
+    #    Only databricks-oauth reaches here (azure-oauth rejected up front).
+    #    Forward the connector's own databricks-sql-python bundle instead of
+    #    the kernel's databricks-sql-connector default, for parity with the
+    #    Thrift path. client_id + redirect_port are coupled per app (each
+    #    registers its own redirect URI): a caller port only overrides the
+    #    default when an explicit client_id is also supplied. A caller may
+    #    override oauth_scopes; absent one we forward PYSQL_OAUTH_SCOPES as
+    #    the default.
     if auth_type == "databricks-oauth":
         redirect_port = opts.get("oauth_redirect_port")
-        # Validate any caller-supplied oauth_scopes (a bad type is still a
-        # caller error worth flagging) but do NOT forward it: the Thrift
-        # path hardcodes PYSQL_OAUTH_SCOPES for U2M, so we do the same for
-        # parity rather than letting the kernel path honor an override the
-        # other backend silently ignores.
-        _normalize_scopes(opts.get("oauth_scopes"))
+        # Honor a caller-supplied oauth_scopes (normalized to a list of
+        # strings); fall back to the connector default when none is given.
+        scopes = _normalize_scopes(opts.get("oauth_scopes"))
         kwargs = {
             "auth_type": "oauth-u2m",
             "client_id": client_id or PYSQL_OAUTH_CLIENT_ID,
@@ -297,7 +272,7 @@ def kernel_auth_kwargs(
                 if client_id and redirect_port is not None
                 else PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
             ),
-            "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
+            "oauth_scopes": scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES),
         }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id

@@ -252,9 +252,9 @@ class TestKernelOAuthU2M:
     ``sql offline_access`` / port 8030 (see PECOBLR-4039). The Python
     connector is an OVERRIDE: on the kernel path it forwards its OWN
     coupled ``client_id`` + ``redirect_port`` bundle so it authenticates
-    as ``databricks-sql-python`` rather than the kernel default. Scopes
-    are fixed to ``PYSQL_OAUTH_SCOPES`` (not caller-overridable), matching
-    the Thrift path which hardcodes them for U2M.
+    as ``databricks-sql-python`` rather than the kernel default. A caller
+    may override ``oauth_scopes``; absent one, ``PYSQL_OAUTH_SCOPES`` is
+    forwarded as the default.
 
     ``azure-oauth`` (Azure AD) is deliberately NOT handled yet — the
     kernel can't drive the Azure AD authorization/token flow — so it is
@@ -293,10 +293,9 @@ class TestKernelOAuthU2M:
         with pytest.raises(NotSupportedError, match="azure-oauth"):
             kernel_auth_kwargs(_FakeOAuthProvider(), opts)
 
-    def test_u2m_custom_client_id_and_port_honored_scopes_fixed(self):
-        # A caller may override the coupled client_id + redirect_port. Scopes
-        # are NOT caller-overridable (Thrift parity): a supplied oauth_scopes
-        # is ignored and PYSQL_OAUTH_SCOPES is forwarded regardless.
+    def test_u2m_custom_client_id_port_and_scopes_honored(self):
+        # A caller may override the coupled client_id + redirect_port and
+        # the oauth_scopes. All three are forwarded as supplied.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -310,14 +309,13 @@ class TestKernelOAuthU2M:
             "auth_type": "oauth-u2m",
             "client_id": "custom-client",
             "redirect_port": 9999,
-            "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
+            "oauth_scopes": ["custom-scope", "offline_access"],
         }
 
     def test_u2m_custom_client_id_only_falls_back_to_connector_defaults(self):
         # A custom client_id without explicit scopes/port fills the
-        # remaining two from the connector defaults — matching the Thrift
-        # path, where a custom client_id still uses PYSQL_OAUTH_SCOPES and
-        # the default redirect-port range.
+        # remaining two from the connector defaults — a custom client_id
+        # still uses PYSQL_OAUTH_SCOPES and the default redirect-port range.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -362,11 +360,10 @@ class TestKernelOAuthU2M:
         )
         assert kwargs["redirect_port"] == PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
 
-    def test_u2m_ignores_custom_scopes(self):
-        # Scopes are fixed for U2M — the Thrift path hardcodes
-        # PYSQL_OAUTH_SCOPES and never reads a caller oauth_scopes kwarg, so
-        # the kernel path forwards the same fixed scopes for parity. A
-        # (well-typed) caller oauth_scopes is validated but not honored.
+    def test_u2m_honors_custom_scopes(self):
+        # A caller-supplied oauth_scopes is forwarded to the kernel, even
+        # without an explicit client_id. Absent one, PYSQL_OAUTH_SCOPES is
+        # forwarded as the default (see the bare-bundle test above).
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -374,7 +371,19 @@ class TestKernelOAuthU2M:
                 "oauth_scopes": ["all-apis", "offline_access"],
             },
         )
-        assert kwargs["oauth_scopes"] == list(PYSQL_OAUTH_SCOPES)
+        assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
+
+    def test_u2m_normalizes_space_delimited_scopes(self):
+        # A space-delimited oauth_scopes string is normalized to a list,
+        # mirroring the M2M path.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_scopes": "all-apis offline_access",
+            },
+        )
+        assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
 
 
 class TestKernelIdentityFederationClientId:
