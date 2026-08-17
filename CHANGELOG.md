@@ -1,7 +1,7 @@
 # Release History
 
 # Unreleased
-- Kernel backend (`use_kernel=True`): OAuth U2M now forwards the connector's full OAuth-app bundle (`client_id` + scopes + redirect port) into the kernel, so a bare U2M connection authenticates as `databricks-sql-python` with `sql offline_access` — parity with the Thrift path — instead of inheriting the kernel's own `databricks-sql-connector` default. Caller-supplied `oauth_client_id` / `oauth_scopes` / `oauth_redirect_port` are still honored (PECOBLR-4040)
+- Kernel backend (`use_kernel=True`): OAuth U2M with `auth_type="databricks-oauth"` now forwards the connector's `databricks-sql-python` OAuth-app bundle (`client_id` + `sql offline_access` scopes + redirect port) into the kernel, so a bare U2M connection authenticates as `databricks-sql-python` — parity with the Thrift path — instead of inheriting the kernel's own `databricks-sql-connector` default. A caller-supplied `oauth_client_id` (with its coupled `oauth_redirect_port`) is honored; scopes are fixed to match the Thrift path. `auth_type="azure-oauth"` (Azure AD) is not yet supported on the kernel path and raises `NotSupportedError` — use the Thrift backend for it (PECOBLR-4040; Azure tracked by PECOBLR-4120)
 
 # 4.4.0 (2026-07-22)
 - Raised the minimum supported Python version to 3.10, dropping the end-of-life 3.8/3.9, to update the lockfile and clear CVE-flagged dependencies in the repo (databricks/databricks-sql-python#798)

@@ -8,8 +8,9 @@ Tests verify:
     look through the wrapper).
   - OAuth M2M (``oauth_client_id`` + ``oauth_client_secret``) routes
     through ``auth_type='oauth-m2m'`` with the raw creds forwarded.
-  - OAuth U2M (``auth_type='databricks-oauth'`` / ``'azure-oauth'``)
-    routes through ``auth_type='oauth-u2m'``.
+  - OAuth U2M (``auth_type='databricks-oauth'``) routes through
+    ``auth_type='oauth-u2m'``. ``azure-oauth`` (Azure AD) is not yet
+    supported on the kernel path and is rejected (PECOBLR-4120).
   - A custom ``credentials_provider`` and any other non-PAT shape raise
     ``NotSupportedError`` with a clear, actionable message.
 """
@@ -28,10 +29,8 @@ import pytest
 
 from databricks.sql.auth.auth import (
     PYSQL_OAUTH_CLIENT_ID,
-    PYSQL_OAUTH_AZURE_CLIENT_ID,
     PYSQL_OAUTH_SCOPES,
     PYSQL_OAUTH_REDIRECT_PORT_RANGE,
-    PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE,
 )
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
@@ -247,15 +246,19 @@ class TestKernelOAuthM2M:
 
 
 class TestKernelOAuthU2M:
-    """The kernel core default U2M app is ``databricks-sql-connector`` /
+    """Only ``databricks-oauth`` U2M is supported on the kernel path.
+
+    The kernel core default U2M app is ``databricks-sql-connector`` /
     ``sql offline_access`` / port 8030 (see PECOBLR-4039). The Python
-    connector is an OVERRIDE: on the kernel path it must forward its OWN
-    full bundle — ``client_id`` + ``oauth_scopes`` + ``redirect_port`` —
-    because the three are coupled per OAuth app. Forwarding a partial
-    bundle would let the kernel fill the rest from the connector default,
-    authenticating as the wrong principal / against an unregistered
-    redirect URI. So bare U2M must forward the complete
-    ``databricks-sql-python`` bundle for parity with the Thrift path."""
+    connector is an OVERRIDE: on the kernel path it forwards its OWN
+    coupled ``client_id`` + ``redirect_port`` bundle so it authenticates
+    as ``databricks-sql-python`` rather than the kernel default. Scopes
+    are fixed to ``PYSQL_OAUTH_SCOPES`` (not caller-overridable), matching
+    the Thrift path which hardcodes them for U2M.
+
+    ``azure-oauth`` (Azure AD) is deliberately NOT handled yet — the
+    kernel can't drive the Azure AD authorization/token flow — so it is
+    rejected up front (PECOBLR-4120)."""
 
     def test_bare_databricks_oauth_forwards_full_python_bundle(self):
         # No overrides → forward the databricks-sql-python bundle in full
@@ -272,25 +275,28 @@ class TestKernelOAuthU2M:
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
-    def test_bare_azure_oauth_forwards_full_azure_bundle(self):
-        kwargs = kernel_auth_kwargs(
-            _FakeOAuthProvider(),
+    @pytest.mark.parametrize(
+        "opts",
+        [
             {"auth_type": "azure-oauth"},
-        )
-        assert kwargs == {
-            "auth_type": "oauth-u2m",
-            "client_id": PYSQL_OAUTH_AZURE_CLIENT_ID,
-            "redirect_port": PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE[0],
-            "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
-        }
+            {"auth_type": "azure-oauth", "oauth_client_id": "custom"},
+            {"auth_type": "azure-oauth", "oauth_redirect_port": 8030},
+        ],
+        ids=["bare", "with_client_id", "with_port"],
+    )
+    def test_azure_oauth_not_supported(self, opts):
+        # azure-oauth (Azure AD U2M) can't work through the kernel yet: the
+        # kernel resolves OAuth endpoints only from workspace-native OIDC
+        # discovery and has no Azure AD path. Fail loudly at session-open
+        # rather than forwarding a bundle that authenticates against the
+        # wrong endpoints. Tracked by PECOBLR-4120.
+        with pytest.raises(NotSupportedError, match="azure-oauth"):
+            kernel_auth_kwargs(_FakeOAuthProvider(), opts)
 
     def test_u2m_custom_client_id_and_port_honored_scopes_fixed(self):
-        # A caller overriding the app supplies the coupled client_id +
-        # redirect_port, which are forwarded verbatim. oauth_scopes is NOT
-        # caller-overridable: the Thrift path hardcodes PYSQL_OAUTH_SCOPES
-        # for U2M (it never reads an oauth_scopes kwarg), so the kernel
-        # path forwards the same fixed scopes for parity even when the
-        # caller passes their own.
+        # A caller may override the coupled client_id + redirect_port. Scopes
+        # are NOT caller-overridable (Thrift parity): a supplied oauth_scopes
+        # is ignored and PYSQL_OAUTH_SCOPES is forwarded regardless.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -356,15 +362,17 @@ class TestKernelOAuthU2M:
         )
         assert kwargs["redirect_port"] == PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
 
-    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
-    def test_u2m_ignores_custom_scopes_for_thrift_parity(self, auth_type):
-        # The Thrift path hardcodes PYSQL_OAUTH_SCOPES for U2M and never
-        # reads a caller's oauth_scopes; the kernel path forwards the same
-        # fixed scopes for parity rather than honoring an override the
-        # other backend silently ignores.
+    def test_u2m_ignores_custom_scopes(self):
+        # Scopes are fixed for U2M — the Thrift path hardcodes
+        # PYSQL_OAUTH_SCOPES and never reads a caller oauth_scopes kwarg, so
+        # the kernel path forwards the same fixed scopes for parity. A
+        # (well-typed) caller oauth_scopes is validated but not honored.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
-            {"auth_type": auth_type, "oauth_scopes": ["all-apis", "offline_access"]},
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_scopes": ["all-apis", "offline_access"],
+            },
         )
         assert kwargs["oauth_scopes"] == list(PYSQL_OAUTH_SCOPES)
 
@@ -428,15 +436,15 @@ class TestKernelAuthAmbiguity:
                 },
             )
 
-    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
-    def test_u2m_auth_type_plus_client_secret_is_rejected(self, auth_type):
+    def test_u2m_auth_type_plus_client_secret_is_rejected(self):
         # User asked for U2M (browser) but also passed a secret (M2M).
-        # Don't silently route M2M against the wrong principal.
+        # Don't silently route M2M against the wrong principal. (azure-oauth
+        # is rejected earlier as unsupported, so it's not exercised here.)
         with pytest.raises(NotSupportedError, match="Ambiguous auth"):
             kernel_auth_kwargs(
                 _FakeOAuthProvider(),
                 {
-                    "auth_type": auth_type,
+                    "auth_type": "databricks-oauth",
                     "oauth_client_id": "id",
                     "oauth_client_secret": "sec",
                 },
