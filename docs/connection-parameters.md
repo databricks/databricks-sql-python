@@ -73,10 +73,10 @@ to change without notice.
 | `oauth_redirect_port` (U2M)                         | `int`                |   ✅   |   ✅   | `None`                    | Localhost redirect port for the browser flow; required when a custom `oauth_client_id` is set.                                                                  |
 | `oauth_client_secret` (OAuth M2M)                   | `str`                |   ❌   |   ✅   | `None`                    | **Kernel-only in practice.** The Thrift auth path never reads `oauth_client_secret`; use `credentials_provider` or an Azure service principal for M2M on Thrift. |
 | `oauth_scopes`                                      | `List[str]`          |   ❌   |   ✅   | `["sql","offline_access"]`| **Thrift ignores custom scopes** — it always uses the built-in scope set. Only the kernel honors a custom `oauth_scopes`.                                       |
-| `credentials_provider`                              | `CredentialsProvider`|   ✅   |   ✅   | `None`                    | Custom external credentials provider.                                                                                                                          |
+| `credentials_provider`                              | `CredentialsProvider`|   ✅   |   ❌   | `None`                    | Custom external credentials provider. **Rejected on the kernel path** (`NotSupportedError`) — it is an opaque token source, so the kernel cannot own the token lifecycle; use `oauth_client_id` + `oauth_client_secret` for M2M, or the Thrift backend. |
 | `identity_federation_client_id`                     | `str`                |   ✅   |   ✅   | `None`                    | Workload identity / token-federation client id (kernel support added in #910).                                                                                 |
 | `experimental_oauth_persistence`                    | `OAuthPersistence`   |   ✅   |   ❌   | `None`                    | **Thrift-only.** The kernel owns its own token lifecycle and does not accept a persistence store.                                                              |
-| `azure_client_id` / `azure_client_secret` / `azure_tenant_id` / `azure_workspace_resource_id` | `str` | ✅ | ❌ | `None` | **Thrift-only.** Azure service-principal / Entra ID OAuth is not forwarded to the kernel.                                                                       |
+| `azure_client_id` / `azure_client_secret` / `azure_tenant_id` / `azure_workspace_resource_id` | `str` | ✅ | ❌ | `None` | **Thrift-only.** The Azure service-principal (Entra ID M2M) fields are not forwarded to the kernel. (Azure *U2M* still works on the kernel via `auth_type="azure-oauth"`, the browser flow.) |
 | `_use_cert_as_auth` (+ `_tls_client_cert_file`)     | `bool`               |   ✅   |   ❌   | `False`                   | Authenticate with a TLS client certificate instead of a token. Thrift-only.                                                                                    |
 | `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported; passing either raises `ValueError`.                                                                            |
 
@@ -133,7 +133,7 @@ to change without notice.
 | `session_configuration`       | `Dict[str, Any]`                  |   ✅   |   ✅   | `None`        | Spark/SQL session parameters (e.g. `{"ansi_mode": "true"}`). Delivered via `open_session` on both backends.                |
 | `catalog`                     | `str`                             |   ✅   |   ✅   | `None`        | Initial catalog for the session (DBR 9.0+).                                                                                |
 | `schema`                      | `str`                             |   ✅   |   ✅   | `None`        | Initial schema for the session (DBR 9.0+).                                                                                 |
-| `query_tags`                  | `Dict[str, Optional[str]]`        |   ✅   |   ✅   | `None`        | Serialized into the reserved `QUERY_TAGS` session conf. (Per-*statement* query tags are not yet supported on Kernel.)      |
+| `query_tags`                  | `Dict[str, Optional[str]]`        |   ✅   |   ✅   | `None`        | Key/value tags serialized into the reserved `QUERY_TAGS` conf. On the kernel path they are applied per statement via `set_query_tags`.  |
 | `enable_metric_view_metadata` | `bool`                            |   ✅   |   ✅   | `False`       | Sets `spark.sql.thriftserver.metadata.metricview.enabled` via session config so metric-view metadata surfaces.            |
 | `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ⚠️   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). The kernel uses native binding; inline may differ.  |
 | `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
@@ -163,7 +163,7 @@ regardless of `use_kernel`.
 
 ### Supported on Thrift, missing / ignored on Kernel
 
-1. `oauth_client_secret` (Databricks OAuth M2M) and custom `oauth_scopes`.
+1. Custom `credentials_provider` (rejected on the kernel path).
 2. `experimental_oauth_persistence` (custom OAuth token store).
 3. Azure service-principal / Entra ID OAuth (`azure_client_id`,
    `azure_client_secret`, `azure_tenant_id`, `azure_workspace_resource_id`).
