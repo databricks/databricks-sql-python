@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Kernel backend (`use_kernel=True`): OAuth U2M now forwards the connector's full OAuth-app bundle (`client_id` + scopes + redirect port) into the kernel, so a bare U2M connection authenticates as `databricks-sql-python` with `sql offline_access` — parity with the Thrift path — instead of inheriting the kernel's own `databricks-sql-connector` default. Caller-supplied `oauth_client_id` / `oauth_scopes` / `oauth_redirect_port` are still honored (PECOBLR-4040)
+
 # 4.4.0 (2026-07-22)
 - Raised the minimum supported Python version to 3.10, dropping the end-of-life 3.8/3.9, to update the lockfile and clear CVE-flagged dependencies in the repo (databricks/databricks-sql-python#798)
 - Fix: `REMOVE` staging operations no longer require `staging_allowed_local_path` to be set, since removing a remote file does not touch the local filesystem (databricks/databricks-sql-python#726)

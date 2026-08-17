@@ -48,6 +48,13 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from databricks.sql.auth.auth import (
+    PYSQL_OAUTH_AZURE_CLIENT_ID,
+    PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE,
+    PYSQL_OAUTH_CLIENT_ID,
+    PYSQL_OAUTH_REDIRECT_PORT_RANGE,
+    PYSQL_OAUTH_SCOPES,
+)
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
 from databricks.sql.auth.token_federation import TokenFederationProvider
 from databricks.sql.exc import NotSupportedError, ProgrammingError
@@ -148,8 +155,14 @@ def kernel_auth_kwargs(
     2. **PAT** — the built provider is (or wraps) an
        ``AccessTokenAuthProvider`` → extract the bearer token.
     3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` /
-       ``azure-oauth`` → forward optional ``oauth_client_id`` /
-       ``oauth_redirect_port`` to the kernel's ``oauth-u2m``.
+       ``azure-oauth`` → forward the connector's *full* coupled OAuth-app
+       bundle (``client_id`` + ``oauth_scopes`` + ``redirect_port``) to
+       the kernel's ``oauth-u2m``. Each field falls back to the
+       connector's registered ``databricks-sql-python`` (or azure)
+       default when the caller doesn't override it, so a bare U2M
+       connection authenticates as ``databricks-sql-python`` — parity
+       with the Thrift path — rather than the kernel's own
+       ``databricks-sql-connector`` default (PECOBLR-4039/4040).
     4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
        token source; no raw creds for the kernel to own).
     5. Anything else → ``NotSupportedError``.
@@ -214,16 +227,51 @@ def kernel_auth_kwargs(
         return kwargs
 
     # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
+    #
+    #    The kernel's core default U2M app is databricks-sql-connector /
+    #    sql offline_access / port 8030 (PECOBLR-4039). The Python
+    #    connector is an OVERRIDE of that default: on this path we forward
+    #    its OWN full bundle rather than letting the kernel fall back to
+    #    the connector default. Forwarding a bare oauth-u2m would
+    #    authenticate as databricks-sql-connector, breaking parity with
+    #    the Thrift path (which authenticates as databricks-sql-python).
+    #
+    #    client_id + scopes + redirect_port are coupled per OAuth app —
+    #    each app registers its own redirect URI — so all three are
+    #    resolved together: an explicit caller value wins; otherwise the
+    #    connector's registered databricks-sql-python (or azure) bundle is
+    #    used, mirroring the defaults get_python_sql_connector_auth_provider
+    #    applies on the Thrift path.
+    #
+    #    Only the redirect PORT is routable into the kernel: it derives
+    #    http://localhost:{port}, with scheme/host/path fixed. The
+    #    connector registers a port *range* for its app but the kernel
+    #    accepts a single port, so we forward the first (canonical)
+    #    registered port.
     if auth_type in ("databricks-oauth", "azure-oauth"):
-        kwargs = {"auth_type": "oauth-u2m"}
-        if client_id:
-            kwargs["client_id"] = client_id
+        is_azure = auth_type == "azure-oauth"
+        default_client_id = (
+            PYSQL_OAUTH_AZURE_CLIENT_ID if is_azure else PYSQL_OAUTH_CLIENT_ID
+        )
+        default_port_range = (
+            PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE
+            if is_azure
+            else PYSQL_OAUTH_REDIRECT_PORT_RANGE
+        )
         redirect_port = opts.get("oauth_redirect_port")
-        if redirect_port is not None:
-            kwargs["redirect_port"] = int(redirect_port)
         scopes = _normalize_scopes(opts.get("oauth_scopes"))
-        if scopes is not None:
-            kwargs["oauth_scopes"] = scopes
+        kwargs = {
+            "auth_type": "oauth-u2m",
+            "client_id": client_id or default_client_id,
+            "redirect_port": (
+                int(redirect_port)
+                if redirect_port is not None
+                else default_port_range[0]
+            ),
+            "oauth_scopes": (
+                scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES)
+            ),
+        }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
