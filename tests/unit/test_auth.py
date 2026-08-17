@@ -207,6 +207,50 @@ class Auth(unittest.TestCase):
 
         self.assertEqual(auth_provider.external_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_u2m_explicit_bundle_override(
+        self, mock__initial_get_token
+    ):
+        # AUTH-013 Case 1: a caller who supplies their OWN client_id owns the rest
+        # of the U2M bundle - the caller's client_id, scopes and redirect port are
+        # forwarded verbatim, with NO driver default substitution.
+        hostname = "foo.cloud.databricks.com"
+        kwargs = {
+            "oauth_client_id": "test-custom-u2m-app",
+            "oauth_scopes": ["all-apis"],
+            "oauth_redirect_port": 8099,
+        }
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        provider = auth_provider.external_provider
+        self.assertEqual(type(provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(provider._client_id, "test-custom-u2m-app")
+        self.assertEqual(provider.oauth_manager.port_range, [8099])
+        # Caller's scope set forwarded verbatim, NOT the driver default "sql offline_access".
+        self.assertEqual(provider._scopes_as_str, "all-apis")
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_u2m_foreign_client_id_no_port(
+        self, mock__initial_get_token
+    ):
+        # AUTH-013 Case 2: a foreign client_id with NO redirect port must NOT be
+        # pinned to the driver's own app-specific default port range (8020-8024).
+        # It falls through to the base kernel default [8030].
+        hostname = "foo.cloud.databricks.com"
+        kwargs = {"oauth_client_id": "test-custom-u2m-app"}
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        provider = auth_provider.external_provider
+        self.assertEqual(type(provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(provider._client_id, "test-custom-u2m-app")
+        self.assertEqual(provider.oauth_manager.port_range, [8030])
+
 
 class TestClientCredentialsTokenSource:
     @pytest.fixture
