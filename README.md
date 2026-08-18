@@ -24,7 +24,7 @@ For the latest documentation, see
 
 For a full reference of every `sql.connect(...)` keyword argument — type,
 default, per-backend support (Thrift vs Kernel), and meaning — see
-[`docs/connection-parameters.md`](docs/connection-parameters.md).
+[`CONNECTION_PARAMETERS.md`](CONNECTION_PARAMETERS.md).
 
 ## Quickstart
 

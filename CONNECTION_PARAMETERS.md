@@ -1,4 +1,4 @@
-# Connection parameter reference
+# Connection parameters reference
 
 This document lists **every public connection / session parameter that is
 consumed by at least one currently-supported backend** the Python connector
@@ -96,7 +96,7 @@ to change without notice.
 | `_socket_timeout`                    | `float` (s) |   ✅   |   ❌   | `900`         | Socket send/recv/connect timeout. Not forwarded to the kernel, which manages its own request timeout.                                          |
 | `_pool_connections`                  | `int`       |   ✅   |   ⚠️   | `10`          | Number of urllib3 connection pools. Configures the connector's shared Python HTTP client; the kernel's query transport is its own Rust stack.  |
 | `_pool_maxsize`                      | `int`       |   ✅   |   ⚠️   | `20`          | Max connections per pool on the shared Python HTTP client. Same kernel caveat as `_pool_connections`.                                          |
-| `_proxy_auth_method`                 | `str`       |   ✅   |   ⚠️   | `None`        | `basic` or `negotiate` (Kerberos). Applies to the shared Python HTTP client; not threaded to the kernel query transport. See [`proxy.md`](proxy.md). |
+| `_proxy_auth_method`                 | `str`       |   ✅   |   ⚠️   | `None`        | `basic` or `negotiate` (Kerberos). Applies to the shared Python HTTP client; not threaded to the kernel query transport. See [`docs/proxy.md`](docs/proxy.md). |
 | `_retry_stop_after_attempts_count`   | `int`       |   ✅   |   ✅   | `30`          | Max attempts in a retry sequence. Bounded to `[1, 60]` on Thrift; forwarded to the kernel's retry policy.                                       |
 | `_retry_stop_after_attempts_duration`| `float` (s) |   ✅   |   ✅   | `900`         | Max total wall-clock seconds spent retrying. Forwarded to the kernel.                                                                           |
 | `_retry_delay_min`                   | `float` (s) |   ✅   |   ✅   | `1`           | Minimum backoff delay. Forwarded to the kernel.                                                                                                 |
