@@ -37,7 +37,8 @@ def _kernel_host_and_path(
       (returned as ``host``) and its path+query (returned as ``http_path``).
       ``_connection_uri`` wins over ``_port``, matching the Thrift backend.
       When the URI omits a path (e.g. ``https://host:8443`` or
-      ``https://host:8443?o=222``) the connection's original ``http_path`` is
+      ``https://host:8443?o=222``, and likewise a lone trailing slash such as
+      ``https://host:8443/``) the connection's original ``http_path`` is
       retained, and any query on the URI is applied to that retained path,
       replacing any query the retained path already carried — so a path-less,
       query-bearing URI overrides only the host and query while keeping the
@@ -67,8 +68,12 @@ def _kernel_host_and_path(
         host = "{}://{}".format(parts.scheme, parts.netloc)
         # A path-less URI keeps the connection's original http_path; any query
         # on the URI is then applied to that retained path (host + query
-        # override, path preserved). See the docstring for the rationale.
-        path = parts.path or http_path
+        # override, path preserved). A lone ``"/"`` path (common from a
+        # copy-pasted base URL like ``https://host:8443/``) is treated the same
+        # as an absent path so it does not silently point the kernel at the host
+        # root instead of the warehouse. See the docstring for the rationale.
+        uri_path = parts.path if parts.path not in ("", "/") else None
+        path = uri_path or http_path
         if parts.query:
             # Drop any query already on the retained path before applying the
             # URI's query, so the URI's query fully overrides it. Appending

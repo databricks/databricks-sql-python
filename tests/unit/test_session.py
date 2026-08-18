@@ -771,6 +771,26 @@ class TestKernelHostAndPathOverrides:
         assert host == "https://h.example.com:8443"
         assert path == self.PATH
 
+    def test_connection_uri_trailing_slash_retains_original_path(self):
+        # A lone trailing slash (common when a base URL is copy-pasted, e.g.
+        # ``https://host:8443/``) must be treated the same as an absent path so
+        # the original warehouse http_path is retained rather than silently
+        # replaced with the host root ``"/"``.
+        host, path = _kernel_host_and_path(
+            self.HOST, self.PATH, {"_connection_uri": "https://h.example.com:8443/"}
+        )
+        assert host == "https://h.example.com:8443"
+        assert path == self.PATH
+
+    def test_connection_uri_trailing_slash_applies_query_to_retained_path(self):
+        # A trailing-slash, query-bearing URI overrides the host and applies the
+        # query to the retained original path, just like the path-less case.
+        host, path = _kernel_host_and_path(
+            self.HOST, self.PATH, {"_connection_uri": "https://h.example.com:8443/?o=222"}
+        )
+        assert host == "https://h.example.com:8443"
+        assert path == "{}?o=222".format(self.PATH)
+
     def test_connection_uri_without_path_applies_query_to_retained_path(self):
         # A path-less, query-bearing URI overrides the host and applies the
         # query to the retained original path (documented fallback semantics).
