@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import Dict, Tuple, List, Optional, Any, Type
+from urllib.parse import urlsplit
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -18,6 +19,56 @@ from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
 
 logger = logging.getLogger(__name__)
+
+
+def _kernel_host_and_path(
+    server_hostname: str, http_path: str, kwargs: dict
+) -> Tuple[str, str]:
+    """Resolve the ``(host, http_path)`` the kernel ``Session`` should use,
+    honoring the Thrift-style ``_connection_uri`` / ``_port`` overrides.
+
+    The kernel derives its endpoint from ``host`` + ``http_path`` and accepts a
+    fully-qualified ``host`` (its ``normalise_host`` preserves the scheme and
+    any port), so both overrides can be expressed connector-side without a
+    kernel change:
+
+    - ``_connection_uri`` (a full ``scheme://host[:port]/path`` URI, mirroring
+      the Thrift backend's direct-URI override) is split into its authority
+      (returned as ``host``) and its path+query (returned as ``http_path``).
+      ``_connection_uri`` wins over ``_port``, matching the Thrift backend.
+    - ``_port`` is otherwise folded into the host authority, unless the
+      hostname already carries a port.
+
+    Neither override is set on the common path, so the connection's
+    ``server_hostname`` / ``http_path`` pass through unchanged.
+    """
+    connection_uri = kwargs.get("_connection_uri")
+    if connection_uri:
+        # Ensure a scheme so urlsplit populates netloc rather than path; the
+        # Thrift backend defaults a scheme-less URI to https, so do the same.
+        uri = connection_uri if "://" in connection_uri else "https://" + connection_uri
+        parts = urlsplit(uri)
+        host = "{}://{}".format(parts.scheme, parts.netloc)
+        path = parts.path or http_path
+        if parts.query:
+            path = "{}?{}".format(path, parts.query)
+        return host, path
+
+    port = kwargs.get("_port")
+    if port is not None:
+        # Split off any scheme so we can inspect the authority; the kernel
+        # re-adds https:// when it is absent. Only append the port when the
+        # authority does not already carry one.
+        scheme_match = re.match(r"^(https?://)(.*)$", server_hostname)
+        scheme = scheme_match.group(1) if scheme_match else ""
+        authority = (scheme_match.group(2) if scheme_match else server_hostname).rstrip(
+            "/"
+        )
+        if ":" not in authority:
+            authority = "{}:{}".format(authority, port)
+        return "{}{}".format(scheme, authority), http_path
+
+    return server_hostname, http_path
 
 
 class Session:
@@ -195,9 +246,12 @@ class Session:
                     "_retry_stop_after_attempts_duration"
                 ),
             }
+            kernel_host, kernel_http_path = _kernel_host_and_path(
+                server_hostname, http_path, kwargs
+            )
             return KernelDatabricksClient(
-                server_hostname=server_hostname,
-                http_path=http_path,
+                server_hostname=kernel_host,
+                http_path=kernel_http_path,
                 http_headers=all_headers,
                 auth_provider=auth_provider,
                 ssl_options=self.ssl_options,

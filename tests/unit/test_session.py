@@ -9,7 +9,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.agent import KNOWN_AGENTS
-from databricks.sql.session import Session
+from databricks.sql.session import Session, _kernel_host_and_path
 
 import databricks.sql
 
@@ -587,3 +587,69 @@ class TestUseKernelRoutesThroughRealWheel:
                 )
             finally:
                 conn.close()
+
+
+class TestKernelHostAndPathOverrides:
+    """``_kernel_host_and_path`` maps the Thrift-style ``_connection_uri`` /
+    ``_port`` overrides onto the kernel ``Session``'s ``host`` + ``http_path``.
+
+    Pure-function tests (no kernel wheel / pyarrow needed) covering the
+    connector-side handling that lets these overrides work on use_kernel=True
+    without any kernel change.
+    """
+
+    HOST = "foo.cloud.databricks.com"
+    PATH = "/sql/1.0/warehouses/abc"
+
+    def test_no_override_passes_through(self):
+        assert _kernel_host_and_path(self.HOST, self.PATH, {}) == (self.HOST, self.PATH)
+
+    def test_connection_uri_split_into_authority_and_path(self):
+        host, path = _kernel_host_and_path(
+            self.HOST,
+            self.PATH,
+            {"_connection_uri": "https://direct.example.com:8443/sql/1.0/warehouses/xyz"},
+        )
+        assert host == "https://direct.example.com:8443"
+        assert path == "/sql/1.0/warehouses/xyz"
+
+    def test_connection_uri_without_scheme_defaults_to_https(self):
+        host, path = _kernel_host_and_path(
+            self.HOST, self.PATH, {"_connection_uri": "direct.example.com/sql/1.0/warehouses/xyz"}
+        )
+        assert host == "https://direct.example.com"
+        assert path == "/sql/1.0/warehouses/xyz"
+
+    def test_connection_uri_preserves_query(self):
+        host, path = _kernel_host_and_path(
+            self.HOST,
+            self.PATH,
+            {"_connection_uri": "https://h.example.com/sql/1.0/warehouses/xyz?o=123"},
+        )
+        assert host == "https://h.example.com"
+        assert path == "/sql/1.0/warehouses/xyz?o=123"
+
+    def test_connection_uri_wins_over_port(self):
+        host, path = _kernel_host_and_path(
+            self.HOST,
+            self.PATH,
+            {"_connection_uri": "https://direct.example.com:9999/p", "_port": 8443},
+        )
+        assert host == "https://direct.example.com:9999"
+        assert path == "/p"
+
+    def test_port_folded_into_bare_host(self):
+        host, path = _kernel_host_and_path(self.HOST, self.PATH, {"_port": 8443})
+        assert host == "{}:8443".format(self.HOST)
+        assert path == self.PATH
+
+    def test_port_preserves_existing_scheme(self):
+        host, path = _kernel_host_and_path(
+            "https://" + self.HOST, self.PATH, {"_port": 8443}
+        )
+        assert host == "https://{}:8443".format(self.HOST)
+        assert path == self.PATH
+
+    def test_port_not_double_appended_when_host_has_port(self):
+        host, _ = _kernel_host_and_path(self.HOST + ":7000", self.PATH, {"_port": 8443})
+        assert host == self.HOST + ":7000"
