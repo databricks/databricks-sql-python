@@ -56,17 +56,13 @@ def _kernel_host_and_path(
 
     port = kwargs.get("_port")
     if port is not None:
-        # Split off any scheme so we can inspect the authority; the kernel
-        # re-adds https:// when it is absent. Only append the port when the
-        # authority does not already carry one.
-        scheme_match = re.match(r"^(https?://)(.*)$", server_hostname)
-        scheme = scheme_match.group(1) if scheme_match else ""
-        authority = (scheme_match.group(2) if scheme_match else server_hostname).rstrip(
-            "/"
-        )
-        if ":" not in authority:
-            authority = "{}:{}".format(authority, port)
-        return "{}{}".format(scheme, authority), http_path
+        # server_hostname is a bare host on this path (e.g.
+        # ``dbc-123.cloud.databricks.com``); the kernel adds the scheme.
+        # Append the port unless the host already carries one.
+        host = server_hostname.rstrip("/")
+        if ":" not in host:
+            host = "{}:{}".format(host, port)
+        return host, http_path
 
     return server_hostname, http_path
 

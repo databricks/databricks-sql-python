@@ -643,13 +643,6 @@ class TestKernelHostAndPathOverrides:
         assert host == "{}:8443".format(self.HOST)
         assert path == self.PATH
 
-    def test_port_preserves_existing_scheme(self):
-        host, path = _kernel_host_and_path(
-            "https://" + self.HOST, self.PATH, {"_port": 8443}
-        )
-        assert host == "https://{}:8443".format(self.HOST)
-        assert path == self.PATH
-
     def test_port_not_double_appended_when_host_has_port(self):
         host, _ = _kernel_host_and_path(self.HOST + ":7000", self.PATH, {"_port": 8443})
         assert host == self.HOST + ":7000"
