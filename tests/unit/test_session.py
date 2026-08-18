@@ -762,6 +762,24 @@ class TestKernelHostAndPathOverrides:
         assert host == "https://h.example.com"
         assert path == "/sql/1.0/warehouses/xyz?o=123"
 
+    def test_connection_uri_without_path_retains_original_path(self):
+        # A path-less URI overrides only the host; the connection's original
+        # http_path is retained.
+        host, path = _kernel_host_and_path(
+            self.HOST, self.PATH, {"_connection_uri": "https://h.example.com:8443"}
+        )
+        assert host == "https://h.example.com:8443"
+        assert path == self.PATH
+
+    def test_connection_uri_without_path_applies_query_to_retained_path(self):
+        # A path-less, query-bearing URI overrides the host and applies the
+        # query to the retained original path (documented fallback semantics).
+        host, path = _kernel_host_and_path(
+            self.HOST, self.PATH, {"_connection_uri": "https://h.example.com:8443?o=222"}
+        )
+        assert host == "https://h.example.com:8443"
+        assert path == "{}?o=222".format(self.PATH)
+
     def test_connection_uri_wins_over_port(self):
         host, path = _kernel_host_and_path(
             self.HOST,

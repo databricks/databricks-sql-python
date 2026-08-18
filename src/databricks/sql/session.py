@@ -36,6 +36,12 @@ def _kernel_host_and_path(
       the Thrift backend's direct-URI override) is split into its authority
       (returned as ``host``) and its path+query (returned as ``http_path``).
       ``_connection_uri`` wins over ``_port``, matching the Thrift backend.
+      When the URI omits a path (e.g. ``https://host:8443`` or
+      ``https://host:8443?o=222``) the connection's original ``http_path`` is
+      retained, and any query on the URI is applied to that retained path — so
+      a path-less, query-bearing URI overrides only the host and query while
+      keeping the original warehouse path. The fragment (``#...``) is dropped
+      since it never goes on the wire.
     - ``_port`` is otherwise folded into the host authority, unless the
       hostname already carries a port.
 
@@ -58,6 +64,9 @@ def _kernel_host_and_path(
                 "authority (expected scheme://host[:port]/path)".format(connection_uri)
             )
         host = "{}://{}".format(parts.scheme, parts.netloc)
+        # A path-less URI keeps the connection's original http_path; any query
+        # on the URI is then applied to that retained path (host + query
+        # override, path preserved). See the docstring for the rationale.
         path = parts.path or http_path
         if parts.query:
             path = "{}?{}".format(path, parts.query)
