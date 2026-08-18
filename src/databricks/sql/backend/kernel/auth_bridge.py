@@ -17,7 +17,7 @@ Three auth shapes are supported on the kernel path:
   provider.
 - **OAuth U2M** — for ``auth_type`` ``databricks-oauth`` (the browser
   authorization-code flow), the connector's ``databricks-sql-python``
-  app bundle (``client_id`` + ``redirect_port``, with the optional
+  app bundle (``client_id`` + ``redirect_ports`` list, with the optional
   ``oauth_client_id`` / ``oauth_redirect_port`` overriding it) is
   forwarded to the kernel's ``auth_type='oauth-u2m'`` and the kernel
   runs the browser flow itself. ``azure-oauth`` (Azure AD) is **not yet
@@ -162,7 +162,7 @@ def kernel_auth_kwargs(
        ``AccessTokenAuthProvider`` → extract the bearer token.
     3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` → forward the
        connector's coupled ``databricks-sql-python`` bundle (``client_id``
-       + ``redirect_port``, defaulting scopes to ``PYSQL_OAUTH_SCOPES``
+       + ``redirect_ports`` list, defaulting scopes to ``PYSQL_OAUTH_SCOPES``
        when the caller supplies none) to the kernel's ``oauth-u2m``, so a
        bare U2M connection authenticates as ``databricks-sql-python`` —
        forwarding the connector's own OAuth app rather than the kernel's
@@ -255,15 +255,15 @@ def kernel_auth_kwargs(
     #    Only databricks-oauth reaches here (azure-oauth rejected up front).
     #    Forward the connector's own databricks-sql-python bundle instead of
     #    the kernel's databricks-sql-connector default, for parity with the
-    #    Thrift path. client_id + redirect_port are coupled per app (each
-    #    registers its own redirect URI): a caller port only overrides the
+    #    Thrift path. client_id + redirect ports are coupled per app (each
+    #    registers its own redirect URIs): a caller port only overrides the
     #    default when an explicit client_id is also supplied. A caller may
     #    override oauth_scopes; absent one we forward PYSQL_OAUTH_SCOPES as
-    #    the default. NB: the kernel's redirect_port is a single int, so
-    #    unlike the Thrift path (which hands DatabricksOAuthProvider the full
-    #    PYSQL_OAUTH_REDIRECT_PORT_RANGE and retries the next port when one is
-    #    bound) this path forwards only one port with no fallback. A caller
-    #    hitting a port collision must pass oauth_redirect_port explicitly.
+    #    the default. We forward the FULL PYSQL_OAUTH_REDIRECT_PORT_RANGE as
+    #    ``redirect_ports`` so the kernel binds the first free port (busy-port
+    #    fallback), mirroring the Thrift DatabricksOAuthProvider which retries
+    #    the next port when one is bound. A caller overriding client_id
+    #    supplies its own single registered port.
     if auth_type == "databricks-oauth":
         redirect_port = opts.get("oauth_redirect_port")
         # Honor a caller-supplied oauth_scopes (normalized to a list of
@@ -272,10 +272,10 @@ def kernel_auth_kwargs(
         kwargs = {
             "auth_type": "oauth-u2m",
             "client_id": client_id or PYSQL_OAUTH_CLIENT_ID,
-            "redirect_port": (
-                _coerce_redirect_port(redirect_port)
+            "redirect_ports": (
+                [_coerce_redirect_port(redirect_port)]
                 if client_id and redirect_port is not None
-                else PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
+                else list(PYSQL_OAUTH_REDIRECT_PORT_RANGE)
             ),
             "oauth_scopes": scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES),
         }

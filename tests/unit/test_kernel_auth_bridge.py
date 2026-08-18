@@ -251,8 +251,9 @@ class TestKernelOAuthU2M:
     The kernel core default U2M app is ``databricks-sql-connector`` /
     ``sql offline_access`` / port 8030 (see PECOBLR-4039). The Python
     connector is an OVERRIDE: on the kernel path it forwards its OWN
-    coupled ``client_id`` + ``redirect_port`` bundle so it authenticates
-    as ``databricks-sql-python`` rather than the kernel default. A caller
+    coupled ``client_id`` + ``redirect_ports`` bundle (the full registered
+    port list, for busy-port fallback) so it authenticates as
+    ``databricks-sql-python`` rather than the kernel default. A caller
     may override ``oauth_scopes``; absent one, ``PYSQL_OAUTH_SCOPES`` is
     forwarded as the default.
 
@@ -271,7 +272,8 @@ class TestKernelOAuthU2M:
         assert kwargs == {
             "auth_type": "oauth-u2m",
             "client_id": PYSQL_OAUTH_CLIENT_ID,
-            "redirect_port": PYSQL_OAUTH_REDIRECT_PORT_RANGE[0],
+            # Full registered port list → the kernel binds the first free one.
+            "redirect_ports": list(PYSQL_OAUTH_REDIRECT_PORT_RANGE),
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
@@ -294,8 +296,9 @@ class TestKernelOAuthU2M:
             kernel_auth_kwargs(_FakeOAuthProvider(), opts)
 
     def test_u2m_custom_client_id_port_and_scopes_honored(self):
-        # A caller may override the coupled client_id + redirect_port and
-        # the oauth_scopes. All three are forwarded as supplied.
+        # A caller may override the coupled client_id + redirect port and the
+        # oauth_scopes. The single custom port is forwarded as a one-element
+        # redirect_ports list; all three are forwarded as supplied.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -308,14 +311,14 @@ class TestKernelOAuthU2M:
         assert kwargs == {
             "auth_type": "oauth-u2m",
             "client_id": "custom-client",
-            "redirect_port": 9999,
+            "redirect_ports": [9999],
             "oauth_scopes": ["custom-scope", "offline_access"],
         }
 
     def test_u2m_custom_client_id_only_falls_back_to_connector_defaults(self):
         # A custom client_id without explicit scopes/port fills the
         # remaining two from the connector defaults — a custom client_id
-        # still uses PYSQL_OAUTH_SCOPES and the default redirect-port range.
+        # still uses PYSQL_OAUTH_SCOPES and the default redirect-port list.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -326,7 +329,7 @@ class TestKernelOAuthU2M:
         assert kwargs == {
             "auth_type": "oauth-u2m",
             "client_id": "custom-client",
-            "redirect_port": PYSQL_OAUTH_REDIRECT_PORT_RANGE[0],
+            "redirect_ports": list(PYSQL_OAUTH_REDIRECT_PORT_RANGE),
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
@@ -343,8 +346,8 @@ class TestKernelOAuthU2M:
                 "oauth_redirect_port": "8021",
             },
         )
-        assert kwargs["redirect_port"] == 8021
-        assert isinstance(kwargs["redirect_port"], int)
+        assert kwargs["redirect_ports"] == [8021]
+        assert isinstance(kwargs["redirect_ports"][0], int)
 
     def test_u2m_redirect_port_non_numeric_raises_programming_error(self):
         # A garbled oauth_redirect_port is a caller error of the same class
@@ -362,18 +365,17 @@ class TestKernelOAuthU2M:
             )
 
     def test_u2m_redirect_port_ignored_without_client_id(self):
-        # A bare oauth_redirect_port (no explicit client_id) must NOT be
-        # forwarded: it would be paired with the default databricks-sql-python
-        # app, whose registered redirect URIs only cover the default port
-        # range, so an arbitrary port would resolve to an unregistered URI
-        # and fail the U2M flow. This mirrors the Thrift path's coupling,
-        # where oauth_redirect_port_range is only overridden when both
+        # A bare oauth_redirect_port (no explicit client_id) must NOT replace
+        # the default list: it would be paired with the default
+        # databricks-sql-python app, so we keep forwarding that app's full
+        # registered port list. This mirrors the Thrift path's coupling, where
+        # oauth_redirect_port_range is only overridden when both
         # oauth_client_id and oauth_redirect_port are supplied.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {"auth_type": "databricks-oauth", "oauth_redirect_port": 9999},
         )
-        assert kwargs["redirect_port"] == PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
+        assert kwargs["redirect_ports"] == list(PYSQL_OAUTH_REDIRECT_PORT_RANGE)
 
     def test_u2m_honors_custom_scopes(self):
         # A caller-supplied oauth_scopes is forwarded to the kernel, even
