@@ -834,3 +834,12 @@ class TestKernelHostAndPathOverrides:
     def test_port_not_double_appended_for_ipv6_literal_with_port(self):
         host, _ = _kernel_host_and_path("[::1]:7000", self.PATH, {"_port": 8443})
         assert host == "[::1]:7000"
+
+    def test_malformed_port_in_hostname_raises_clear_error(self):
+        # A non-numeric/out-of-range port on server_hostname makes
+        # ``SplitResult.port`` raise; surface a clear connector-side error
+        # instead of leaking an opaque URL-parsing ValueError.
+        with pytest.raises(ValueError, match="could not parse its port"):
+            _kernel_host_and_path(
+                self.HOST + ":notaport", self.PATH, {"_port": 8443}
+            )

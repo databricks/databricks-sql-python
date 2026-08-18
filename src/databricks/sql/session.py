@@ -90,7 +90,18 @@ def _kernel_host_and_path(
         # present, so add a temporary one when the host is scheme-less.
         host = server_hostname.rstrip("/")
         probe = host if "://" in host else "https://" + host
-        if urlsplit(probe).port is None:
+        try:
+            existing_port = urlsplit(probe).port
+        except ValueError as exc:
+            # ``SplitResult.port`` raises when the authority carries a
+            # non-numeric or out-of-range port. Re-raise as a clear,
+            # connector-side error consistent with the ``_connection_uri``
+            # validation above, instead of leaking an opaque URL-parsing error.
+            raise ValueError(
+                "Invalid server_hostname {!r}: could not parse its port "
+                "({})".format(server_hostname, exc)
+            )
+        if existing_port is None:
             host = "{}:{}".format(host, port)
         return host, http_path
 
