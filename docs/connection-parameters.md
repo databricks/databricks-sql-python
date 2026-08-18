@@ -1,7 +1,8 @@
 # Connection parameter reference
 
-This document lists **every public connection / session parameter** the Python
-connector (`databricks.sql.connect(...)`) accepts, and — because the driver
+This document lists **every public connection / session parameter that is
+consumed by at least one currently-supported backend** the Python connector
+(`databricks.sql.connect(...)`) accepts, and — because the driver
 ships more than one backend — whether each parameter is honored on the
 **Thrift** backend (the default) or the **Kernel** backend (opt-in via
 `use_kernel=True`).
@@ -70,7 +71,7 @@ to change without notice.
 | `access_token` (PAT)                                | `str`                |   ✅   |   ✅   | `None`                    | Personal Access Token / bearer token. The default auth mode when set; otherwise auth falls back to OAuth.                                                       |
 | `auth_type`                                         | `str`                |   ✅   |   ✅   | `None` ⇒ Databricks OAuth | `databricks-oauth` or `azure-oauth`.                                                                                                                            |
 | `oauth_client_id` (U2M)                             | `str`                |   ✅   |   ✅   | built-in client id        | Custom U2M client id. Forwarded on both; when absent, each path applies its own built-in default.                                                              |
-| `oauth_redirect_port` (U2M)                         | `int`                |   ✅   |   ✅   | `None`                    | Localhost redirect port for the browser flow; required when a custom `oauth_client_id` is set.                                                                  |
+| `oauth_redirect_port` (U2M)                         | `int`                |   ✅   |   ✅   | `None`                    | Localhost redirect port for the browser flow; optional — defaults to the built-in port range 8020–8024 if omitted (even when a custom `oauth_client_id` is set). |
 | `oauth_client_secret` (OAuth M2M)                   | `str`                |   ❌   |   ✅   | `None`                    | **Kernel-only in practice.** The Thrift auth path never reads `oauth_client_secret`; use `credentials_provider` or an Azure service principal for M2M on Thrift. |
 | `oauth_scopes`                                      | `List[str]`          |   ❌   |   ✅   | `["sql","offline_access"]`| **Thrift ignores custom scopes** — it always uses the built-in scope set. Only the kernel honors a custom `oauth_scopes`.                                       |
 | `credentials_provider`                              | `CredentialsProvider`|   ✅   |   ❌   | `None`                    | Custom external credentials provider. **Rejected on the kernel path** (`NotSupportedError`) — it is an opaque token source, so the kernel cannot own the token lifecycle; use `oauth_client_id` + `oauth_client_secret` for M2M, or the Thrift backend. |
@@ -81,6 +82,14 @@ to change without notice.
 | `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported; passing either raises `ValueError`.                                                                            |
 
 ## HTTP client, proxy, retries
+
+> **Retry defaults are Thrift defaults.** The **Default Value** column lists the
+> values the *Thrift* backend applies. For the ✅-Kernel retry rows
+> (`_retry_stop_after_attempts_count` / `_duration`, `_retry_delay_min` /
+> `_max`), `session.py` forwards each as `kwargs.get(...)` **with no fallback**,
+> so when a caller omits one, `None` is passed and the kernel's Rust retry
+> policy supplies **its own** default — which is not guaranteed to match the
+> Thrift value shown here.
 
 | Option                               | Type        | Thrift | Kernel | Default Value | Note                                                                                                                                            |
 | ------------------------------------ | ----------- | :----: | :----: | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
