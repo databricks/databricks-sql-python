@@ -31,7 +31,11 @@ from databricks.sql.auth.auth import (
     PYSQL_OAUTH_CLIENT_ID,
     PYSQL_OAUTH_SCOPES,
     PYSQL_OAUTH_REDIRECT_PORT_RANGE,
+    PYSQL_OAUTH_AZURE_CLIENT_ID,
+    PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE,
 )
+from databricks.sql.auth.common import get_effective_azure_login_app_id
+from databricks.sql.auth.endpoint import AzureOAuthEndpointCollection
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     AuthProvider,
@@ -257,9 +261,8 @@ class TestKernelOAuthU2M:
     may override ``oauth_scopes``; absent one, ``PYSQL_OAUTH_SCOPES`` is
     forwarded as the default.
 
-    ``azure-oauth`` (Azure AD) is deliberately NOT handled yet — the
-    kernel can't drive the Azure AD authorization/token flow — so it is
-    rejected up front (PECOBLR-4120)."""
+    ``azure-oauth`` (Azure AD U2M) routes here too — see
+    ``test_azure_oauth_routes_to_kernel_u2m`` (PECOBLR-4120)."""
 
     def test_bare_databricks_oauth_forwards_full_python_bundle(self):
         # No overrides → forward the databricks-sql-python bundle in full
@@ -277,23 +280,40 @@ class TestKernelOAuthU2M:
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
-    @pytest.mark.parametrize(
-        "opts",
-        [
+    def test_azure_oauth_routes_to_kernel_u2m(self):
+        # azure-oauth (Azure AD U2M) now routes to the kernel's oauth-u2m with
+        # the Azure app bundle: the Azure client id, its registered port 8030,
+        # and the AAD delegated scope ({app_id}/user_impersonation +
+        # offline_access). The kernel discovers endpoints via the workspace
+        # /oidc redirector (which an Azure workspace redirects to Entra).
+        # PECOBLR-4120.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
             {"auth_type": "azure-oauth"},
-            {"auth_type": "azure-oauth", "oauth_client_id": "custom"},
-            {"auth_type": "azure-oauth", "oauth_redirect_port": 8030},
-        ],
-        ids=["bare", "with_client_id", "with_port"],
-    )
-    def test_azure_oauth_not_supported(self, opts):
-        # azure-oauth (Azure AD U2M) can't work through the kernel yet: the
-        # kernel resolves OAuth endpoints only from workspace-native OIDC
-        # discovery and has no Azure AD path. Fail loudly at session-open
-        # rather than forwarding a bundle that authenticates against the
-        # wrong endpoints. Tracked by PECOBLR-4120.
-        with pytest.raises(NotSupportedError, match="azure-oauth"):
-            kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        )
+        assert kwargs == {
+            "auth_type": "oauth-u2m",
+            "client_id": PYSQL_OAUTH_AZURE_CLIENT_ID,
+            "redirect_ports": list(PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE),
+            "oauth_scopes": AzureOAuthEndpointCollection().get_scopes_mapping(
+                list(PYSQL_OAUTH_SCOPES)
+            ),
+        }
+        # Sanity: the mapped scope is the AAD delegated form, not `sql`.
+        assert any(s.endswith("/user_impersonation") for s in kwargs["oauth_scopes"])
+        assert "offline_access" in kwargs["oauth_scopes"]
+
+    def test_azure_oauth_honors_custom_client_id_and_port(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "azure-oauth",
+                "oauth_client_id": "custom-azure-app",
+                "oauth_redirect_port": 9100,
+            },
+        )
+        assert kwargs["client_id"] == "custom-azure-app"
+        assert kwargs["redirect_ports"] == [9100]
 
     def test_u2m_custom_client_id_port_and_scopes_honored(self):
         # A caller may override the coupled client_id + redirect port and the
@@ -475,6 +495,61 @@ class TestKernelAuthAmbiguity:
                     "oauth_client_secret": "sec",
                 },
             )
+
+
+class TestKernelAzureSpM2M:
+    """``azure-sp-m2m`` (Azure service-principal, client-credentials) routes to
+    the kernel's generic ``oauth-m2m`` with an Entra v2.0 token endpoint and the
+    ``{app_id}/.default`` scope. The management-token header is intentionally not
+    applied on the kernel path (no SQL connector uses it). PECOBLR-4141."""
+
+    _CREDS = {
+        "auth_type": "azure-sp-m2m",
+        "azure_client_id": "azure-sp",
+        "azure_client_secret": "azure-secret",
+        "azure_tenant_id": "tenant-123",
+    }
+
+    def test_azure_sp_m2m_routes_to_kernel_m2m(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            dict(self._CREDS),
+            hostname="adb-1.azuredatabricks.net",
+        )
+        app_id = get_effective_azure_login_app_id("adb-1.azuredatabricks.net")
+        assert kwargs == {
+            "auth_type": "oauth-m2m",
+            "client_id": "azure-sp",
+            "client_secret": "azure-secret",
+            "token_url": "https://login.microsoftonline.com/tenant-123/oauth2/v2.0/token",
+            "oauth_scopes": [f"{app_id}/.default"],
+        }
+
+    def test_azure_sp_m2m_requires_tenant(self):
+        opts = {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+        }
+        with pytest.raises(NotSupportedError, match="azure_tenant_id"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
+            )
+
+    def test_azure_sp_m2m_requires_client_id_and_secret(self):
+        with pytest.raises(ProgrammingError, match="azure_client_id"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {"auth_type": "azure-sp-m2m", "azure_tenant_id": "t"},
+                hostname="adb-1.azuredatabricks.net",
+            )
+
+    def test_azure_sp_m2m_forwards_federation_client_id(self):
+        opts = dict(self._CREDS, identity_federation_client_id="fed-client")
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
+        )
+        assert kwargs["identity_federation_client_id"] == "fed-client"
 
 
 class TestKernelScopesNormalization:

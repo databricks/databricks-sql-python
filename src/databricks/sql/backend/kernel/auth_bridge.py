@@ -20,11 +20,24 @@ Three auth shapes are supported on the kernel path:
   app bundle (``client_id`` + ``redirect_ports`` list, with the optional
   ``oauth_client_id`` / ``oauth_redirect_port`` overriding it) is
   forwarded to the kernel's ``auth_type='oauth-u2m'`` and the kernel
-  runs the browser flow itself. ``azure-oauth`` (Azure AD) is **not yet
-  supported** on the kernel path and is rejected with
-  ``NotSupportedError`` — the kernel resolves OAuth endpoints only from
-  the workspace-native OIDC config and cannot drive the Azure AD flow
-  (PECOBLR-4120).
+  runs the browser flow itself.
+- **Azure Entra (Azure AD)** — both Azure auth types route to the
+  kernel's *generic* OAuth flows with Azure values as overrides (the
+  kernel needs no Azure-specific code):
+
+  - ``azure-oauth`` (U2M) → ``oauth-u2m`` with the Azure app client id
+    (``96eecda7-…``), redirect port ``8030``, and the AAD delegated scope
+    ``{app_id}/user_impersonation offline_access`` (via
+    ``AzureOAuthEndpointCollection``, honoring ``DATABRICKS_AZURE_TENANT_ID``).
+    The kernel discovers endpoints via the workspace ``/oidc`` redirector,
+    which an Azure workspace redirects to Entra (PECOBLR-4120).
+  - ``azure-sp-m2m`` (M2M) → ``oauth-m2m`` with the Azure service-principal
+    credentials, an Entra v2.0 ``token_url``, and the
+    ``{effective_app_id}/.default`` scope (PECOBLR-4141). ``azure_tenant_id``
+    is required (the kernel path does not auto-discover it). The Azure
+    management-token header and ``azure_workspace_resource_id`` are **not**
+    applied on the kernel path — no SQL connector uses them; an SP that is
+    not a workspace member (RBAC-only) is unsupported here.
 
 ``identity_federation_client_id`` is forwarded with whichever auth shape
 wins resolution. It selects mandatory SP-wide workload-identity token
@@ -54,13 +67,22 @@ import re
 from typing import Any, Dict, Optional
 
 from databricks.sql.auth.auth import (
+    PYSQL_OAUTH_AZURE_CLIENT_ID,
+    PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE,
     PYSQL_OAUTH_CLIENT_ID,
     PYSQL_OAUTH_REDIRECT_PORT_RANGE,
     PYSQL_OAUTH_SCOPES,
 )
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
+from databricks.sql.auth.common import get_effective_azure_login_app_id
+from databricks.sql.auth.endpoint import AzureOAuthEndpointCollection
 from databricks.sql.auth.token_federation import TokenFederationProvider
 from databricks.sql.exc import NotSupportedError, ProgrammingError
+
+# Entra (Azure AD) v2.0 token endpoint template. The kernel's generic M2M
+# provider sends the credentials as ``scope`` (v2.0), so we point it at the
+# v2.0 endpoint (the connector's own SP path uses the v1.0 ``resource`` form).
+_AZURE_AAD_LOGIN_HOST = "https://login.microsoftonline.com"
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +156,7 @@ def _extract_bearer_token(auth_provider: Optional[AuthProvider]) -> Optional[str
 def kernel_auth_kwargs(
     auth_provider: Optional[AuthProvider],
     auth_options: Optional[Dict[str, Any]] = None,
+    hostname: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the kwargs passed to ``databricks_sql_kernel.Session(...)``.
 
@@ -154,8 +177,9 @@ def kernel_auth_kwargs(
        - a U2M ``auth_type`` (``databricks-oauth``) *and*
          ``oauth_client_secret`` together.
 
-    (``azure-oauth`` is rejected as unsupported before these guards —
-    PECOBLR-4120.)
+    (The Azure Entra auth types — ``azure-oauth`` and ``azure-sp-m2m`` —
+    are routed to the kernel's generic OAuth flows up front, before these
+    guards; see the module docstring.)
     1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
     2. **PAT** — the built provider is (or wraps) an
@@ -168,7 +192,6 @@ def kernel_auth_kwargs(
        forwarding the connector's own OAuth app rather than the kernel's
        ``databricks-sql-connector`` default (PECOBLR-4039/4040). Unlike the
        Thrift path, a caller-supplied ``oauth_scopes`` is honored here.
-       ``azure-oauth`` is rejected as unsupported (PECOBLR-4120).
     4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
        token source; no raw creds for the kernel to own).
     5. Anything else → ``NotSupportedError``.
@@ -188,24 +211,87 @@ def kernel_auth_kwargs(
     auth_type = opts.get("auth_type")
     has_m2m = bool(client_id and client_secret)
 
-    # azure-oauth (Azure AD U2M) is not yet supported on the kernel path.
-    # Reject it up front — before any M2M/U2M routing — so ANY azure-oauth
-    # request gets a clear "not supported" error rather than being silently
-    # misrouted (e.g. azure-oauth + client_id + secret would otherwise look
-    # like M2M). The kernel resolves OAuth endpoints only from the
-    # workspace-native OIDC config and has no Azure AD path, so the Thrift
-    # azure-oauth flow (AAD token endpoint + /user_impersonation scope, see
-    # AzureOAuthEndpointCollection) cannot be reproduced here. Forwarding an
-    # azure bundle would authenticate against the wrong endpoints, so we fail
-    # loudly at session-open. Tracked by PECOBLR-4120.
+    # Azure Entra (Azure AD) auth types route to the kernel's GENERIC OAuth
+    # flows with Azure values supplied as overrides — the kernel needs no
+    # Azure-specific code. Handled up front, keyed on the explicit auth_type,
+    # before the generic M2M/PAT/U2M routing below (azure-sp-m2m carries its
+    # creds in azure_* kwargs, not oauth_client_id/secret, so it would
+    # otherwise fall through to the final "unsupported" error).
+
+    # azure-oauth (Azure AD U2M): forward the Azure app bundle to oauth-u2m.
+    # The kernel runs the browser flow and discovers endpoints via the
+    # workspace /oidc redirector (which an Azure workspace redirects to Entra).
+    # The AAD delegated scope ({app_id}/user_impersonation [+ offline_access])
+    # is synthesised via AzureOAuthEndpointCollection, which also honors the
+    # DATABRICKS_AZURE_TENANT_ID app-id override. PECOBLR-4120.
     if auth_type == "azure-oauth":
-        raise NotSupportedError(
-            "use_kernel=True does not support auth_type='azure-oauth' (Azure "
-            "AD U2M) yet: the kernel resolves OAuth endpoints only from the "
-            "workspace-native OIDC configuration and cannot drive the Azure AD "
-            "authorization/token flow. Use the Thrift backend (default) for "
-            "azure-oauth. Tracked by PECOBLR-4120."
+        redirect_port = opts.get("oauth_redirect_port")
+        caller_scopes = _normalize_scopes(opts.get("oauth_scopes"))
+        mapped_scopes = AzureOAuthEndpointCollection().get_scopes_mapping(
+            caller_scopes if caller_scopes is not None else list(PYSQL_OAUTH_SCOPES)
         )
+        kwargs = {
+            "auth_type": "oauth-u2m",
+            "client_id": client_id or PYSQL_OAUTH_AZURE_CLIENT_ID,
+            "redirect_ports": (
+                [_coerce_redirect_port(redirect_port)]
+                if client_id and redirect_port is not None
+                else list(PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE)
+            ),
+            "oauth_scopes": mapped_scopes,
+        }
+        if federation_client_id:
+            kwargs["identity_federation_client_id"] = federation_client_id
+        return kwargs
+
+    # azure-sp-m2m (Azure service principal, client-credentials): forward to
+    # oauth-m2m with the Azure app credentials, an Entra v2.0 token endpoint,
+    # and the {effective_app_id}/.default scope. The kernel sends the client
+    # secret via HTTP Basic (which Entra v2.0 accepts) and, because a
+    # token_url override is set, skips workspace OIDC discovery. PECOBLR-4141.
+    #
+    # NOT applied on the kernel path: the Azure management-token header
+    # (X-Databricks-Azure-SP-Management-Token) and azure_workspace_resource_id.
+    # No SQL connector (Go, Node) uses them; the Databricks-audience token
+    # authenticates SPs that are workspace principals (the SQL norm). An SP with
+    # only an Azure RBAC role (not a workspace member) is unsupported here.
+    if auth_type == "azure-sp-m2m":
+        azure_client_id = opts.get("azure_client_id")
+        azure_client_secret = opts.get("azure_client_secret")
+        azure_tenant_id = opts.get("azure_tenant_id")
+        if not (azure_client_id and azure_client_secret):
+            raise ProgrammingError(
+                "auth_type='azure-sp-m2m' requires azure_client_id and "
+                "azure_client_secret."
+            )
+        if not azure_tenant_id:
+            # The Thrift path auto-discovers the tenant from the workspace's
+            # /aad/auth redirect; the kernel path does not make that call, so
+            # require it explicitly rather than silently guessing.
+            raise NotSupportedError(
+                "use_kernel=True auth_type='azure-sp-m2m' requires an explicit "
+                "azure_tenant_id (the kernel path does not auto-discover the "
+                "Azure tenant from the workspace as the Thrift backend does)."
+            )
+        if opts.get("azure_workspace_resource_id"):
+            logger.warning(
+                "azure_workspace_resource_id is ignored on use_kernel=True: the "
+                "Azure management-token flow (X-Databricks-Azure-SP-Management-"
+                "Token) is not applied on the kernel path. The Databricks-"
+                "audience token authenticates service principals that are "
+                "workspace principals; an RBAC-only SP is unsupported here."
+            )
+        app_id = get_effective_azure_login_app_id(hostname or "")
+        kwargs = {
+            "auth_type": "oauth-m2m",
+            "client_id": azure_client_id,
+            "client_secret": azure_client_secret,
+            "token_url": f"{_AZURE_AAD_LOGIN_HOST}/{azure_tenant_id}/oauth2/v2.0/token",
+            "oauth_scopes": [f"{app_id}/.default"],
+        }
+        if federation_client_id:
+            kwargs["identity_federation_client_id"] = federation_client_id
+        return kwargs
 
     # 0. Ambiguity guards — fail before any flow is chosen.
     if client_secret and opts.get("credentials_provider") is not None:
