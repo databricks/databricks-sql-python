@@ -477,6 +477,52 @@ class TestKernelRetryOptionsThreading:
             finally:
                 conn.close()
 
+    def test_remapped_host_and_path_threaded_into_kernel_client(self):
+        """The remapped ``server_hostname``/``http_path`` from
+        ``_kernel_host_and_path`` must reach ``KernelDatabricksClient``.
+        Guards against a regression that dropped or reordered the call so
+        the raw (pre-override) values leaked through — the silent-ignore
+        bug this PR fixes, which the pure-function tests alone can't catch.
+        """
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo.cloud.databricks.com",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                _connection_uri="https://direct.example.com:8443/sql/1.0/warehouses/xyz",
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                # The _connection_uri override must be split and remapped
+                # onto the kernel client, not passed through raw.
+                assert kwargs["server_hostname"] == "https://direct.example.com:8443"
+                assert kwargs["http_path"] == "/sql/1.0/warehouses/xyz"
+            finally:
+                conn.close()
+
 
 class TestKernelUserAgentForwarding:
     """user_agent_entry must reach the kernel on the use_kernel path —
@@ -525,6 +571,79 @@ class TestKernelUserAgentForwarding:
                 assert "my-partner-app" in ua, f"UA was {ua!r}"
             finally:
                 conn.close()
+
+
+class TestKernelSpogHeaderReDerivedFromResolvedPath:
+    """On the kernel path a ``_connection_uri`` override can rewrite the
+    http_path to a different workspace. The SPOG ``x-databricks-org-id``
+    header is computed in ``__init__`` from the *original* http_path, so it
+    must be re-derived from the resolved kernel path — otherwise the kernel
+    would receive an org-id pointing at the pre-override workspace."""
+
+    PACKAGE = "databricks.sql"
+
+    def _connect_and_get_kernel_headers(self, connect_kwargs):
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow", reason="kernel client module imports pyarrow at load"
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo.cloud.databricks.com",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                **connect_kwargs,
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                return dict(kwargs["http_headers"])
+            finally:
+                conn.close()
+
+    def test_org_id_re_derived_from_connection_uri_override(self):
+        # Original path routes to workspace 111; the _connection_uri override
+        # points at workspace 222 — the kernel must see org-id 222.
+        headers = self._connect_and_get_kernel_headers(
+            {
+                "http_path": "/sql/1.0/warehouses/abc?o=111",
+                "_connection_uri": "https://direct.example.com/sql/1.0/warehouses/xyz?o=222",
+            }
+        )
+        assert headers.get("x-databricks-org-id") == "222"
+
+    def test_org_id_dropped_when_override_has_no_workspace(self):
+        # The override points at a path with no workspace routing info, so the
+        # stale org-id (from the original path) must not be carried over.
+        headers = self._connect_and_get_kernel_headers(
+            {
+                "http_path": "/sql/1.0/warehouses/abc?o=111",
+                "_connection_uri": "https://direct.example.com/sql/1.0/warehouses/xyz",
+            }
+        )
+        assert "x-databricks-org-id" not in headers
+
+    def test_org_id_preserved_when_no_override(self):
+        headers = self._connect_and_get_kernel_headers(
+            {"http_path": "/sql/1.0/warehouses/abc?o=111"}
+        )
+        assert headers.get("x-databricks-org-id") == "111"
 
 
 @pytest.mark.realkernel
@@ -638,6 +757,11 @@ class TestKernelHostAndPathOverrides:
         assert host == "https://direct.example.com:9999"
         assert path == "/p"
 
+    def test_connection_uri_without_authority_raises(self):
+        for bad in ("//no-scheme-authority", "https:///only-path"):
+            with pytest.raises(ValueError, match="could not determine host authority"):
+                _kernel_host_and_path(self.HOST, self.PATH, {"_connection_uri": bad})
+
     def test_port_folded_into_bare_host(self):
         host, path = _kernel_host_and_path(self.HOST, self.PATH, {"_port": 8443})
         assert host == "{}:8443".format(self.HOST)
@@ -646,3 +770,13 @@ class TestKernelHostAndPathOverrides:
     def test_port_not_double_appended_when_host_has_port(self):
         host, _ = _kernel_host_and_path(self.HOST + ":7000", self.PATH, {"_port": 8443})
         assert host == self.HOST + ":7000"
+
+    def test_port_folded_into_ipv6_literal_without_port(self):
+        # An IPv6 authority contains ``:`` even without a port, so a naive
+        # ``":" in host`` check would wrongly skip appending _port.
+        host, _ = _kernel_host_and_path("[::1]", self.PATH, {"_port": 8443})
+        assert host == "[::1]:8443"
+
+    def test_port_not_double_appended_for_ipv6_literal_with_port(self):
+        host, _ = _kernel_host_and_path("[::1]:7000", self.PATH, {"_port": 8443})
+        assert host == "[::1]:7000"
