@@ -162,12 +162,13 @@ def kernel_auth_kwargs(
        ``AccessTokenAuthProvider`` → extract the bearer token.
     3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` → forward the
        connector's coupled ``databricks-sql-python`` bundle (``client_id``
-       + ``redirect_port``, with fixed ``PYSQL_OAUTH_SCOPES``) to the
-       kernel's ``oauth-u2m``, so a bare U2M connection authenticates as
-       ``databricks-sql-python`` — parity with the Thrift path — rather
-       than the kernel's own ``databricks-sql-connector`` default
-       (PECOBLR-4039/4040). ``azure-oauth`` is rejected as unsupported
-       (PECOBLR-4120).
+       + ``redirect_port``, defaulting scopes to ``PYSQL_OAUTH_SCOPES``
+       when the caller supplies none) to the kernel's ``oauth-u2m``, so a
+       bare U2M connection authenticates as ``databricks-sql-python`` —
+       forwarding the connector's own OAuth app rather than the kernel's
+       ``databricks-sql-connector`` default (PECOBLR-4039/4040). Unlike the
+       Thrift path, a caller-supplied ``oauth_scopes`` is honored here.
+       ``azure-oauth`` is rejected as unsupported (PECOBLR-4120).
     4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
        token source; no raw creds for the kernel to own).
     5. Anything else → ``NotSupportedError``.
