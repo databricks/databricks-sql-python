@@ -38,10 +38,11 @@ def _kernel_host_and_path(
       ``_connection_uri`` wins over ``_port``, matching the Thrift backend.
       When the URI omits a path (e.g. ``https://host:8443`` or
       ``https://host:8443?o=222``) the connection's original ``http_path`` is
-      retained, and any query on the URI is applied to that retained path — so
-      a path-less, query-bearing URI overrides only the host and query while
-      keeping the original warehouse path. The fragment (``#...``) is dropped
-      since it never goes on the wire.
+      retained, and any query on the URI is applied to that retained path,
+      replacing any query the retained path already carried — so a path-less,
+      query-bearing URI overrides only the host and query while keeping the
+      original warehouse path. The fragment (``#...``) is dropped since it
+      never goes on the wire.
     - ``_port`` is otherwise folded into the host authority, unless the
       hostname already carries a port.
 
@@ -69,7 +70,12 @@ def _kernel_host_and_path(
         # override, path preserved). See the docstring for the rationale.
         path = parts.path or http_path
         if parts.query:
-            path = "{}?{}".format(path, parts.query)
+            # Drop any query already on the retained path before applying the
+            # URI's query, so the URI's query fully overrides it. Appending
+            # unconditionally would otherwise yield a malformed double-``?``
+            # path (e.g. ``/warehouses/abc?o=111?o=222``) that mis-parses
+            # downstream and silently drops the org-id header.
+            path = "{}?{}".format(path.split("?", 1)[0], parts.query)
         return host, path
 
     port = kwargs.get("_port")

@@ -780,6 +780,18 @@ class TestKernelHostAndPathOverrides:
         assert host == "https://h.example.com:8443"
         assert path == "{}?o=222".format(self.PATH)
 
+    def test_connection_uri_without_path_query_replaces_original_path_query(self):
+        # When the retained original http_path already carries a query, the
+        # URI's query replaces it rather than being appended after a second
+        # ``?`` (which would produce a malformed double-query path).
+        host, path = _kernel_host_and_path(
+            self.HOST,
+            "/sql/1.0/warehouses/abc?o=111",
+            {"_connection_uri": "https://h.example.com:8443?o=222"},
+        )
+        assert host == "https://h.example.com:8443"
+        assert path == "/sql/1.0/warehouses/abc?o=222"
+
     def test_connection_uri_wins_over_port(self):
         host, path = _kernel_host_and_path(
             self.HOST,
