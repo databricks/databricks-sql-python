@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 def _kernel_host_and_path(
-    server_hostname: str, http_path: str, kwargs: dict
-) -> Tuple[str, str]:
+    server_hostname: str, http_path: Optional[str], kwargs: dict
+) -> Tuple[str, Optional[str]]:
     """Resolve the ``(host, http_path)`` the kernel ``Session`` should use,
     honoring the Thrift-style ``_connection_uri`` / ``_port`` overrides.
 
