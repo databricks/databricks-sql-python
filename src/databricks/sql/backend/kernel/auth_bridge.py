@@ -15,11 +15,16 @@ Three auth shapes are supported on the kernel path:
   connector's own OAuth provider because the kernel re-mints tokens
   itself and the client secret is not recoverable from a built
   provider.
-- **OAuth U2M** — for ``auth_type`` ``databricks-oauth`` /
-  ``azure-oauth`` (the browser authorization-code flow), the optional
-  ``oauth_client_id`` / ``oauth_redirect_port`` are forwarded to the
-  kernel's ``auth_type='oauth-u2m'`` and the kernel runs the browser
-  flow itself.
+- **OAuth U2M** — for ``auth_type`` ``databricks-oauth`` (the browser
+  authorization-code flow), the connector's ``databricks-sql-python``
+  app bundle (``client_id`` + ``redirect_ports`` list, with the optional
+  ``oauth_client_id`` / ``oauth_redirect_port`` overriding it) is
+  forwarded to the kernel's ``auth_type='oauth-u2m'`` and the kernel
+  runs the browser flow itself. ``azure-oauth`` (Azure AD) is **not yet
+  supported** on the kernel path and is rejected with
+  ``NotSupportedError`` — the kernel resolves OAuth endpoints only from
+  the workspace-native OIDC config and cannot drive the Azure AD flow
+  (PECOBLR-4120).
 
 ``identity_federation_client_id`` is forwarded with whichever auth shape
 wins resolution. It selects mandatory SP-wide workload-identity token
@@ -48,6 +53,11 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from databricks.sql.auth.auth import (
+    PYSQL_OAUTH_CLIENT_ID,
+    PYSQL_OAUTH_REDIRECT_PORT_RANGE,
+    PYSQL_OAUTH_SCOPES,
+)
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
 from databricks.sql.auth.token_federation import TokenFederationProvider
 from databricks.sql.exc import NotSupportedError, ProgrammingError
@@ -141,15 +151,24 @@ def kernel_auth_kwargs(
        rather than silently picking one flow (and failing later as a
        confusing 401 against the wrong principal):
        - a custom ``credentials_provider`` *and* M2M kwargs together;
-       - a U2M ``auth_type`` (``databricks-oauth`` / ``azure-oauth``)
-         *and* ``oauth_client_secret`` together.
+       - a U2M ``auth_type`` (``databricks-oauth``) *and*
+         ``oauth_client_secret`` together.
+
+    (``azure-oauth`` is rejected as unsupported before these guards —
+    PECOBLR-4120.)
     1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
     2. **PAT** — the built provider is (or wraps) an
        ``AccessTokenAuthProvider`` → extract the bearer token.
-    3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` /
-       ``azure-oauth`` → forward optional ``oauth_client_id`` /
-       ``oauth_redirect_port`` to the kernel's ``oauth-u2m``.
+    3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` → forward the
+       connector's coupled ``databricks-sql-python`` bundle (``client_id``
+       + ``redirect_ports`` list, defaulting scopes to ``PYSQL_OAUTH_SCOPES``
+       when the caller supplies none) to the kernel's ``oauth-u2m``, so a
+       bare U2M connection authenticates as ``databricks-sql-python`` —
+       forwarding the connector's own OAuth app rather than the kernel's
+       ``databricks-sql-connector`` default (PECOBLR-4039/4040). Unlike the
+       Thrift path, a caller-supplied ``oauth_scopes`` is honored here.
+       ``azure-oauth`` is rejected as unsupported (PECOBLR-4120).
     4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
        token source; no raw creds for the kernel to own).
     5. Anything else → ``NotSupportedError``.
@@ -169,6 +188,25 @@ def kernel_auth_kwargs(
     auth_type = opts.get("auth_type")
     has_m2m = bool(client_id and client_secret)
 
+    # azure-oauth (Azure AD U2M) is not yet supported on the kernel path.
+    # Reject it up front — before any M2M/U2M routing — so ANY azure-oauth
+    # request gets a clear "not supported" error rather than being silently
+    # misrouted (e.g. azure-oauth + client_id + secret would otherwise look
+    # like M2M). The kernel resolves OAuth endpoints only from the
+    # workspace-native OIDC config and has no Azure AD path, so the Thrift
+    # azure-oauth flow (AAD token endpoint + /user_impersonation scope, see
+    # AzureOAuthEndpointCollection) cannot be reproduced here. Forwarding an
+    # azure bundle would authenticate against the wrong endpoints, so we fail
+    # loudly at session-open. Tracked by PECOBLR-4120.
+    if auth_type == "azure-oauth":
+        raise NotSupportedError(
+            "use_kernel=True does not support auth_type='azure-oauth' (Azure "
+            "AD U2M) yet: the kernel resolves OAuth endpoints only from the "
+            "workspace-native OIDC configuration and cannot drive the Azure AD "
+            "authorization/token flow. Use the Thrift backend (default) for "
+            "azure-oauth. Tracked by PECOBLR-4120."
+        )
+
     # 0. Ambiguity guards — fail before any flow is chosen.
     if client_secret and opts.get("credentials_provider") is not None:
         raise NotSupportedError(
@@ -178,7 +216,7 @@ def kernel_auth_kwargs(
             "kernel-managed M2M, or use the Thrift backend (default) for "
             "credentials_provider."
         )
-    if client_secret and auth_type in ("databricks-oauth", "azure-oauth"):
+    if client_secret and auth_type == "databricks-oauth":
         raise NotSupportedError(
             f"Ambiguous auth on use_kernel=True: auth_type={auth_type!r} selects "
             "the U2M browser flow, but oauth_client_secret was also provided "
@@ -214,16 +252,33 @@ def kernel_auth_kwargs(
         return kwargs
 
     # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
-    if auth_type in ("databricks-oauth", "azure-oauth"):
-        kwargs = {"auth_type": "oauth-u2m"}
-        if client_id:
-            kwargs["client_id"] = client_id
+    #    Only databricks-oauth reaches here (azure-oauth rejected up front).
+    #    Forward the connector's own databricks-sql-python bundle instead of
+    #    the kernel's databricks-sql-connector default, for parity with the
+    #    Thrift path. client_id + redirect ports are coupled per app (each
+    #    registers its own redirect URIs): a caller port only overrides the
+    #    default when an explicit client_id is also supplied. A caller may
+    #    override oauth_scopes; absent one we forward PYSQL_OAUTH_SCOPES as
+    #    the default. We forward the FULL PYSQL_OAUTH_REDIRECT_PORT_RANGE as
+    #    ``redirect_ports`` so the kernel binds the first free port (busy-port
+    #    fallback), mirroring the Thrift DatabricksOAuthProvider which retries
+    #    the next port when one is bound. A caller overriding client_id
+    #    supplies its own single registered port.
+    if auth_type == "databricks-oauth":
         redirect_port = opts.get("oauth_redirect_port")
-        if redirect_port is not None:
-            kwargs["redirect_port"] = int(redirect_port)
+        # Honor a caller-supplied oauth_scopes (normalized to a list of
+        # strings); fall back to the connector default when none is given.
         scopes = _normalize_scopes(opts.get("oauth_scopes"))
-        if scopes is not None:
-            kwargs["oauth_scopes"] = scopes
+        kwargs = {
+            "auth_type": "oauth-u2m",
+            "client_id": client_id or PYSQL_OAUTH_CLIENT_ID,
+            "redirect_ports": (
+                [_coerce_redirect_port(redirect_port)]
+                if client_id and redirect_port is not None
+                else list(PYSQL_OAUTH_REDIRECT_PORT_RANGE)
+            ),
+            "oauth_scopes": scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES),
+        }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
@@ -251,10 +306,27 @@ def kernel_auth_kwargs(
     raise NotSupportedError(
         f"use_kernel=True requires PAT (access_token), OAuth M2M "
         f"(oauth_client_id + oauth_client_secret), or OAuth U2M "
-        f"(auth_type='databricks-oauth' / 'azure-oauth'), but got "
+        f"(auth_type='databricks-oauth'), but got "
         f"{provider_desc} with auth_type={auth_type!r}. Use the Thrift "
         "backend (default) for other auth flows."
     )
+
+
+def _coerce_redirect_port(redirect_port: Any) -> int:
+    """Coerce an ``oauth_redirect_port`` value (which may arrive as a string,
+    e.g. from a DSN) to an int.
+
+    A non-numeric value is a caller error; surface it as a PEP 249
+    ``ProgrammingError`` (as ``_normalize_scopes`` does for malformed
+    ``oauth_scopes``) rather than a bare ``ValueError``, so callers get a
+    consistent, actionable exception type for garbled input."""
+    try:
+        return int(redirect_port)
+    except (TypeError, ValueError):
+        raise ProgrammingError(
+            f"oauth_redirect_port must be an integer (or a string parseable as "
+            f"one), got {redirect_port!r}."
+        )
 
 
 def _normalize_scopes(scopes: Any) -> Optional[list]:
