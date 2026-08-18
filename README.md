@@ -22,6 +22,10 @@ For the latest documentation, see
 - [Databricks](https://docs.databricks.com/dev-tools/python-sql-connector.html)
 - [Azure Databricks](https://docs.microsoft.com/en-us/azure/databricks/dev-tools/python-sql-connector)
 
+For a full reference of every `sql.connect(...)` keyword argument — type,
+default, per-backend support (Thrift vs Kernel), and meaning — see
+[`CONNECTION_PARAMETERS.md`](CONNECTION_PARAMETERS.md).
+
 ## Quickstart
 
 ### Installing the core library
