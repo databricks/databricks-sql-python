@@ -183,6 +183,13 @@ def test_fetchall_arrow(conn):
         assert table.column_names == ["a", "b"]
 
 
+@pytest.mark.parametrize("row_limit", [0, 1, 5])
+def test_cursor_row_limit(conn, row_limit):
+    with conn.cursor(row_limit=row_limit) as cur:
+        cur.execute("SELECT id FROM range(10) ORDER BY id")
+        assert [row[0] for row in cur.fetchall()] == list(range(row_limit))
+
+
 # ─── Logging (Rust kernel -> Python logging bridge) ──────────────────────────
 #
 # Layer 3 of the logger-name drift guard (see also the Rust tests
