@@ -259,7 +259,11 @@ def kernel_auth_kwargs(
     #    registers its own redirect URI): a caller port only overrides the
     #    default when an explicit client_id is also supplied. A caller may
     #    override oauth_scopes; absent one we forward PYSQL_OAUTH_SCOPES as
-    #    the default.
+    #    the default. NB: the kernel's redirect_port is a single int, so
+    #    unlike the Thrift path (which hands DatabricksOAuthProvider the full
+    #    PYSQL_OAUTH_REDIRECT_PORT_RANGE and retries the next port when one is
+    #    bound) this path forwards only one port with no fallback. A caller
+    #    hitting a port collision must pass oauth_redirect_port explicitly.
     if auth_type == "databricks-oauth":
         redirect_port = opts.get("oauth_redirect_port")
         # Honor a caller-supplied oauth_scopes (normalized to a list of
