@@ -266,10 +266,16 @@ class Session:
             # different workspace (a different ``?o=`` or cluster path), so
             # re-derive the routing header from the resolved path and swap it
             # in — otherwise the kernel would receive an org-id that points at
-            # the pre-override workspace (a silent mis-routing). A caller-set
-            # header still wins: ``_spog_headers`` is empty in that case, so the
-            # explicit header is left untouched below.
-            if kernel_http_path != http_path and self._spog_headers:
+            # the pre-override workspace (a silent mis-routing). This must fire
+            # whenever the path changed, in *both* directions: when the original
+            # path carried routing and the override drops or changes it, and
+            # when the original had none but the override introduces one — the
+            # latter is skipped if we also gate on ``self._spog_headers``. Any
+            # stale extracted header is stripped first, then re-derived; when
+            # ``_spog_headers`` is empty the filter strips nothing. A caller-set
+            # header still wins because ``_extract_spog_headers`` re-checks the
+            # existing headers and returns ``{}`` in that case.
+            if kernel_http_path != http_path:
                 base_headers = [
                     h for h in all_headers if h not in self._spog_headers.items()
                 ]

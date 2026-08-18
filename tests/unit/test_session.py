@@ -639,6 +639,20 @@ class TestKernelSpogHeaderReDerivedFromResolvedPath:
         )
         assert "x-databricks-org-id" not in headers
 
+    def test_org_id_added_when_override_introduces_workspace(self):
+        # The original path carries no workspace routing (so no org-id header is
+        # set in __init__), but the _connection_uri override introduces one —
+        # the kernel must see org-id 222 rather than falling back to default
+        # routing. This exercises the none -> o=222 direction, which is skipped
+        # if re-derivation is gated on the original path having had a header.
+        headers = self._connect_and_get_kernel_headers(
+            {
+                "http_path": "/sql/1.0/warehouses/abc",
+                "_connection_uri": "https://direct.example.com/sql/1.0/warehouses/xyz?o=222",
+            }
+        )
+        assert headers.get("x-databricks-org-id") == "222"
+
     def test_org_id_preserved_when_no_override(self):
         headers = self._connect_and_get_kernel_headers(
             {"http_path": "/sql/1.0/warehouses/abc?o=111"}
