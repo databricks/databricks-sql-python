@@ -21,6 +21,7 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+import logging
 import sys
 from uuid import uuid4
 
@@ -163,6 +164,30 @@ def test_drain_large_range_to_arrow(conn):
         assert len(rows) == 10000
 
 
+@pytest.mark.realkernel
+def test_use_cloud_fetch_false_uses_inline_results(kernel_conn_params, caplog):
+    """The real wheel consumes the client knob and selects inline results."""
+    params = dict(kernel_conn_params)
+    params["use_cloud_fetch"] = False
+
+    with caplog.at_level(logging.INFO, logger="databricks.sql.kernel"):
+        with sql.connect(**params) as c:
+            with c.cursor() as cur:
+                # Large enough to exercise multi-chunk inline delivery.
+                cur.execute("SELECT * FROM range(5000000)")
+                assert cur.fetchmany(1)[0][0] == 0
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("databricks.sql.kernel")
+    ]
+    assert any("Using inline" in message for message in messages), messages
+    assert not any(
+        "Using CloudFetch reader" in message for message in messages
+    ), messages
+
+
 def test_fetchmany_pacing(conn):
     """fetchmany honours the requested size and stops cleanly at
     end-of-stream — covers the buffer-slicing logic in
@@ -193,8 +218,6 @@ def test_fetchall_arrow(conn):
 # level set on it, and the pyo3 boundary surfaces under
 # `databricks.sql.kernel.pyo3`. If the kernel's tracing target or the
 # pyo3-log wiring ever drifts, these fail.
-
-import logging
 
 
 def test_kernel_logs_reach_python_logging(kernel_conn_params, caplog):

@@ -478,6 +478,44 @@ class TestKernelRetryOptionsThreading:
                 conn.close()
 
 
+class TestKernelCloudFetchThreading:
+    def test_use_cloud_fetch_threaded_into_kernel_client(self):
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "databricks.sql.session.get_python_sql_connector_auth_provider"
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                use_cloud_fetch=False,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+            )
+            try:
+                assert mock_kernel_client.call_args.kwargs["use_cloud_fetch"] is False
+            finally:
+                conn.close()
+
+
 class TestKernelUserAgentForwarding:
     """user_agent_entry must reach the kernel on the use_kernel path —
     session.py folds it into the composed User-Agent and includes it in

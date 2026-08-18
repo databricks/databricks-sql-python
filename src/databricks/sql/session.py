@@ -204,6 +204,7 @@ class Session:
                 http_client=self.http_client,
                 catalog=kwargs.get("catalog"),
                 schema=kwargs.get("schema"),
+                use_cloud_fetch=kwargs.get("use_cloud_fetch", True),
                 _use_arrow_native_complex_types=_use_arrow_native_complex_types,
                 auth_options=kernel_auth_options,
                 retry_options=kernel_retry_options,

@@ -230,6 +230,9 @@ class KernelDatabricksClient(DatabricksClient):
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
         )
+        # This is a connection option: the kernel fixes the SEA result
+        # disposition policy for the lifetime of its session.
+        self._use_cloud_fetch = bool(kwargs.get("use_cloud_fetch", True))
         # NB: don't call ``kernel_auth_kwargs`` here. That call
         # materialises the bearer token in-process; keeping a
         # cleartext copy on a long-lived connector object that may
@@ -293,12 +296,18 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> SessionId:
         if self._kernel_session is not None:
             raise InterfaceError("KernelDatabricksClient already has an open session.")
-        # ``session_configuration`` flows through to the kernel's
-        # ``session_conf`` map verbatim; the SEA endpoint enforces
-        # its own allow-list and rejects unknown keys.
-        session_conf: Optional[Dict[str, str]] = None
-        if session_configuration:
-            session_conf = {k: str(v) for k, v in session_configuration.items()}
+        # Convert server session confs to strings, then add the kernel's
+        # client-side CloudFetch knob to the same boundary map.
+        session_conf = (
+            {k: str(v) for k, v in session_configuration.items()}
+            if session_configuration
+            else {}
+        )
+        # The kernel consumes this before filtering the server confs and
+        # selects INLINE when CloudFetch is disabled.
+        session_conf["cloudfetch_enabled"] = (
+            "true" if self._use_cloud_fetch else "false"
+        )
         # The kwarg builds run INSIDE the try so the ``finally`` scrub
         # below always fires — including when ``kernel_auth_kwargs``
         # itself raises mid-build (e.g. an OAuth token-exchange failure
