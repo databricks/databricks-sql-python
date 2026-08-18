@@ -185,6 +185,14 @@ def test_row_limit_stops_before_fetching_extra_batches(int_schema):
     assert handle.fetch_calls == 1
 
 
+def test_row_limit_exact_batch_boundary_skips_exhaustion_fetch(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [0, 1, 2])])
+    rs = _make_rs(handle, row_limit=3)
+
+    assert rs.fetchall_arrow().column(0).to_pylist() == [0, 1, 2]
+    assert handle.fetch_calls == 1
+
+
 def test_row_limit_larger_than_result_returns_all_rows(int_schema):
     handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1, 2, 3])])
     rs = _make_rs(handle, row_limit=10)
