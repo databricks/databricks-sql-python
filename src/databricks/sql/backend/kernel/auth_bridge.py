@@ -273,7 +273,7 @@ def kernel_auth_kwargs(
             "auth_type": "oauth-u2m",
             "client_id": client_id or PYSQL_OAUTH_CLIENT_ID,
             "redirect_port": (
-                int(redirect_port)
+                _coerce_redirect_port(redirect_port)
                 if client_id and redirect_port is not None
                 else PYSQL_OAUTH_REDIRECT_PORT_RANGE[0]
             ),
@@ -310,6 +310,23 @@ def kernel_auth_kwargs(
         f"{provider_desc} with auth_type={auth_type!r}. Use the Thrift "
         "backend (default) for other auth flows."
     )
+
+
+def _coerce_redirect_port(redirect_port: Any) -> int:
+    """Coerce an ``oauth_redirect_port`` value (which may arrive as a string,
+    e.g. from a DSN) to an int.
+
+    A non-numeric value is a caller error; surface it as a PEP 249
+    ``ProgrammingError`` (as ``_normalize_scopes`` does for malformed
+    ``oauth_scopes``) rather than a bare ``ValueError``, so callers get a
+    consistent, actionable exception type for garbled input."""
+    try:
+        return int(redirect_port)
+    except (TypeError, ValueError):
+        raise ProgrammingError(
+            f"oauth_redirect_port must be an integer (or a string parseable as "
+            f"one), got {redirect_port!r}."
+        )
 
 
 def _normalize_scopes(scopes: Any) -> Optional[list]:

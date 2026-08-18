@@ -346,6 +346,21 @@ class TestKernelOAuthU2M:
         assert kwargs["redirect_port"] == 8021
         assert isinstance(kwargs["redirect_port"], int)
 
+    def test_u2m_redirect_port_non_numeric_raises_programming_error(self):
+        # A garbled oauth_redirect_port is a caller error of the same class
+        # as a malformed oauth_scopes, so it must surface as a PEP 249
+        # ProgrammingError (not a bare ValueError from int()) for a
+        # consistent, actionable exception type.
+        with pytest.raises(ProgrammingError, match="oauth_redirect_port must be"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "auth_type": "databricks-oauth",
+                    "oauth_client_id": "custom-client",
+                    "oauth_redirect_port": "not-a-port",
+                },
+            )
+
     def test_u2m_redirect_port_ignored_without_client_id(self):
         # A bare oauth_redirect_port (no explicit client_id) must NOT be
         # forwarded: it would be paired with the default databricks-sql-python
