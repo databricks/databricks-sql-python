@@ -23,9 +23,16 @@ if TYPE_CHECKING:
         ResultData,
         ResultManifest,
     )
+
+    # Type-annotation-only import (deferred by ``from __future__ import
+    # annotations``). The SEA backend reuses the Thrift ``TSparkArrowResultLink``
+    # only as the payload the shared cloud-fetch download manager expects; it is
+    # constructed via a function-local import in ``_convert_to_thrift_link`` so
+    # importing the SEA backend never imports the Apache Thrift ``thrift``
+    # package. See ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import (
     ArrowQueue,
@@ -262,6 +269,10 @@ class LinkFetcher:
     @staticmethod
     def _convert_to_thrift_link(link: ExternalLink) -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
+        from databricks.sql.thrift_api.TCLIService.ttypes import (
+            TSparkArrowResultLink,
+        )
+
         # Parse the ISO format expiration time
         expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
         return TSparkArrowResultLink(
