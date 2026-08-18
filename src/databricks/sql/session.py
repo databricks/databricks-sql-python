@@ -75,7 +75,7 @@ def _kernel_host_and_path(
             # unconditionally would otherwise yield a malformed double-``?``
             # path (e.g. ``/warehouses/abc?o=111?o=222``) that mis-parses
             # downstream and silently drops the org-id header.
-            path = "{}?{}".format(path.split("?", 1)[0], parts.query)
+            path = "{}?{}".format((path or "").split("?", 1)[0], parts.query)
         return host, path
 
     port = kwargs.get("_port")

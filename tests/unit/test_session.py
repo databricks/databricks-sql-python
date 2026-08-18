@@ -792,6 +792,16 @@ class TestKernelHostAndPathOverrides:
         assert host == "https://h.example.com:8443"
         assert path == "/sql/1.0/warehouses/abc?o=222"
 
+    def test_connection_uri_without_path_and_none_http_path_applies_query(self):
+        # http_path is legitimately nullable on the connect path. A path-less,
+        # query-bearing URI combined with http_path=None must not raise; the
+        # retained path coerces to empty before the query is applied.
+        host, path = _kernel_host_and_path(
+            self.HOST, None, {"_connection_uri": "https://h.example.com:8443?o=222"}
+        )
+        assert host == "https://h.example.com:8443"
+        assert path == "?o=222"
+
     def test_connection_uri_wins_over_port(self):
         host, path = _kernel_host_and_path(
             self.HOST,
