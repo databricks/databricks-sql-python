@@ -28,6 +28,7 @@ class _FakeKernelHandle:
         self._schema = schema
         self._batches: Deque[pa.RecordBatch] = deque(batches)
         self.closed = False
+        self.fetch_calls = 0
 
     def arrow_schema(self) -> pa.Schema:
         return self._schema
@@ -35,6 +36,7 @@ class _FakeKernelHandle:
     def fetch_next_batch(self):
         if self.closed:
             raise RuntimeError("fetched after close")
+        self.fetch_calls += 1
         if not self._batches:
             return None
         return self._batches.popleft()
@@ -43,7 +45,7 @@ class _FakeKernelHandle:
         self.closed = True
 
 
-def _make_rs(handle) -> KernelResultSet:
+def _make_rs(handle, row_limit=None) -> KernelResultSet:
     # The base ResultSet __init__ takes a `connection` ref it never
     # actually dereferences during these buffer tests, so a Mock is
     # fine.
@@ -56,6 +58,7 @@ def _make_rs(handle) -> KernelResultSet:
         command_id=CommandId.from_sea_statement_id("smoke-test"),
         arraysize=100,
         buffer_size_bytes=1024,
+        row_limit=row_limit,
     )
 
 
@@ -138,6 +141,55 @@ def test_fetchall_rows(int_schema):
     rs = _make_rs(handle)
     rows = rs.fetchall()
     assert [r[0] for r in rows] == [1, 2, 3]
+
+
+@pytest.mark.parametrize("row_limit", [0, 1, 5])
+def test_row_limit_caps_fetchall(int_schema, row_limit):
+    handle = _FakeKernelHandle(
+        int_schema,
+        [_batch(int_schema, [0, 1, 2]), _batch(int_schema, list(range(3, 10)))],
+    )
+    rs = _make_rs(handle, row_limit=row_limit)
+
+    rows = rs.fetchall()
+
+    assert [row[0] for row in rows] == list(range(row_limit))
+    assert rs.rownumber == row_limit
+
+
+def test_row_limit_applies_across_fetch_methods(int_schema):
+    handle = _FakeKernelHandle(
+        int_schema,
+        [_batch(int_schema, [0, 1, 2]), _batch(int_schema, [3, 4, 5, 6])],
+    )
+    rs = _make_rs(handle, row_limit=5)
+
+    first = rs.fetchmany(2)
+    third = rs.fetchone()
+    rest = rs.fetchall_arrow()
+
+    assert [row[0] for row in first] == [0, 1]
+    assert third is not None and third[0] == 2
+    assert rest.column(0).to_pylist() == [3, 4]
+    assert rs.fetchone() is None
+
+
+def test_row_limit_stops_before_fetching_extra_batches(int_schema):
+    handle = _FakeKernelHandle(
+        int_schema,
+        [_batch(int_schema, [0, 1, 2]), _batch(int_schema, [3, 4, 5])],
+    )
+    rs = _make_rs(handle, row_limit=2)
+
+    assert rs.fetchall_arrow().column(0).to_pylist() == [0, 1]
+    assert handle.fetch_calls == 1
+
+
+def test_row_limit_larger_than_result_returns_all_rows(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1, 2, 3])])
+    rs = _make_rs(handle, row_limit=10)
+
+    assert rs.fetchall_arrow().column(0).to_pylist() == [1, 2, 3]
 
 
 def test_fetchmany_negative_raises(int_schema):
