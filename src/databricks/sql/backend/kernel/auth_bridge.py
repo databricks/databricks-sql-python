@@ -21,23 +21,25 @@ Three auth shapes are supported on the kernel path:
   ``oauth_client_id`` / ``oauth_redirect_port`` overriding it) is
   forwarded to the kernel's ``auth_type='oauth-u2m'`` and the kernel
   runs the browser flow itself.
-- **Azure Entra (Azure AD)** — both Azure auth types route to the
-  kernel's *generic* OAuth flows with Azure values as overrides (the
-  kernel needs no Azure-specific code):
+- **Azure Entra (Azure AD)** — both Azure auth types forward the selector
+  and Azure credentials to the KERNEL, which is the Azure-aware auth core
+  (it owns the endpoints, scopes, app ids, and tenant discovery). The
+  binding stays thin — it does not construct endpoints or scopes:
 
-  - ``azure-oauth`` (U2M) → ``oauth-u2m`` with the Azure app client id
-    (``96eecda7-…``), redirect port ``8030``, and the AAD delegated scope
-    ``{app_id}/user_impersonation offline_access`` (via
-    ``AzureOAuthEndpointCollection``, honoring ``DATABRICKS_AZURE_TENANT_ID``).
-    The kernel discovers endpoints via the workspace ``/oidc`` redirector,
-    which an Azure workspace redirects to Entra (PECOBLR-4120).
-  - ``azure-sp-m2m`` (M2M) → ``oauth-m2m`` with the Azure service-principal
-    credentials, an Entra v2.0 ``token_url``, and the
-    ``{effective_app_id}/.default`` scope (PECOBLR-4141). ``azure_tenant_id``
-    is required (the kernel path does not auto-discover it). The Azure
-    management-token header and ``azure_workspace_resource_id`` are **not**
-    applied on the kernel path — no SQL connector uses them; an SP that is
-    not a workspace member (RBAC-only) is unsupported here.
+  - ``azure-oauth`` (U2M) → forward ``auth_type='azure-oauth'`` (plus any
+    optional ``oauth_client_id`` / ``oauth_redirect_port`` passthrough). The
+    kernel pins the workspace v2.0 authorize/token endpoints, the Azure app
+    client id (``96eecda7-…``), port ``8030``, and the
+    ``{app_id}/user_impersonation offline_access`` scope (PECOBLR-4120).
+  - ``azure-sp-m2m`` (M2M) → forward ``auth_type='azure-sp-m2m'`` with the
+    Azure service-principal ``azure_client_id`` / ``azure_client_secret``.
+    The kernel builds the Entra v2.0 token endpoint and the
+    ``{effective_app_id}/.default`` scope, and auto-discovers the tenant from
+    the workspace's ``/aad/auth`` redirect when ``azure_tenant_id`` is omitted
+    (Thrift parity). ``azure_workspace_resource_id`` is an optional add-on:
+    forward it and the kernel additionally sends the Azure management-token
+    header pair, so an RBAC-only SP (not a workspace member) can authenticate
+    (PECOBLR-4141).
 
 ``identity_federation_client_id`` is forwarded with whichever auth shape
 wins resolution. It selects mandatory SP-wide workload-identity token
@@ -72,14 +74,8 @@ from databricks.sql.auth.auth import (
     PYSQL_OAUTH_SCOPES,
 )
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
-from databricks.sql.auth.common import get_effective_azure_login_app_id
 from databricks.sql.auth.token_federation import TokenFederationProvider
 from databricks.sql.exc import NotSupportedError, ProgrammingError
-
-# Entra (Azure AD) v2.0 token endpoint template. The kernel's generic M2M
-# provider sends the credentials as ``scope`` (v2.0), so we point it at the
-# v2.0 endpoint (the connector's own SP path uses the v1.0 ``resource`` form).
-_AZURE_AAD_LOGIN_HOST = "https://login.microsoftonline.com"
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +171,7 @@ def kernel_auth_kwargs(
          ``oauth_client_secret`` together.
 
     (The Azure Entra auth types — ``azure-oauth`` and ``azure-sp-m2m`` —
-    are routed to the kernel's generic OAuth flows up front, before these
+    are forwarded to the kernel's Azure-aware flows up front, before these
     guards; see the module docstring.)
     1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
@@ -234,51 +230,42 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # azure-sp-m2m (Azure service principal, client-credentials): forward to
-    # oauth-m2m with the Azure app credentials, an Entra v2.0 token endpoint,
-    # and the {effective_app_id}/.default scope. The kernel sends the client
-    # secret via HTTP Basic (which Entra v2.0 accepts) and, because a
-    # token_url override is set, skips workspace OIDC discovery. PECOBLR-4141.
+    # azure-sp-m2m (Azure service principal, client-credentials): forward the
+    # selector + Azure SP credentials; the KERNEL owns Azure resolution (it is
+    # the auth core). The kernel builds the Entra v2.0 token endpoint
+    # (`{login}/{tenant}/oauth2/v2.0/token`) and the `{effective_app_id}/.default`
+    # scope, and — when azure_tenant_id is omitted — auto-discovers the tenant
+    # from the workspace's /aad/auth redirect, matching the Thrift backend
+    # (so connect() is byte-identical between Thrift and use_kernel=True).
+    # PECOBLR-4141.
     #
-    # NOT applied on the kernel path: the Azure management-token header
-    # (X-Databricks-Azure-SP-Management-Token) and azure_workspace_resource_id.
-    # No SQL connector (Go, Node) uses them; the Databricks-audience token
-    # authenticates SPs that are workspace principals (the SQL norm). An SP with
-    # only an Azure RBAC role (not a workspace member) is unsupported here.
+    # azure_workspace_resource_id is an optional add-on: forward it and the
+    # kernel additionally fetches an Azure-management token and sends the
+    # X-Databricks-Azure-SP-Management-Token + X-Databricks-Azure-Workspace-
+    # Resource-Id pair, so an SP that holds only an Azure RBAC role (not a
+    # workspace member) can authenticate. Omit it (the common case) and the SP
+    # authenticates with the Databricks-audience data token alone.
     if auth_type == "azure-sp-m2m":
         azure_client_id = opts.get("azure_client_id")
         azure_client_secret = opts.get("azure_client_secret")
-        azure_tenant_id = opts.get("azure_tenant_id")
         if not (azure_client_id and azure_client_secret):
             raise ProgrammingError(
                 "auth_type='azure-sp-m2m' requires azure_client_id and "
                 "azure_client_secret."
             )
-        if not azure_tenant_id:
-            # The Thrift path auto-discovers the tenant from the workspace's
-            # /aad/auth redirect; the kernel path does not make that call, so
-            # require it explicitly rather than silently guessing.
-            raise NotSupportedError(
-                "use_kernel=True auth_type='azure-sp-m2m' requires an explicit "
-                "azure_tenant_id (the kernel path does not auto-discover the "
-                "Azure tenant from the workspace as the Thrift backend does)."
-            )
-        if opts.get("azure_workspace_resource_id"):
-            logger.warning(
-                "azure_workspace_resource_id is ignored on use_kernel=True: the "
-                "Azure management-token flow (X-Databricks-Azure-SP-Management-"
-                "Token) is not applied on the kernel path. The Databricks-"
-                "audience token authenticates service principals that are "
-                "workspace principals; an RBAC-only SP is unsupported here."
-            )
-        app_id = get_effective_azure_login_app_id(hostname or "")
         kwargs = {
-            "auth_type": "oauth-m2m",
-            "client_id": azure_client_id,
-            "client_secret": azure_client_secret,
-            "token_url": f"{_AZURE_AAD_LOGIN_HOST}/{azure_tenant_id}/oauth2/v2.0/token",
-            "oauth_scopes": [f"{app_id}/.default"],
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": azure_client_id,
+            "azure_client_secret": azure_client_secret,
         }
+        # Optional passthroughs: the kernel auto-discovers the tenant when
+        # absent, and sends the data token alone when no resource id is set.
+        azure_tenant_id = opts.get("azure_tenant_id")
+        if azure_tenant_id:
+            kwargs["azure_tenant_id"] = azure_tenant_id
+        azure_workspace_resource_id = opts.get("azure_workspace_resource_id")
+        if azure_workspace_resource_id:
+            kwargs["azure_workspace_resource_id"] = azure_workspace_resource_id
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs

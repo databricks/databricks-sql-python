@@ -489,10 +489,12 @@ class TestKernelAuthAmbiguity:
 
 
 class TestKernelAzureSpM2M:
-    """``azure-sp-m2m`` (Azure service-principal, client-credentials) routes to
-    the kernel's generic ``oauth-m2m`` with an Entra v2.0 token endpoint and the
-    ``{app_id}/.default`` scope. The management-token header is intentionally not
-    applied on the kernel path (no SQL connector uses it). PECOBLR-4141."""
+    """``azure-sp-m2m`` (Azure service-principal, client-credentials) forwards
+    the Azure SP credentials to the KERNEL, which owns Azure resolution: it
+    builds the Entra token endpoint + ``{app_id}/.default`` scope and
+    auto-discovers the tenant from the workspace when ``azure_tenant_id`` is
+    omitted (Thrift parity). The binding stays thin — it does not construct
+    endpoints or scopes. PECOBLR-4141."""
 
     _CREDS = {
         "auth_type": "azure-sp-m2m",
@@ -501,31 +503,64 @@ class TestKernelAzureSpM2M:
         "azure_tenant_id": "tenant-123",
     }
 
-    def test_azure_sp_m2m_routes_to_kernel_m2m(self):
+    def test_azure_sp_m2m_forwards_creds_to_kernel(self):
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             dict(self._CREDS),
             hostname="adb-1.azuredatabricks.net",
         )
-        app_id = get_effective_azure_login_app_id("adb-1.azuredatabricks.net")
+        # Thin forwarding: the kernel owns endpoint/scope resolution, so no
+        # token_url / oauth_scopes are constructed here.
         assert kwargs == {
-            "auth_type": "oauth-m2m",
-            "client_id": "azure-sp",
-            "client_secret": "azure-secret",
-            "token_url": "https://login.microsoftonline.com/tenant-123/oauth2/v2.0/token",
-            "oauth_scopes": [f"{app_id}/.default"],
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+            "azure_tenant_id": "tenant-123",
         }
 
-    def test_azure_sp_m2m_requires_tenant(self):
+    def test_azure_sp_m2m_tenant_optional_kernel_autodiscovers(self):
+        # Unlike the earlier kernel slice, the kernel now auto-discovers the
+        # tenant from the workspace's /aad/auth redirect (Thrift parity), so
+        # omitting azure_tenant_id must NOT raise — the key is simply absent.
         opts = {
             "auth_type": "azure-sp-m2m",
             "azure_client_id": "azure-sp",
             "azure_client_secret": "azure-secret",
         }
-        with pytest.raises(NotSupportedError, match="azure_tenant_id"):
-            kernel_auth_kwargs(
-                _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
-            )
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
+        )
+        assert kwargs == {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+        }
+        assert "azure_tenant_id" not in kwargs
+
+    def test_azure_sp_m2m_forwards_workspace_resource_id(self):
+        # An optional add-on: when set, the kernel fetches an Azure-management
+        # token and emits the X-Databricks-Azure-* header pair (for an SP with
+        # only an Azure RBAC role, not a workspace member). The binding forwards
+        # it rather than dropping it.
+        opts = dict(
+            self._CREDS,
+            azure_workspace_resource_id="/subscriptions/s/resourceGroups/rg/workspace/w",
+        )
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
+        )
+        assert (
+            kwargs["azure_workspace_resource_id"]
+            == "/subscriptions/s/resourceGroups/rg/workspace/w"
+        )
+
+    def test_azure_sp_m2m_omits_workspace_resource_id_when_absent(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            dict(self._CREDS),
+            hostname="adb-1.azuredatabricks.net",
+        )
+        assert "azure_workspace_resource_id" not in kwargs
 
     def test_azure_sp_m2m_requires_client_id_and_secret(self):
         with pytest.raises(ProgrammingError, match="azure_client_id"):
