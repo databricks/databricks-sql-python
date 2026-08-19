@@ -245,6 +245,129 @@ class TestKernelOAuthM2M:
         assert kwargs == {"auth_type": "pat", "access_token": "dapi-xyz"}
 
 
+class TestKernelOAuthM2MJwt:
+    """JWT private-key M2M (RFC 7523 client assertion) → the kernel's
+    ``oauth-m2m-jwt``. Driven by ``oauth_jwt_key_file`` (unambiguous
+    private-key intent); requires ``oauth_client_id`` + ``oauth_jwt_kid``."""
+
+    def test_full_kwargs_route_to_oauth_m2m_jwt(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp-uuid",
+                "oauth_jwt_key_file": "/keys/jwt.pem",
+                "oauth_jwt_kid": "kid-1",
+                "oauth_jwt_passphrase": "pw",
+                "oauth_jwt_algorithm": "ES256",
+                "token_url": "https://login.microsoftonline.com/t/oauth2/v2.0/token",
+                "oauth_scopes": ["2ff814a6-.../.default"],
+            },
+        )
+        assert kwargs == {
+            "auth_type": "oauth-m2m-jwt",
+            "client_id": "sp-uuid",
+            "jwt_key_file": "/keys/jwt.pem",
+            "jwt_kid": "kid-1",
+            "jwt_passphrase": "pw",
+            "jwt_algorithm": "ES256",
+            "token_url": "https://login.microsoftonline.com/t/oauth2/v2.0/token",
+            "oauth_scopes": ["2ff814a6-.../.default"],
+        }
+
+    def test_minimal_kwargs_omit_optionals(self):
+        # Only the three required fields; the kernel fills the rest
+        # (RS256 algorithm, all-apis scope, OIDC discovery).
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp-uuid",
+                "oauth_jwt_key_file": "/keys/jwt.pem",
+                "oauth_jwt_kid": "kid-1",
+            },
+        )
+        assert kwargs == {
+            "auth_type": "oauth-m2m-jwt",
+            "client_id": "sp-uuid",
+            "jwt_key_file": "/keys/jwt.pem",
+            "jwt_kid": "kid-1",
+        }
+
+    def test_normalizes_space_delimited_scopes(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp",
+                "oauth_jwt_key_file": "/k.pem",
+                "oauth_jwt_kid": "k",
+                "oauth_scopes": "all-apis sql",
+            },
+        )
+        assert kwargs["oauth_scopes"] == ["all-apis", "sql"]
+
+    def test_takes_precedence_over_pat(self):
+        # A private key alongside an ambient PAT resolves to the
+        # (refreshing) JWT M2M path, not the static token.
+        kwargs = kernel_auth_kwargs(
+            AccessTokenAuthProvider("dapi-xyz"),
+            {
+                "oauth_client_id": "sp",
+                "oauth_jwt_key_file": "/k.pem",
+                "oauth_jwt_kid": "k",
+            },
+        )
+        assert kwargs["auth_type"] == "oauth-m2m-jwt"
+
+    def test_missing_client_id_raises_programming_error(self):
+        with pytest.raises(ProgrammingError, match="oauth_client_id"):
+            kernel_auth_kwargs(
+                None,
+                {"oauth_jwt_key_file": "/k.pem", "oauth_jwt_kid": "k"},
+            )
+
+    def test_missing_kid_raises_programming_error(self):
+        with pytest.raises(ProgrammingError, match="oauth_jwt_kid"):
+            kernel_auth_kwargs(
+                None,
+                {"oauth_client_id": "sp", "oauth_jwt_key_file": "/k.pem"},
+            )
+
+    def test_jwt_plus_client_secret_is_rejected(self):
+        with pytest.raises(NotSupportedError, match="oauth_client_secret"):
+            kernel_auth_kwargs(
+                None,
+                {
+                    "oauth_client_id": "sp",
+                    "oauth_jwt_key_file": "/k.pem",
+                    "oauth_jwt_kid": "k",
+                    "oauth_client_secret": "shh",
+                },
+            )
+
+    def test_jwt_plus_credentials_provider_is_rejected(self):
+        with pytest.raises(NotSupportedError, match="credentials_provider"):
+            kernel_auth_kwargs(
+                None,
+                {
+                    "oauth_client_id": "sp",
+                    "oauth_jwt_key_file": "/k.pem",
+                    "oauth_jwt_kid": "k",
+                    "credentials_provider": object(),
+                },
+            )
+
+    def test_federation_client_id_forwarded(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp",
+                "oauth_jwt_key_file": "/k.pem",
+                "oauth_jwt_kid": "k",
+                "identity_federation_client_id": "fed",
+            },
+        )
+        assert kwargs["identity_federation_client_id"] == "fed"
+
+
 class TestKernelOAuthU2M:
     """Only ``databricks-oauth`` U2M is supported on the kernel path.
 
