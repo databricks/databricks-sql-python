@@ -31,11 +31,8 @@ from databricks.sql.auth.auth import (
     PYSQL_OAUTH_CLIENT_ID,
     PYSQL_OAUTH_SCOPES,
     PYSQL_OAUTH_REDIRECT_PORT_RANGE,
-    PYSQL_OAUTH_AZURE_CLIENT_ID,
-    PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE,
 )
 from databricks.sql.auth.common import get_effective_azure_login_app_id
-from databricks.sql.auth.endpoint import AzureOAuthEndpointCollection
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     AuthProvider,
@@ -280,30 +277,21 @@ class TestKernelOAuthU2M:
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
-    def test_azure_oauth_routes_to_kernel_u2m(self):
-        # azure-oauth (Azure AD U2M) now routes to the kernel's oauth-u2m with
-        # the Azure app bundle: the Azure client id, its registered port 8030,
-        # and the AAD delegated scope ({app_id}/user_impersonation +
-        # offline_access). The kernel discovers endpoints via the workspace
-        # /oidc redirector (which an Azure workspace redirects to Entra).
-        # PECOBLR-4120.
+    def test_azure_oauth_forwards_selector_kernel_owns_resolution(self):
+        # azure-oauth (Azure AD U2M): the bridge forwards ONLY the selector.
+        # The kernel owns Azure resolution — it pins the workspace v2.0
+        # authorize/token endpoints, the Azure client id, port 8030, and the
+        # {app_id}/user_impersonation scope. So the bridge must NOT construct
+        # client_id / redirect_ports / oauth_scopes here. PECOBLR-4120.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {"auth_type": "azure-oauth"},
         )
-        assert kwargs == {
-            "auth_type": "oauth-u2m",
-            "client_id": PYSQL_OAUTH_AZURE_CLIENT_ID,
-            "redirect_ports": list(PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE),
-            "oauth_scopes": AzureOAuthEndpointCollection().get_scopes_mapping(
-                list(PYSQL_OAUTH_SCOPES)
-            ),
-        }
-        # Sanity: the mapped scope is the AAD delegated form, not `sql`.
-        assert any(s.endswith("/user_impersonation") for s in kwargs["oauth_scopes"])
-        assert "offline_access" in kwargs["oauth_scopes"]
+        assert kwargs == {"auth_type": "azure-oauth"}
 
     def test_azure_oauth_honors_custom_client_id_and_port(self):
+        # A caller override still passes through (client_id + its coupled port),
+        # but no scopes/endpoints are synthesised by the bridge.
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             {
@@ -312,8 +300,11 @@ class TestKernelOAuthU2M:
                 "oauth_redirect_port": 9100,
             },
         )
-        assert kwargs["client_id"] == "custom-azure-app"
-        assert kwargs["redirect_ports"] == [9100]
+        assert kwargs == {
+            "auth_type": "azure-oauth",
+            "client_id": "custom-azure-app",
+            "redirect_ports": [9100],
+        }
 
     def test_u2m_custom_client_id_port_and_scopes_honored(self):
         # A caller may override the coupled client_id + redirect port and the

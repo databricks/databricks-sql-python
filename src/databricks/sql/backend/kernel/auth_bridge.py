@@ -67,15 +67,12 @@ import re
 from typing import Any, Dict, Optional
 
 from databricks.sql.auth.auth import (
-    PYSQL_OAUTH_AZURE_CLIENT_ID,
-    PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE,
     PYSQL_OAUTH_CLIENT_ID,
     PYSQL_OAUTH_REDIRECT_PORT_RANGE,
     PYSQL_OAUTH_SCOPES,
 )
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
 from databricks.sql.auth.common import get_effective_azure_login_app_id
-from databricks.sql.auth.endpoint import AzureOAuthEndpointCollection
 from databricks.sql.auth.token_federation import TokenFederationProvider
 from databricks.sql.exc import NotSupportedError, ProgrammingError
 
@@ -218,28 +215,21 @@ def kernel_auth_kwargs(
     # creds in azure_* kwargs, not oauth_client_id/secret, so it would
     # otherwise fall through to the final "unsupported" error).
 
-    # azure-oauth (Azure AD U2M): forward the Azure app bundle to oauth-u2m.
-    # The kernel runs the browser flow and discovers endpoints via the
-    # workspace /oidc redirector (which an Azure workspace redirects to Entra).
-    # The AAD delegated scope ({app_id}/user_impersonation [+ offline_access])
-    # is synthesised via AzureOAuthEndpointCollection, which also honors the
-    # DATABRICKS_AZURE_TENANT_ID app-id override. PECOBLR-4120.
+    # azure-oauth (Azure AD U2M): forward the selector; the KERNEL owns Azure
+    # resolution (it is the auth core). The kernel pins the workspace v2.0
+    # authorize/token endpoints (`{host}/oidc/oauth2/v2.0/{authorize,token}` —
+    # NOT the discovered `/oidc/v1/authorize`, which the workspace redirects to
+    # a malformed Entra URL), the Azure app client id, port 8030, and the
+    # `{app_id}/user_impersonation offline_access` scope. So this binding does
+    # NOT construct endpoints/scopes — it just passes `auth_type='azure-oauth'`
+    # plus any optional client_id / redirect_port passthrough. PECOBLR-4120.
     if auth_type == "azure-oauth":
-        redirect_port = opts.get("oauth_redirect_port")
-        caller_scopes = _normalize_scopes(opts.get("oauth_scopes"))
-        mapped_scopes = AzureOAuthEndpointCollection().get_scopes_mapping(
-            caller_scopes if caller_scopes is not None else list(PYSQL_OAUTH_SCOPES)
-        )
-        kwargs = {
-            "auth_type": "oauth-u2m",
-            "client_id": client_id or PYSQL_OAUTH_AZURE_CLIENT_ID,
-            "redirect_ports": (
-                [_coerce_redirect_port(redirect_port)]
-                if client_id and redirect_port is not None
-                else list(PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE)
-            ),
-            "oauth_scopes": mapped_scopes,
-        }
+        kwargs = {"auth_type": "azure-oauth"}
+        if client_id:
+            kwargs["client_id"] = client_id
+            redirect_port = opts.get("oauth_redirect_port")
+            if redirect_port is not None:
+                kwargs["redirect_ports"] = [_coerce_redirect_port(redirect_port)]
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
