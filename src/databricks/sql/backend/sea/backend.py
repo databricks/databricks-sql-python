@@ -151,6 +151,17 @@ class SeaDatabricksClient(DatabricksClient):
             http_path,
         )
 
+        # The SEA backend is deprecated and incomplete (e.g. it does not
+        # support positional parameter binding) and is slated for removal.
+        # Steer users to the Rust kernel backend, which is the supported path.
+        logger.warning(
+            "The SEA backend (use_sea=True) is deprecated and incomplete and "
+            "should not be used in production; it is slated for removal. Use "
+            "the kernel backend instead by passing use_kernel=True and "
+            "installing the kernel extra: "
+            "pip install 'databricks-sql-connector[kernel]'."
+        )
+
         self._max_download_threads = kwargs.get("max_download_threads", 10)
         self._ssl_options = ssl_options
         self._use_arrow_native_complex_types = kwargs.get(
