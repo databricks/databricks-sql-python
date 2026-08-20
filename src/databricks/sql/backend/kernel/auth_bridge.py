@@ -273,7 +273,7 @@ def kernel_auth_kwargs(
                 "requires oauth_jwt_kid (the key id written into the JWT "
                 "header so the IdP can select the registered public key)."
             )
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "auth_type": "oauth-m2m-jwt",
             "client_id": client_id,
             "jwt_key_file": jwt_key_file,
@@ -297,7 +297,7 @@ def kernel_auth_kwargs(
 
     # 2. OAuth M2M — raw client-credentials pair forwarded to the kernel.
     if has_m2m:
-        kwargs: Dict[str, Any] = {
+        kwargs = {
             "auth_type": "oauth-m2m",
             "client_id": client_id,
             "client_secret": client_secret,
