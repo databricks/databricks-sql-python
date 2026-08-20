@@ -183,11 +183,12 @@ def test_fetchall_arrow(conn):
         assert table.column_names == ["a", "b"]
 
 
-@pytest.mark.parametrize("row_limit", [0, 1, 5])
+@pytest.mark.parametrize("row_limit", [None, 1, 5])
 def test_cursor_row_limit(conn, row_limit):
     with conn.cursor(row_limit=row_limit) as cur:
         cur.execute("SELECT id FROM range(10) ORDER BY id")
-        assert [row[0] for row in cur.fetchall()] == list(range(row_limit))
+        expected = list(range(10 if row_limit is None else row_limit))
+        assert [row[0] for row in cur.fetchall()] == expected
 
 
 # ─── Logging (Rust kernel -> Python logging bridge) ──────────────────────────
