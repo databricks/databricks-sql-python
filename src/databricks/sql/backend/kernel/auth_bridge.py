@@ -312,6 +312,12 @@ def kernel_auth_kwargs(
         scopes = _normalize_scopes(opts.get("oauth_scopes"))
         if scopes is not None:
             kwargs["oauth_scopes"] = scopes
+        # token_url is an auth-method-agnostic token-endpoint override (JDBC's
+        # OAuth2ConnAuthTokenEndpoint applies it to client-secret M2M too), so
+        # forward it here as well as on the JWT path.
+        token_url = opts.get("token_url")
+        if token_url:
+            kwargs["token_url"] = token_url
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs

@@ -213,6 +213,19 @@ class TestKernelOAuthM2M:
         )
         assert kwargs["oauth_scopes"] == ["all-apis", "sql"]
 
+    def test_m2m_forwards_token_url(self):
+        # token_url is an auth-agnostic token-endpoint override (JDBC parity),
+        # so the shared-secret M2M path forwards it too — not just JWT.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp-uuid",
+                "oauth_client_secret": "shh",
+                "token_url": "https://login.microsoftonline.com/t/oauth2/v2.0/token",
+            },
+        )
+        assert kwargs["token_url"] == "https://login.microsoftonline.com/t/oauth2/v2.0/token"
+
     def test_m2m_normalizes_space_delimited_scopes(self):
         # DatabricksOAuthProvider stores scopes as a single
         # space-delimited string; the bridge splits it to a list.
