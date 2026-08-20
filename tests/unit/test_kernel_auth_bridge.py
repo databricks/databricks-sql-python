@@ -521,22 +521,20 @@ class TestKernelAzureSpM2M:
         }
         assert "azure_tenant_id" not in kwargs
 
-    def test_azure_sp_m2m_ignores_workspace_resource_id_with_warning(self, caplog):
-        # The kernel path does not yet support the Azure management-token flow
-        # (for an RBAC-only SP), so azure_workspace_resource_id is NOT forwarded
-        # — but we warn rather than silently dropping a security-relevant param.
+    def test_azure_sp_m2m_forwards_workspace_resource_id(self):
+        # The kernel always sends the Azure SP management token and, when
+        # azure_workspace_resource_id is set, adds the resource-id header (for an
+        # RBAC-only SP) — so the bridge forwards it rather than dropping it.
         opts = dict(
             self._CREDS,
             azure_workspace_resource_id="/subscriptions/s/resourceGroups/rg/workspace/w",
         )
-        with caplog.at_level("WARNING"):
-            kwargs = kernel_auth_kwargs(
-                _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
-            )
-        assert "azure_workspace_resource_id" not in kwargs
-        assert any(
-            "azure_workspace_resource_id is ignored" in r.message
-            for r in caplog.records
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
+        )
+        assert (
+            kwargs["azure_workspace_resource_id"]
+            == "/subscriptions/s/resourceGroups/rg/workspace/w"
         )
 
     def test_azure_sp_m2m_omits_workspace_resource_id_when_absent(self):

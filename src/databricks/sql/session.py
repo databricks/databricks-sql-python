@@ -181,13 +181,16 @@ class Session:
                 # kernel owns Azure resolution (endpoint/scope/tenant discovery),
                 # so these raw kwargs are the only source; without threading them
                 # the bridge would fail with "requires azure_client_id". The
-                # tenant is optional (the kernel auto-discovers it). Kernel-only;
-                # Thrift / SEA are unaffected. (azure_workspace_resource_id is not
-                # forwarded — the kernel path does not yet support the Azure
-                # management-token flow; the bridge warns if it is set.)
+                # tenant and workspace-resource-id are optional (the kernel
+                # auto-discovers the tenant; the resource id adds the
+                # management-token resource-id header for an RBAC-only SP).
+                # Kernel-only; Thrift / SEA are unaffected.
                 "azure_client_id": kwargs.get("azure_client_id"),
                 "azure_client_secret": kwargs.get("azure_client_secret"),
                 "azure_tenant_id": kwargs.get("azure_tenant_id"),
+                "azure_workspace_resource_id": kwargs.get(
+                    "azure_workspace_resource_id"
+                ),
             }
             # Forward the connector's retry-tuning kwargs so the kernel's
             # own retry policy honours them (the kernel owns the retry

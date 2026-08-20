@@ -512,6 +512,7 @@ class TestKernelRetryOptionsThreading:
                 azure_client_id="azure-sp",
                 azure_client_secret="azure-secret",
                 azure_tenant_id="tenant-123",
+                azure_workspace_resource_id="/subscriptions/s/rg/w",
                 enable_telemetry=False,
             )
             try:
@@ -521,6 +522,7 @@ class TestKernelRetryOptionsThreading:
                 assert opts["azure_client_id"] == "azure-sp"
                 assert opts["azure_client_secret"] == "azure-secret"
                 assert opts["azure_tenant_id"] == "tenant-123"
+                assert opts["azure_workspace_resource_id"] == "/subscriptions/s/rg/w"
             finally:
                 conn.close()
 
