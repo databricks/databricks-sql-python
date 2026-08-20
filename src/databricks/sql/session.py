@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import Dict, Tuple, List, Optional, Any, Type
+from urllib.parse import urlsplit
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -18,6 +19,98 @@ from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
 
 logger = logging.getLogger(__name__)
+
+
+def _kernel_host_and_path(
+    server_hostname: str, http_path: Optional[str], kwargs: dict
+) -> Tuple[str, Optional[str]]:
+    """Resolve the ``(host, http_path)`` the kernel ``Session`` should use,
+    honoring the Thrift-style ``_connection_uri`` / ``_port`` overrides.
+
+    The kernel derives its endpoint from ``host`` + ``http_path`` and accepts a
+    fully-qualified ``host`` (its ``normalise_host`` preserves the scheme and
+    any port), so both overrides can be expressed connector-side without a
+    kernel change:
+
+    - ``_connection_uri`` (a full ``scheme://host[:port]/path`` URI, mirroring
+      the Thrift backend's direct-URI override) is split into its authority
+      (returned as ``host``) and its path+query (returned as ``http_path``).
+      ``_connection_uri`` wins over ``_port``, matching the Thrift backend.
+      When the URI omits a path (e.g. ``https://host:8443`` or
+      ``https://host:8443?o=222``, and likewise a lone trailing slash such as
+      ``https://host:8443/``) the connection's original ``http_path`` is
+      retained, and any query on the URI is applied to that retained path,
+      replacing any query the retained path already carried — so a path-less,
+      query-bearing URI overrides only the host and query while keeping the
+      original warehouse path. The fragment (``#...``) is dropped since it
+      never goes on the wire.
+    - ``_port`` is otherwise folded into the host authority, unless the
+      hostname already carries a port.
+
+    Neither override is set on the common path, so the connection's
+    ``server_hostname`` / ``http_path`` pass through unchanged.
+    """
+    connection_uri = kwargs.get("_connection_uri")
+    if connection_uri:
+        # Ensure a scheme so urlsplit populates netloc rather than path. A
+        # scheme-less URI is ambiguous here, so default to https to match the
+        # connector's default transport.
+        uri = connection_uri if "://" in connection_uri else "https://" + connection_uri
+        parts = urlsplit(uri)
+        if not parts.netloc:
+            # A missing authority (e.g. a value like ``//foo`` or ``https:///p``)
+            # would otherwise yield a scheme-only host such as ``https://`` and
+            # silently connect to the wrong endpoint. Fail loudly instead.
+            raise ValueError(
+                "Invalid _connection_uri {!r}: could not determine host "
+                "authority (expected scheme://host[:port]/path)".format(connection_uri)
+            )
+        host = "{}://{}".format(parts.scheme, parts.netloc)
+        # A path-less URI keeps the connection's original http_path; any query
+        # on the URI is then applied to that retained path (host + query
+        # override, path preserved). A lone ``"/"`` path (common from a
+        # copy-pasted base URL like ``https://host:8443/``) is treated the same
+        # as an absent path so it does not silently point the kernel at the host
+        # root instead of the warehouse. See the docstring for the rationale.
+        uri_path = parts.path if parts.path not in ("", "/") else None
+        path = uri_path or http_path
+        if parts.query:
+            # Drop any query already on the retained path before applying the
+            # URI's query, so the URI's query fully overrides it. Appending
+            # unconditionally would otherwise yield a malformed double-``?``
+            # path (e.g. ``/warehouses/abc?o=111?o=222``) that mis-parses
+            # downstream and silently drops the org-id header.
+            path = "{}?{}".format((path or "").split("?", 1)[0], parts.query)
+        return host, path
+
+    port = kwargs.get("_port")
+    if port is not None:
+        # server_hostname is a bare host on this path (e.g.
+        # ``dbc-123.cloud.databricks.com``); the kernel adds the scheme.
+        # Append the port unless the host already carries one. Detect an
+        # existing port via ``urlsplit`` rather than a naive ``":" in host``
+        # check, so IPv6 literals (whose authority legitimately contains ``:``
+        # even without a port, e.g. ``[::1]``) are handled correctly.
+        # ``urlsplit`` only populates ``netloc``/``port`` when a scheme is
+        # present, so add a temporary one when the host is scheme-less.
+        host = server_hostname.rstrip("/")
+        probe = host if "://" in host else "https://" + host
+        try:
+            existing_port = urlsplit(probe).port
+        except ValueError as exc:
+            # ``SplitResult.port`` raises when the authority carries a
+            # non-numeric or out-of-range port. Re-raise as a clear,
+            # connector-side error consistent with the ``_connection_uri``
+            # validation above, instead of leaking an opaque URL-parsing error.
+            raise ValueError(
+                "Invalid server_hostname {!r}: could not parse its port "
+                "({})".format(server_hostname, exc)
+            )
+        if existing_port is None:
+            host = "{}:{}".format(host, port)
+        return host, http_path
+
+    return server_hostname, http_path
 
 
 class Session:
@@ -195,9 +288,35 @@ class Session:
                     "_retry_stop_after_attempts_duration"
                 ),
             }
+            kernel_host, kernel_http_path = _kernel_host_and_path(
+                server_hostname, http_path, kwargs
+            )
+            # The SPOG ``x-databricks-org-id`` header in ``all_headers`` was
+            # derived in ``__init__`` from the *original* ``http_path``. A
+            # ``_connection_uri`` override can rewrite the kernel path to a
+            # different workspace (a different ``?o=`` or cluster path), so
+            # re-derive the routing header from the resolved path and swap it
+            # in — otherwise the kernel would receive an org-id that points at
+            # the pre-override workspace (a silent mis-routing). This must fire
+            # whenever the path changed, in *both* directions: when the original
+            # path carried routing and the override drops or changes it, and
+            # when the original had none but the override introduces one — the
+            # latter is skipped if we also gate on ``self._spog_headers``. Any
+            # stale extracted header is stripped first, then re-derived; when
+            # ``_spog_headers`` is empty the filter strips nothing. A caller-set
+            # header still wins because ``_extract_spog_headers`` re-checks the
+            # existing headers and returns ``{}`` in that case.
+            if kernel_http_path != http_path:
+                base_headers = [
+                    h for h in all_headers if h not in self._spog_headers.items()
+                ]
+                self._spog_headers = self._extract_spog_headers(
+                    kernel_http_path, base_headers
+                )
+                all_headers = base_headers + list(self._spog_headers.items())
             return KernelDatabricksClient(
-                server_hostname=server_hostname,
-                http_path=http_path,
+                server_hostname=kernel_host,
+                http_path=kernel_http_path,
                 http_headers=all_headers,
                 auth_provider=auth_provider,
                 ssl_options=self.ssl_options,
