@@ -117,19 +117,23 @@ class Connection:
             :param use_sea: `bool`, optional (default is False)
                 Use the native pure-Python SEA backend instead of
                 the Thrift backend.
+
+                Deprecated and incomplete — this backend has feature
+                gaps (e.g. it does not support positional ``?``
+                parameter binding) and is slated for removal. For a
+                SEA-native connection use ``use_kernel=True`` instead,
+                which is the supported path.
             :param use_kernel: `bool`, optional (default is False)
                 Route the connection through the Rust kernel
-                (``databricks-sql-kernel`` via PyO3). Requires the
-                kernel extension to be installed separately — the
-                wheel is not yet published on PyPI, so today the
-                only supported install path is a local
-                ``maturin develop --release`` build from the
-                ``databricks-sql-kernel`` repo into the same venv.
-                Raises ``ImportError`` if the extension is not
-                available. In active development — PAT auth only
-                today; OAuth / federation / external credentials
-                and native parameter binding land in follow-ups.
-                Mutually exclusive with ``use_sea``.
+                (``databricks-sql-kernel`` via PyO3), a SEA-native
+                client. Requires the kernel extension, installed via
+                the ``[kernel]`` extra:
+                ``pip install 'databricks-sql-connector[kernel]'``.
+                Needs Python >= 3.10; on older interpreters the extra
+                is a no-op and ``use_kernel=True`` raises a clear
+                ``ImportError``. Supports PAT, OAuth M2M, and OAuth
+                U2M auth, and native (positional and named) parameter
+                binding. Mutually exclusive with ``use_sea``.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.

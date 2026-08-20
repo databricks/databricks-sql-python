@@ -200,6 +200,30 @@ class TestSeaBackend:
             )
         assert "Could not extract warehouse ID" in str(excinfo.value)
 
+    def test_initialization_warns_backend_incomplete(self, mock_http_client, caplog):
+        """Constructing a SEA client emits a warning steering users to the
+        kernel backend, since the SEA path is incomplete and slated for
+        deprecation."""
+        import logging
+
+        with caplog.at_level(
+            logging.WARNING, logger="databricks.sql.backend.sea.backend"
+        ):
+            SeaDatabricksClient(
+                server_hostname="test-server.databricks.com",
+                port=443,
+                http_path="/sql/warehouses/abc123",
+                http_headers=[],
+                auth_provider=AuthProvider(),
+                ssl_options=SSLOptions(),
+            )
+
+        warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any(
+            "incomplete" in m and "use_kernel=True" in m and "[kernel]" in m
+            for m in warnings
+        ), warnings
+
     def test_session_management(self, sea_client, mock_http_client, thrift_session_id):
         """Test session management methods."""
         # Test open_session with minimal parameters

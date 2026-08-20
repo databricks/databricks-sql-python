@@ -1,6 +1,11 @@
 """
 Main script to run all SEA connector tests.
 
+DEPRECATED: the pure-Python SEA backend (``use_sea=True``) exercised by
+these examples is incomplete (e.g. no positional ``?`` parameter binding)
+and slated for removal. For a SEA-native connection use ``use_kernel=True``
+instead — install it with ``pip install 'databricks-sql-connector[kernel]'``.
+
 This script runs all the individual test modules and displays
 a summary of test results with visual indicators.
 
