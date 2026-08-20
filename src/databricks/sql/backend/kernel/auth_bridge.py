@@ -21,16 +21,14 @@ Three auth shapes are supported on the kernel path:
   ``oauth_client_id`` / ``oauth_redirect_port`` overriding it) is
   forwarded to the kernel's ``auth_type='oauth-u2m'`` and the kernel
   runs the browser flow itself.
-- **Azure Entra (Azure AD)** — both Azure auth types forward the selector
-  and Azure credentials to the KERNEL, which is the Azure-aware auth core
-  (it owns the endpoints, scopes, app ids, and tenant discovery). The
-  binding stays thin — it does not construct endpoints or scopes:
+- **Azure Entra (Azure AD)** — the KERNEL is the Azure-aware auth core (it
+  owns the endpoints, scopes, app ids, and tenant discovery); the binding
+  forwards the selector + credentials and does not construct endpoints:
 
-  - ``azure-oauth`` (U2M) → forward ``auth_type='azure-oauth'`` (plus any
-    optional ``oauth_client_id`` / ``oauth_redirect_port`` passthrough). The
-    kernel pins the workspace v2.0 authorize/token endpoints, the Azure app
-    client id (``96eecda7-…``), port ``8030``, and the
-    ``{app_id}/user_impersonation offline_access`` scope (PECOBLR-4120).
+  - ``azure-oauth`` (U2M) → **not supported on the kernel path**; rejected with
+    a pointer to ``databricks-oauth``, whose in-house U2M browser flow works
+    against Azure workspaces (the workspace federates login to Entra). A
+    dedicated Azure U2M flow may return later (PECOBLR-4120).
   - ``azure-sp-m2m`` (M2M) → forward ``auth_type='azure-sp-m2m'`` with the
     Azure service-principal ``azure_client_id`` / ``azure_client_secret``.
     The kernel builds the Entra v2.0 token endpoint and the
@@ -170,9 +168,10 @@ def kernel_auth_kwargs(
        - a U2M ``auth_type`` (``databricks-oauth``) *and*
          ``oauth_client_secret`` together.
 
-    (The Azure Entra auth types — ``azure-oauth`` and ``azure-sp-m2m`` —
-    are forwarded to the kernel's Azure-aware flows up front, before these
-    guards; see the module docstring.)
+    (The Azure Entra auth types are handled up front, before these guards:
+    ``azure-sp-m2m`` forwards to the kernel's Azure SP flow; ``azure-oauth``
+    is rejected with a pointer to ``databricks-oauth``. See the module
+    docstring.)
     1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
     2. **PAT** — the built provider is (or wraps) an
@@ -211,24 +210,20 @@ def kernel_auth_kwargs(
     # creds in azure_* kwargs, not oauth_client_id/secret, so it would
     # otherwise fall through to the final "unsupported" error).
 
-    # azure-oauth (Azure AD U2M): forward the selector; the KERNEL owns Azure
-    # resolution (it is the auth core). The kernel pins the workspace v2.0
-    # authorize/token endpoints (`{host}/oidc/oauth2/v2.0/{authorize,token}` —
-    # NOT the discovered `/oidc/v1/authorize`, which the workspace redirects to
-    # a malformed Entra URL), the Azure app client id, port 8030, and the
-    # `{app_id}/user_impersonation offline_access` scope. So this binding does
-    # NOT construct endpoints/scopes — it just passes `auth_type='azure-oauth'`
-    # plus any optional client_id / redirect_port passthrough. PECOBLR-4120.
+    # azure-oauth (Azure AD U2M) is NOT supported on the kernel path. The
+    # in-house `databricks-oauth` browser flow works against Azure workspaces
+    # (the workspace federates the login to Entra), so it is the U2M path on the
+    # kernel — reject `azure-oauth` with a clear pointer rather than silently
+    # changing the user's selected flow. (A dedicated Azure U2M flow may return
+    # later; for now Azure U2M = `databricks-oauth`.)
     if auth_type == "azure-oauth":
-        kwargs = {"auth_type": "azure-oauth"}
-        if client_id:
-            kwargs["client_id"] = client_id
-            redirect_port = opts.get("oauth_redirect_port")
-            if redirect_port is not None:
-                kwargs["redirect_ports"] = [_coerce_redirect_port(redirect_port)]
-        if federation_client_id:
-            kwargs["identity_federation_client_id"] = federation_client_id
-        return kwargs
+        raise NotSupportedError(
+            "auth_type='azure-oauth' is not supported on use_kernel=True. Use "
+            "auth_type='databricks-oauth' instead — the in-house OAuth U2M "
+            "browser flow works against Azure Databricks workspaces (the "
+            "workspace federates the login to Microsoft Entra). Or use the "
+            "Thrift backend (default) for the dedicated Azure AD U2M flow."
+        )
 
     # azure-sp-m2m (Azure service principal, client-credentials): forward the
     # selector + Azure SP credentials; the KERNEL owns Azure resolution (it is
