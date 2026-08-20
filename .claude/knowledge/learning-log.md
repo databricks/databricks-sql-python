@@ -34,4 +34,10 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #913 (connection-parameters doc) — many params show ❌ for the kernel backend because `Session._create_backend` forwards only a curated, named subset of `connect()` kwargs to the kernel rather than splatting `**kwargs`; forwarded retry options use `kwargs.get(...)` with no fallback, so the kernel applies its own Rust defaults.
   **Rule:** On the kernel path, a `connect()`/session kwarg is honored only if `Session._create_backend` explicitly forwards it — anything outside that named subset is silently ignored, and options passed as `kwargs.get(...)` without a fallback let the kernel supply its own default rather than the Thrift default.
 
+### 2026-08-20: learnings since 2026-08-19T17:34:28Z
+- **Context:** PR #920 deprecated the SEA backend via a `logger.warning` in `SeaDatabricksClient.__init__`; a reviewer suggested `warnings.warn(DeprecationWarning)` and the author declined, citing the connector's existing precedent (`_user_agent_entry` in `session.py`, `use_inline_params` in `client.py`).
+  **Rule:** In databricks-sql-python, deprecate a public connect-parameter with a `logger.warning` (the established channel, matching `_user_agent_entry`/`use_inline_params`), not `warnings.warn(DeprecationWarning)` — switching to DeprecationWarning is a separate connector-wide standardization, not a per-PR change.
+- **Context:** In PR #920's review of the SEA deprecation warning, a reviewer noted RT/Lakehouse warehouses *require* `use_sea=True` and refuse Thrift, so an unqualified "SEA should not be used in production, switch to kernel" message is misleading for those users.
+  **Rule:** SEA (`use_sea=True`) is the only available backend for RT/Lakehouse warehouse types (they refuse Thrift), so deprecation/steering messaging must frame the kernel backend as the recommended path *where supported* rather than an unconditional drop-in replacement for all SEA users.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
