@@ -467,9 +467,10 @@ def test_dml_rowcount_wiring_does_not_break_dml(conn):
 
 def test_async_execute_polls_and_fetches_result(conn):
     """The full async CUJ: ``execute_async`` → poll
-    ``get_query_state`` → ``get_async_execution_result``. State and
-    result are read from the server by re-attaching to the statement
-    id (no connector-side state)."""
+    ``get_query_state`` → ``get_async_execution_result``. State comes
+    from the server by re-attaching to the statement id; first
+    in-process result fetch uses the retained owning handle so kernel
+    async telemetry is finalized."""
     with conn.cursor() as cur:
         cur.execute_async("SELECT 7 AS n")
         cur.get_async_execution_result()  # polls to terminal, fetches
@@ -482,10 +483,9 @@ def test_async_execute_polls_and_fetches_result(conn):
 
 
 def test_async_get_execution_result_is_re_callable(conn):
-    """``get_async_execution_result`` re-attaches by id on each call,
-    so fetching the same async command twice both succeed — the
-    connector never relied on a one-shot retained handle (Thrift-parity
-    re-fetch)."""
+    """Fetching the same async command twice succeeds: the first
+    in-process result fetch can use the owning handle, and later
+    re-fetches attach by id (Thrift-parity re-fetch)."""
     with conn.cursor() as cur:
         cur.execute_async("SELECT 11 AS n")
         cur.get_async_execution_result()

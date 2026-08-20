@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
@@ -251,16 +251,20 @@ class KernelDatabricksClient(DatabricksClient):
         # concurrent cursors on the same connection don't race on submit /
         # close / close-session.
         #
-        # This is a KEEP-ALIVE registry, not a state/result lookup: the
+        # This is primarily a KEEP-ALIVE registry: the
         # submitting ``ExecutedAsyncStatement``'s ``Drop`` fires a
         # fire-and-forget ``close_statement``, which would kill the
         # still-running async query the moment the handle is dropped. We
         # retain it (and its parent ``Statement``) here so the live query
-        # survives until an explicit close. ``get_query_state`` /
-        # ``get_execution_result`` do NOT consult this map — they
-        # re-attach to the statement by id (the server is the source of
-        # truth for async state), so they work even cross-process.
+        # survives until an explicit close. ``get_query_state`` still
+        # re-attaches to the statement by id (the server is the source
+        # of truth for async state). ``get_execution_result`` uses this
+        # owning handle for the first in-process result stream so kernel
+        # async statement telemetry is finalized on the original
+        # ``ExecuteStatementAsync`` telemetry object, then falls back to
+        # attach-by-id for re-fetch / cross-process cases.
         self._async_handles: Dict[str, Any] = {}
+        self._async_result_stream_started: Set[str] = set()
         # Parent ``Statement`` objects kept alive alongside async handles.
         # On the kernel, ``Statement.close()`` flips the validity flag on
         # the produced executed handle (see kernel
@@ -406,6 +410,7 @@ class KernelDatabricksClient(DatabricksClient):
             tracked_stmts = list(self._async_statements.items())
             self._async_handles.clear()
             self._async_statements.clear()
+            self._async_result_stream_started.clear()
         for _, handle in tracked:
             # Per-handle close errors are non-fatal — PEP 249
             # discourages raising from session close — so log and
@@ -657,6 +662,7 @@ class KernelDatabricksClient(DatabricksClient):
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)
+            self._async_result_stream_started.discard(command_id.guid)
         # Closing the handle below fires the server-side CloseStatement.
         # A subsequent ``get_query_state`` re-attaches by id and reads
         # ``CLOSED`` straight from the server — no connector-side
@@ -743,25 +749,39 @@ class KernelDatabricksClient(DatabricksClient):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
-        # Re-attach to the statement by id and await its result. SEA keys
-        # GetStatementResult on the id, so this works whether or not the
-        # connector still holds the submitting handle — and it's
-        # inherently re-callable (each call attaches a fresh handle and
-        # re-materialises the result stream), matching the Thrift backend
-        # where the operation handle stays re-fetchable until an explicit
-        # close. No connector-side handle lookup, so no
-        # ``unknown command_id`` failure on a second call.
+        # Prefer the original owning async handle for the first
+        # in-process result stream. The kernel attaches the real
+        # ExecuteStatementAsync telemetry to that handle; attached
+        # handles intentionally use no-op telemetry, so always
+        # re-attaching loses the SEA async statement row when the result
+        # is drained. After the owning result stream has been started,
+        # attach by id for re-fetch. This preserves the Thrift-parity
+        # behavior where results remain re-callable until explicit close.
         #
-        # ``attach_async_statement`` issues a GetStatementStatus to seed
-        # the handle; a 404 (unknown / aged-out id) surfaces as a
-        # NotFound KernelError mapped to ``ProgrammingError`` below via
-        # ``_wrap_kernel_exception``.
+        # If this process does not hold the owning handle (fresh cursor,
+        # restarted process, already re-fetched), ``attach_async_statement``
+        # issues a GetStatementStatus to seed the handle; a 404 (unknown
+        # / aged-out id) surfaces as a NotFound KernelError mapped to
+        # ``ProgrammingError`` below via ``_wrap_kernel_exception``.
         if self._kernel_session is None:
             raise InterfaceError("get_execution_result requires an open session.")
+        with self._async_handles_lock:
+            handle = (
+                None
+                if command_id.guid in self._async_result_stream_started
+                else self._async_handles.get(command_id.guid)
+            )
+            uses_owning_handle = handle is not None
+            if uses_owning_handle:
+                self._async_result_stream_started.add(command_id.guid)
         try:
-            handle = self._kernel_session.attach_async_statement(command_id.guid)
+            if handle is None:
+                handle = self._kernel_session.attach_async_statement(command_id.guid)
             stream = handle.await_result()
         except Exception as exc:
+            if uses_owning_handle:
+                with self._async_handles_lock:
+                    self._async_result_stream_started.discard(command_id.guid)
             raise _wrap_kernel_exception("get_execution_result", exc) from exc
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.

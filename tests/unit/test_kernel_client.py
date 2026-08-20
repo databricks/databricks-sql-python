@@ -799,9 +799,33 @@ def test_get_query_state_propagates_non_not_found_error():
         c.get_query_state(cid)
 
 
-def test_get_execution_result_attaches_by_id():
-    """``get_execution_result`` re-attaches to the statement by id and
-    awaits its result — no connector-side handle lookup."""
+def test_get_execution_result_uses_retained_owning_handle_first():
+    """The first in-process result fetch uses the retained submitting
+    handle so the kernel finalizes the original async statement telemetry."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    fake_stream = MagicMock()
+    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    handle = MagicMock()
+    handle.await_result.return_value = fake_stream
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.row_limit = 5
+    cid = CommandId.from_sea_statement_id("async-1")
+    c._async_handles[cid.guid] = handle
+
+    rs = c.get_execution_result(cid, cursor=cursor)
+
+    assert rs is not None
+    c._kernel_session.attach_async_statement.assert_not_called()
+    handle.await_result.assert_called_once_with()
+    assert cid.guid in c._async_result_stream_started
+
+
+def test_get_execution_result_attaches_by_id_when_no_retained_handle():
+    """Fallback by statement id keeps cross-process / fresh-cursor
+    result retrieval working when this connector lacks the owning handle."""
     c = _make_client()
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
@@ -814,8 +838,26 @@ def test_get_execution_result_attaches_by_id():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
-    c._kernel_session.attach_async_statement.assert_called_with("async-1")
+    c._kernel_session.attach_async_statement.assert_called_once_with("async-1")
     handle.await_result.assert_called_once_with()
+
+
+def test_get_execution_result_owning_handle_failure_can_retry_owning_handle():
+    """If the owning handle's await fails before producing a result
+    stream, clear the claimed marker so a retry can still use the
+    telemetry-bearing owning handle."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    handle = MagicMock()
+    handle.await_result.side_effect = _FakeKernelError(code="Unavailable")
+    cid = CommandId.from_sea_statement_id("async-retry-owning")
+    c._async_handles[cid.guid] = handle
+
+    with pytest.raises(OperationalError):
+        c.get_execution_result(cid, cursor=MagicMock())
+
+    assert cid.guid not in c._async_result_stream_started
+    c._kernel_session.attach_async_statement.assert_not_called()
 
 
 def test_get_execution_result_maps_not_found_to_programming_error():
@@ -1049,19 +1091,20 @@ def test_kernel_error_during_result_set_construction_is_mapped():
 
 
 def test_get_execution_result_is_re_callable():
-    """``get_execution_result`` re-attaches by id on every call, so a
-    second fetch for the same async command succeeds (Thrift-parity
-    re-fetch). Each call attaches a fresh handle and awaits its result;
-    neither raises, and the connector never depended on a retained
-    handle. The kernel's ``await_result()`` is idempotent server-side."""
+    """The first result fetch uses the owning handle for telemetry; a
+    second fetch for the same async command re-attaches by id so
+    Thrift-parity re-fetch still works."""
     c = _make_client()
     c._kernel_session = MagicMock()
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
-    handle = MagicMock()
-    handle.await_result.return_value = fake_stream
-    c._kernel_session.attach_async_statement.return_value = handle
+    owning_handle = MagicMock()
+    owning_handle.await_result.return_value = fake_stream
+    attached_handle = MagicMock()
+    attached_handle.await_result.return_value = fake_stream
+    c._kernel_session.attach_async_statement.return_value = attached_handle
     cid = CommandId.from_sea_statement_id("async-recall-twice")
+    c._async_handles[cid.guid] = owning_handle
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1070,10 +1113,11 @@ def test_get_execution_result_is_re_callable():
     rs2 = c.get_execution_result(cid, cursor=cursor)
 
     assert rs1 is not None and rs2 is not None
-    # Two calls -> two attaches -> two await_results. No reliance on a
-    # connector-tracked handle.
-    assert c._kernel_session.attach_async_statement.call_count == 2
-    assert handle.await_result.call_count == 2
+    owning_handle.await_result.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-recall-twice"
+    )
+    attached_handle.await_result.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
