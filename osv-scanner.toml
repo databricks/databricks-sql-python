@@ -16,3 +16,26 @@
 # This file starts empty -- populate iteratively as the first scan run
 # surfaces real false positives. Do not pre-populate with speculative
 # suppressions.
+
+[[IgnoredVulns]]
+id = "GHSA-g6cj-pr64-35w5"
+# CVE-2026-69247 / PYSEC-2026-3552 -- a Bleichenbacher-style timing/error
+# oracle in cryptography's PKCS#7 *EnvelopedData* decryption
+# (pkcs7_decrypt_der/pem/smime), exploitable only against an endpoint that
+# auto-decrypts attacker-supplied S/MIME EnvelopedData and responds
+# adaptively. Affects cryptography >=44.0.0,<50.0.0; fixed in 50.0.0.
+#
+# Not reachable here: `cryptography` is a transitive dependency (via
+# PyJWT[crypto] / oauthlib, for OAuth token signing/verification). The
+# connector never decrypts PKCS#7 / S/MIME EnvelopedData -- the vulnerable
+# code path is never invoked. Pre-existing on main (transitive, not
+# introduced by any connector change); a clean bump awaits PyJWT/oauthlib
+# floors that pull cryptography>=50. Re-evaluate when the dependency tree
+# resolves to a fixed cryptography.
+
+[[IgnoredVulns]]
+# Same advisory under its PYSEC alias -- OSV reports both ids for this
+# finding, so suppress both to be safe (see GHSA-g6cj-pr64-35w5 above for
+# the full justification: unreachable PKCS#7/S-MIME decryption oracle in a
+# transitive dependency).
+id = "PYSEC-2026-3552"

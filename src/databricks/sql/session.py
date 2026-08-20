@@ -173,6 +173,15 @@ class Session:
                 "oauth_client_secret": kwargs.get("oauth_client_secret"),
                 "oauth_redirect_port": kwargs.get("oauth_redirect_port"),
                 "oauth_scopes": kwargs.get("oauth_scopes"),
+                # JWT private-key M2M (RFC 7523 client assertion): the kernel
+                # signs a short-lived assertion with the private key instead
+                # of sending a client secret. token_url points the assertion
+                # at the workspace's OAuth IdP token endpoint (e.g. Entra ID).
+                "oauth_jwt_key_file": kwargs.get("oauth_jwt_key_file"),
+                "oauth_jwt_kid": kwargs.get("oauth_jwt_kid"),
+                "oauth_jwt_passphrase": kwargs.get("oauth_jwt_passphrase"),
+                "oauth_jwt_algorithm": kwargs.get("oauth_jwt_algorithm"),
+                "token_url": kwargs.get("token_url"),
                 "credentials_provider": kwargs.get("credentials_provider"),
                 "identity_federation_client_id": kwargs.get(
                     "identity_federation_client_id"
