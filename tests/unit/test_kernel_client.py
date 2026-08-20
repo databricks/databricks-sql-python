@@ -436,7 +436,8 @@ def test_execute_command_forwards_query_tags():
     assert stmt.execute.called
 
 
-def test_execute_command_applies_row_limit_to_result_set():
+@pytest.mark.parametrize("row_limit", [None, 0, 1, 5])
+def test_execute_command_forwards_row_limit(row_limit):
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
@@ -450,7 +451,7 @@ def test_execute_command_applies_row_limit_to_result_set():
     )
     c._kernel_session.statement.return_value = stmt
 
-    result = c.execute_command(
+    c.execute_command(
         operation="SELECT * FROM range(10)",
         session_id=MagicMock(),
         max_rows=1,
@@ -461,11 +462,10 @@ def test_execute_command_applies_row_limit_to_result_set():
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
-        row_limit=5,
+        row_limit=row_limit,
     )
 
-    assert result is not None
-    assert result._row_limit == 5
+    stmt.set_row_limit.assert_called_once_with(row_limit)
 
 
 # ---------------------------------------------------------------------------
@@ -809,13 +809,11 @@ def test_get_execution_result_attaches_by_id():
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-    cursor.row_limit = 5
     cid = CommandId.from_sea_statement_id("async-1")
 
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
-    assert rs._row_limit == 5
     c._kernel_session.attach_async_statement.assert_called_with("async-1")
     handle.await_result.assert_called_once_with()
 
@@ -1067,7 +1065,6 @@ def test_get_execution_result_is_re_callable():
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-    cursor.row_limit = None
 
     rs1 = c.get_execution_result(cid, cursor=cursor)
     rs2 = c.get_execution_result(cid, cursor=cursor)
