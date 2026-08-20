@@ -183,7 +183,7 @@ def test_fetchall_arrow(conn):
         assert table.column_names == ["a", "b"]
 
 
-@pytest.mark.parametrize("row_limit", [None, 1, 5])
+@pytest.mark.parametrize("row_limit", [None, 0, 1, 5])
 def test_cursor_row_limit(conn, row_limit):
     with conn.cursor(row_limit=row_limit) as cur:
         cur.execute("SELECT id FROM range(10) ORDER BY id")

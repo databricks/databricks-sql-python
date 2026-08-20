@@ -436,7 +436,7 @@ def test_execute_command_forwards_query_tags():
     assert stmt.execute.called
 
 
-@pytest.mark.parametrize("row_limit", [None, 1, 5])
+@pytest.mark.parametrize("row_limit", [None, 0, 1, 5])
 def test_execute_command_forwards_row_limit(row_limit):
     c = _make_client()
     c._kernel_session = MagicMock()
