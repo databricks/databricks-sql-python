@@ -252,13 +252,10 @@ class KernelResultSet(ResultSet):
             # connection close path stays clean.
             logger.warning("Error closing kernel handle: %s", exc)
         # Honor the base ``ResultSet`` contract: notify the backend.
-        # ``backend.close_command`` also drops the ``_async_handles``
-        # entry and records the guid in ``_closed_commands`` — no
-        # separate pop needed here. Sync-execute and metadata paths
-        # never registered in ``_async_handles`` to begin with, and
-        # ``get_execution_result`` pops the async path before the
-        # result set is even constructed (see the M1 fix), so this
-        # call is the single bookkeeping seam.
+        # For async results, ``backend.close_command`` drops the
+        # retained owning handle and parent Statement. Sync-execute and
+        # metadata paths never registered in ``_async_handles`` to begin
+        # with, so this call is tolerant bookkeeping for them.
         backend = cast("KernelDatabricksClient", self.backend)
         try:
             backend.close_command(self.command_id)
