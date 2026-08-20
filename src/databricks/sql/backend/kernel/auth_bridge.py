@@ -248,6 +248,13 @@ def kernel_auth_kwargs(
             "kernel-managed JWT private-key M2M, or use the Thrift backend "
             "(default) for credentials_provider."
         )
+    if has_jwt_m2m and auth_type == "databricks-oauth":
+        raise NotSupportedError(
+            f"Ambiguous auth on use_kernel=True: auth_type={auth_type!r} selects "
+            "the U2M browser flow, but oauth_jwt_key_file was also provided "
+            "(JWT private-key M2M). Drop oauth_jwt_key_file for U2M, or drop "
+            "auth_type for JWT M2M."
+        )
 
     # 1. OAuth M2M (JWT private-key client assertion) — the kernel signs a
     #    short-lived assertion with the private key and runs the
@@ -309,7 +316,7 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # 2. PAT (including TokenFederationProvider-wrapped PAT).
+    # 3. PAT (including TokenFederationProvider-wrapped PAT).
     if _is_pat(auth_provider):
         token = _extract_bearer_token(auth_provider)
         if not token:
@@ -322,7 +329,7 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
+    # 4. OAuth U2M — browser authorization-code flow; the kernel runs it.
     #    Only databricks-oauth reaches here (azure-oauth rejected up front).
     #    Forward the connector's own databricks-sql-python bundle instead of
     #    the kernel's databricks-sql-connector default, for parity with the
@@ -354,7 +361,7 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # 4. Custom credentials_provider — the connector's primary M2M path
+    # 5. Custom credentials_provider — the connector's primary M2M path
     #    on Thrift/SEA, but unusable on the kernel: it's an opaque token
     #    source with no extractable client_id/secret, so the kernel
     #    can't own the token lifecycle. Point the caller at the raw
@@ -368,7 +375,7 @@ def kernel_auth_kwargs(
             "credentials_provider."
         )
 
-    # 5. Everything else (including no usable credentials at all —
+    # 6. Everything else (including no usable credentials at all —
     #    ``auth_provider`` is None on the kernel path when no access
     #    token was supplied and no OAuth kwargs resolved above).
     provider_desc = (

@@ -355,6 +355,20 @@ class TestKernelOAuthM2MJwt:
                 },
             )
 
+    def test_jwt_plus_databricks_oauth_auth_type_is_rejected(self):
+        # auth_type="databricks-oauth" signals U2M intent; a private key
+        # alongside it is ambiguous (mirrors the shared-secret M2M + U2M guard).
+        with pytest.raises(NotSupportedError, match="oauth_jwt_key_file"):
+            kernel_auth_kwargs(
+                None,
+                {
+                    "oauth_client_id": "sp",
+                    "oauth_jwt_key_file": "/k.pem",
+                    "oauth_jwt_kid": "k",
+                    "auth_type": "databricks-oauth",
+                },
+            )
+
     def test_federation_client_id_forwarded(self):
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
