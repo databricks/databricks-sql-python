@@ -36,9 +36,9 @@ Three auth shapes are supported on the kernel path:
     The kernel builds the Entra v2.0 token endpoint and the
     ``{effective_app_id}/.default`` scope, and auto-discovers the tenant from
     the workspace's ``/aad/auth`` redirect when ``azure_tenant_id`` is omitted
-    (Thrift parity). ``azure_workspace_resource_id`` is an optional add-on:
-    forward it and the kernel additionally sends the Azure management-token
-    header pair, so an RBAC-only SP (not a workspace member) can authenticate
+    (Thrift parity). The SP must be a workspace member (the kernel path does not
+    yet support the Azure management-token flow, so ``azure_workspace_resource_id``
+    is ignored with a warning; RBAC-only SPs are a planned follow-up)
     (PECOBLR-4141).
 
 ``identity_federation_client_id`` is forwarded with whichever auth shape
@@ -239,12 +239,10 @@ def kernel_auth_kwargs(
     # (so connect() is byte-identical between Thrift and use_kernel=True).
     # PECOBLR-4141.
     #
-    # azure_workspace_resource_id is an optional add-on: forward it and the
-    # kernel additionally fetches an Azure-management token and sends the
-    # X-Databricks-Azure-SP-Management-Token + X-Databricks-Azure-Workspace-
-    # Resource-Id pair, so an SP that holds only an Azure RBAC role (not a
-    # workspace member) can authenticate. Omit it (the common case) and the SP
-    # authenticates with the Databricks-audience data token alone.
+    # The SP authenticates with the Databricks-audience data token, so it must be
+    # a workspace member. The kernel path does not yet support the Azure
+    # management-token flow (for an RBAC-only SP), so azure_workspace_resource_id
+    # is ignored with a warning here — see below.
     if auth_type == "azure-sp-m2m":
         azure_client_id = opts.get("azure_client_id")
         azure_client_secret = opts.get("azure_client_secret")
@@ -258,14 +256,22 @@ def kernel_auth_kwargs(
             "azure_client_id": azure_client_id,
             "azure_client_secret": azure_client_secret,
         }
-        # Optional passthroughs: the kernel auto-discovers the tenant when
-        # absent, and sends the data token alone when no resource id is set.
+        # Optional passthrough: the kernel auto-discovers the tenant when absent.
         azure_tenant_id = opts.get("azure_tenant_id")
         if azure_tenant_id:
             kwargs["azure_tenant_id"] = azure_tenant_id
-        azure_workspace_resource_id = opts.get("azure_workspace_resource_id")
-        if azure_workspace_resource_id:
-            kwargs["azure_workspace_resource_id"] = azure_workspace_resource_id
+        # azure_workspace_resource_id drives the Azure management-token flow on
+        # the Thrift path (for an SP with only an Azure RBAC role, not a
+        # workspace member). The kernel path does NOT support it yet — the SP
+        # must be a workspace member — so warn rather than silently dropping a
+        # security-relevant auth parameter and failing later with an opaque 403.
+        if opts.get("azure_workspace_resource_id"):
+            logger.warning(
+                "azure_workspace_resource_id is ignored on use_kernel=True: the "
+                "Azure SP management-token flow is not yet supported on the "
+                "kernel path. The service principal must be a workspace member "
+                "(the Databricks-audience token alone authenticates it)."
+            )
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
