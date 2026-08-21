@@ -253,6 +253,15 @@ def kernel_auth_kwargs(
     # set, the kernel also sends the Azure SP management token +
     # X-Databricks-Azure-Workspace-Resource-Id header (matching the JDBC driver),
     # so an RBAC-only SP (Azure role, not a workspace member) can authenticate.
+    #
+    # This branch returns BEFORE the ambiguity guards below, so an
+    # azure-sp-m2m selector paired with a conflicting OAuth signal
+    # (oauth_client_secret / oauth_jwt_key_file / credentials_provider) does not
+    # fail loudly the way the other flows do. That is intentional: azure-sp-m2m
+    # carries its credentials in the azure_* namespace, so there is no routing
+    # collision, and an explicit azure-sp-m2m selector is unambiguous intent to
+    # use the Azure SP flow. Any oauth_*/credentials_provider values are simply
+    # ignored here rather than treated as ambiguous.
     if auth_type == "azure-sp-m2m":
         azure_client_id = opts.get("azure_client_id")
         azure_client_secret = opts.get("azure_client_secret")
