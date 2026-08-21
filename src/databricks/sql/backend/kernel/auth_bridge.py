@@ -15,8 +15,8 @@ Three auth shapes are supported on the kernel path:
   connector's own OAuth provider because the kernel re-mints tokens
   itself and the client secret is not recoverable from a built
   provider.
-- **OAuth U2M** — for ``auth_type`` ``databricks-oauth`` (the browser
-  authorization-code flow), the connector's ``databricks-sql-python``
+- **OAuth U2M** — for ``auth_type`` ``databricks-oauth`` *or* ``azure-oauth``
+  (the browser authorization-code flow), the connector's ``databricks-sql-python``
   app bundle (``client_id`` + ``redirect_ports`` list, with the optional
   ``oauth_client_id`` / ``oauth_redirect_port`` overriding it) is
   forwarded to the kernel's ``auth_type='oauth-u2m'`` and the kernel
@@ -25,10 +25,16 @@ Three auth shapes are supported on the kernel path:
   owns the endpoints, scopes, app ids, and tenant discovery); the binding
   forwards the selector + credentials and does not construct endpoints:
 
-  - ``azure-oauth`` (U2M) → **not supported on the kernel path**; rejected with
-    a pointer to ``databricks-oauth``, whose in-house U2M browser flow works
-    against Azure workspaces (the workspace federates login to Entra). A
-    dedicated Azure U2M flow may return later (PECOBLR-4120).
+  - ``azure-oauth`` (U2M) → routed to the kernel's ``oauth-u2m`` via the shared
+    U2M path above, exactly like ``databricks-oauth``. The kernel runs the
+    in-house workspace-federated browser flow (the workspace federates login to
+    Entra), which Azure Databricks workspaces support; it forwards the
+    ``databricks-sql-python`` bundle, **not** the Thrift Azure app
+    (``96eecda7`` / redirect port ``8030``) — that app is registered for
+    Thrift's *direct-Entra* flow (``login.microsoftonline.com`` config +
+    ``{tenant}/user_impersonation`` scopes), which the kernel does not perform.
+    So on the kernel path ``azure-oauth`` and ``databricks-oauth`` are the same
+    flow (PECOBLR-4120).
   - ``azure-sp-m2m`` (M2M) → forward ``auth_type='azure-sp-m2m'`` with the
     Azure service-principal ``azure_client_id`` / ``azure_client_secret`` (plus
     optional ``azure_tenant_id`` / ``azure_workspace_resource_id``). The kernel
@@ -167,25 +173,27 @@ def kernel_auth_kwargs(
        rather than silently picking one flow (and failing later as a
        confusing 401 against the wrong principal):
        - a custom ``credentials_provider`` *and* M2M kwargs together;
-       - a U2M ``auth_type`` (``databricks-oauth``) *and*
+       - a U2M ``auth_type`` (``databricks-oauth`` / ``azure-oauth``) *and*
          ``oauth_client_secret`` together.
 
-    (The Azure Entra auth types are handled up front, before these guards:
-    ``azure-sp-m2m`` forwards to the kernel's Azure SP flow; ``azure-oauth``
-    is rejected with a pointer to ``databricks-oauth``. See the module
-    docstring.)
+    (The ``azure-sp-m2m`` Azure Entra auth type is handled up front, before
+    these guards, forwarding to the kernel's Azure SP flow. ``azure-oauth`` is
+    a U2M type and is handled by step 3 alongside ``databricks-oauth``. See the
+    module docstring.)
     1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
     2. **PAT** — the built provider is (or wraps) an
        ``AccessTokenAuthProvider`` → extract the bearer token.
-    3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` → forward the
-       connector's coupled ``databricks-sql-python`` bundle (``client_id``
-       + ``redirect_ports`` list, defaulting scopes to ``PYSQL_OAUTH_SCOPES``
-       when the caller supplies none) to the kernel's ``oauth-u2m``, so a
-       bare U2M connection authenticates as ``databricks-sql-python`` —
-       forwarding the connector's own OAuth app rather than the kernel's
-       ``databricks-sql-connector`` default (PECOBLR-4039/4040). Unlike the
-       Thrift path, a caller-supplied ``oauth_scopes`` is honored here.
+    3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` or ``azure-oauth``
+       → forward the connector's coupled ``databricks-sql-python`` bundle
+       (``client_id`` + ``redirect_ports`` list, defaulting scopes to
+       ``PYSQL_OAUTH_SCOPES`` when the caller supplies none) to the kernel's
+       ``oauth-u2m``, so a bare U2M connection authenticates as
+       ``databricks-sql-python`` — forwarding the connector's own OAuth app
+       rather than the kernel's ``databricks-sql-connector`` default
+       (PECOBLR-4039/4040). ``azure-oauth`` resolves identically: the kernel's
+       workspace-federated flow serves Azure workspaces too (PECOBLR-4120).
+       Unlike the Thrift path, a caller-supplied ``oauth_scopes`` is honored here.
     4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
        token source; no raw creds for the kernel to own).
     5. Anything else → ``NotSupportedError``.
@@ -212,20 +220,15 @@ def kernel_auth_kwargs(
     # creds in azure_* kwargs, not oauth_client_id/secret, so it would
     # otherwise fall through to the final "unsupported" error).
 
-    # azure-oauth (Azure AD U2M) is NOT supported on the kernel path. The
-    # in-house `databricks-oauth` browser flow works against Azure workspaces
-    # (the workspace federates the login to Entra), so it is the U2M path on the
-    # kernel — reject `azure-oauth` with a clear pointer rather than silently
-    # changing the user's selected flow. (A dedicated Azure U2M flow may return
-    # later; for now Azure U2M = `databricks-oauth`.)
-    if auth_type == "azure-oauth":
-        raise NotSupportedError(
-            "auth_type='azure-oauth' is not supported on use_kernel=True. Use "
-            "auth_type='databricks-oauth' instead — the in-house OAuth U2M "
-            "browser flow works against Azure Databricks workspaces (the "
-            "workspace federates the login to Microsoft Entra). Or use the "
-            "Thrift backend (default) for the dedicated Azure AD U2M flow."
-        )
+    # azure-oauth (Azure AD U2M) routes to the kernel's oauth-u2m, handled by the
+    # shared U2M branch below (step 3) alongside databricks-oauth. The kernel runs
+    # the in-house workspace-federated browser flow — the workspace federates the
+    # login to Microsoft Entra — which Azure Databricks workspaces support. It uses
+    # the connector's databricks-sql-python app bundle, NOT the Thrift Azure app
+    # (96eecda7 / redirect port 8030): that app is registered for Thrift's
+    # direct-Entra flow (login.microsoftonline.com config + {tenant}/user_impersonation
+    # scopes), which the kernel does not perform. So on the kernel path azure-oauth
+    # and databricks-oauth are the same flow. PECOBLR-4120.
 
     # azure-sp-m2m (Azure service principal, client-credentials): forward the
     # selector + Azure SP credentials; the KERNEL owns Azure resolution (it is
@@ -278,7 +281,7 @@ def kernel_auth_kwargs(
             "kernel-managed M2M, or use the Thrift backend (default) for "
             "credentials_provider."
         )
-    if client_secret and auth_type == "databricks-oauth":
+    if client_secret and auth_type in ("databricks-oauth", "azure-oauth"):
         raise NotSupportedError(
             f"Ambiguous auth on use_kernel=True: auth_type={auth_type!r} selects "
             "the U2M browser flow, but oauth_client_secret was also provided "
@@ -314,7 +317,10 @@ def kernel_auth_kwargs(
         return kwargs
 
     # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
-    #    Only databricks-oauth reaches here (azure-oauth rejected up front).
+    #    Both databricks-oauth and azure-oauth reach here: on the kernel path
+    #    they are the same in-house workspace-federated flow (Azure workspaces
+    #    federate the browser login to Entra), so azure-oauth is an alias for
+    #    databricks-oauth here — see the note near the top of this function.
     #    Forward the connector's own databricks-sql-python bundle instead of
     #    the kernel's databricks-sql-connector default, for parity with the
     #    Thrift path. client_id + redirect ports are coupled per app (each
@@ -326,7 +332,7 @@ def kernel_auth_kwargs(
     #    fallback), mirroring the Thrift DatabricksOAuthProvider which retries
     #    the next port when one is bound. A caller overriding client_id
     #    supplies its own single registered port.
-    if auth_type == "databricks-oauth":
+    if auth_type in ("databricks-oauth", "azure-oauth"):
         redirect_port = opts.get("oauth_redirect_port")
         # Honor a caller-supplied oauth_scopes (normalized to a list of
         # strings); fall back to the connector default when none is given.
@@ -367,8 +373,9 @@ def kernel_auth_kwargs(
     )
     raise NotSupportedError(
         f"use_kernel=True requires PAT (access_token), OAuth M2M "
-        f"(oauth_client_id + oauth_client_secret), or OAuth U2M "
-        f"(auth_type='databricks-oauth'), but got "
+        f"(oauth_client_id + oauth_client_secret), OAuth U2M "
+        f"(auth_type='databricks-oauth' or 'azure-oauth'), or Azure SP M2M "
+        f"(auth_type='azure-sp-m2m'), but got "
         f"{provider_desc} with auth_type={auth_type!r}. Use the Thrift "
         "backend (default) for other auth flows."
     )
