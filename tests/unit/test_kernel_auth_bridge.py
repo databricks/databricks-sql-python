@@ -748,7 +748,7 @@ class TestKernelAzureSpM2M:
         # signal as a hard "Ambiguous auth" error, but an explicit azure-sp-m2m
         # selector carries its creds in the azure_* namespace, so a stray
         # oauth_*/credentials_provider value is NOT a routing collision — it is
-        # silently ignored (logger.debug breadcrumb only) and the Azure SP flow
+        # silently ignored (logger.warning breadcrumb only) and the Azure SP flow
         # still wins. This guards against a refactor accidentally promoting the
         # ignored signal to an error (see the routing note in auth_bridge.py).
         opts = dict(self._CREDS, **conflicting_signal)

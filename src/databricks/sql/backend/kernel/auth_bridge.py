@@ -282,7 +282,7 @@ def kernel_auth_kwargs(
             if opts.get(name) is not None
         ]
         if ignored_signals:
-            logger.debug(
+            logger.warning(
                 "auth_type='azure-sp-m2m' selected; ignoring conflicting "
                 "credential signal(s) %s (Azure SP credentials in the azure_* "
                 "namespace take precedence on the kernel path).",
