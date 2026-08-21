@@ -47,6 +47,7 @@ from databricks.sql.exc import (
     NotSupportedError,
     ProgrammingError,
 )
+from databricks.sql.telemetry.telemetry_client import TelemetryHelper
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
@@ -165,6 +166,31 @@ def _is_staging_statement(operation: str) -> bool:
     return verb in _STAGING_VERBS
 
 
+def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
+    """Build phase-7 telemetry/system kwargs for ``databricks_sql_kernel.Session``."""
+    system = TelemetryHelper.get_driver_system_configuration()
+    out: Dict[str, Any] = {
+        "driver_name": system.driver_name,
+        "driver_version": system.driver_version,
+        "runtime_name": system.runtime_name,
+        "runtime_version": system.runtime_version,
+        "runtime_vendor": system.runtime_vendor,
+        "os_name": system.os_name,
+        "os_version": system.os_version,
+        "os_arch": system.os_arch,
+        "client_app_name": system.client_app_name,
+        "locale_name": system.locale_name,
+        "char_set_encoding": system.char_set_encoding,
+        # The Python telemetry model does not currently track process
+        # name; omit it and let the kernel fill what it can derive.
+        "process_name": None,
+        "telemetry_enabled": bool(options.get("enable_telemetry", True)),
+    }
+    if options.get("telemetry_batch_size") is not None:
+        out["telemetry_batch_size"] = options["telemetry_batch_size"]
+    return out
+
+
 # ─── Client ─────────────────────────────────────────────────────────────────
 
 
@@ -217,6 +243,9 @@ class KernelDatabricksClient(DatabricksClient):
         # to the kernel ``Session``'s ``retry_*`` kwargs in
         # ``open_session`` via ``_kernel_retry_kwargs``.
         self._retry_options = kwargs.get("retry_options") or {}
+        # Kernel telemetry phase 7 adds binding/runtime identity and
+        # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
+        self._telemetry_options = kwargs.get("telemetry_options") or {}
         self._catalog = catalog
         self._schema = schema
         # ``_use_arrow_native_complex_types`` is the connector-side
@@ -316,6 +345,7 @@ class KernelDatabricksClient(DatabricksClient):
             # Translate the connector's ``_retry_*`` kwargs into the
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
+            telemetry_kwargs = _kernel_telemetry_kwargs(self._telemetry_options)
             # Forward caller / connector HTTP headers. The kernel applies
             # them on every request; a caller ``User-Agent`` is appended
             # to the kernel's base UA. Only pass the kwarg when there's
@@ -358,6 +388,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,
+                **telemetry_kwargs,
                 **http_headers_kwargs,
             )
         except Exception as exc:

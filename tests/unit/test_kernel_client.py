@@ -344,6 +344,64 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
     assert captured.get("complex_types_as_json") is expected_flag
 
 
+def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
+    """Kernel telemetry phase 7 added binding/runtime identity and
+    telemetry config kwargs to ``databricks_sql_kernel.Session``."""
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    monkeypatch.setattr(
+        kernel_client.TelemetryHelper,
+        "get_driver_system_configuration",
+        lambda: types.SimpleNamespace(
+            driver_name="Databricks SQL Python Connector",
+            driver_version="1.2.3",
+            runtime_name="Python 3.12.0",
+            runtime_version="3.12.0",
+            runtime_vendor="CPython",
+            os_name="Linux",
+            os_version="6.1",
+            os_arch="x86_64",
+            client_app_name=None,
+            locale_name="en_US",
+            char_set_encoding="utf-8",
+        ),
+    )
+
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        telemetry_options={
+            "enable_telemetry": True,
+            "telemetry_batch_size": 17,
+        },
+    )
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["driver_name"] == "Databricks SQL Python Connector"
+    assert captured["driver_version"] == "1.2.3"
+    assert captured["runtime_name"] == "Python 3.12.0"
+    assert captured["runtime_version"] == "3.12.0"
+    assert captured["runtime_vendor"] == "CPython"
+    assert captured["os_name"] == "Linux"
+    assert captured["os_version"] == "6.1"
+    assert captured["os_arch"] == "x86_64"
+    assert captured["client_app_name"] is None
+    assert captured["locale_name"] == "en_US"
+    assert captured["char_set_encoding"] == "utf-8"
+    assert captured["process_name"] is None
+    assert captured["telemetry_enabled"] is True
+    assert captured["telemetry_batch_size"] == 17
+
+
 def test_execute_command_forwards_parameters_to_bind_param():
     """``execute_command(parameters=[...])`` routes each parameter
     through ``bind_tspark_params`` onto the kernel statement before
