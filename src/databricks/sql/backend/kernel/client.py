@@ -256,13 +256,12 @@ class KernelDatabricksClient(DatabricksClient):
         # fire-and-forget ``close_statement``, which would kill the
         # still-running async query the moment the handle is dropped. We
         # retain it (and its parent ``Statement``) here so the live query
-        # survives until an explicit close. ``get_query_state`` still
-        # re-attaches to the statement by id (the server is the source
-        # of truth for async state). ``get_execution_result`` uses this
-        # owning handle for the first in-process result stream so kernel
-        # async statement telemetry is finalized on the original
-        # ``ExecuteStatementAsync`` telemetry object, then falls back to
-        # attach-by-id for re-fetch / cross-process cases.
+        # survives until an explicit close. ``get_query_state`` and
+        # ``get_execution_result`` use this owning handle before result
+        # streaming starts so kernel async statement telemetry is
+        # finalized on the original ``ExecuteStatementAsync`` telemetry
+        # object, then fall back to attach-by-id for re-fetch /
+        # cross-process cases.
         self._async_handles: Dict[str, Any] = {}
         self._async_result_stream_started: Set[str] = set()
         # Parent ``Statement`` objects kept alive alongside async handles.
@@ -689,18 +688,28 @@ class KernelDatabricksClient(DatabricksClient):
                     pass
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
-        # Server is the source of truth for async command state. Re-attach
-        # to the statement by its id and read the state the server reports
-        # — no connector-side state to drift. SEA keys GetStatementStatus
-        # purely on the id, so a statement the connector no longer holds a
-        # handle for (or never held — a different process) is still
-        # queryable. CLOSED comes straight from the server: after a
+        # Server is the source of truth for async command state. Use the
+        # retained owning handle before result streaming starts so kernel
+        # async statement telemetry is finalized on the original
+        # ExecuteStatementAsync telemetry object. Once result streaming
+        # has been claimed (or when this connector never held the handle
+        # — cross-process / fresh-cursor cases), re-attach to the
+        # statement by id. SEA keys GetStatementStatus purely on the id,
+        # so a statement the connector no longer holds a handle for is
+        # still queryable. CLOSED comes straight from the server: after a
         # statement is closed (DELETE) the server still returns 200
         # state=CLOSED until the result TTL elapses.
         if self._kernel_session is None:
             raise InterfaceError("get_query_state requires an open session.")
+        with self._async_handles_lock:
+            handle = (
+                None
+                if command_id.guid in self._async_result_stream_started
+                else self._async_handles.get(command_id.guid)
+            )
         try:
-            handle = self._kernel_session.attach_async_statement(command_id.guid)
+            if handle is None:
+                handle = self._kernel_session.attach_async_statement(command_id.guid)
             state, failure = handle.status()
         except Exception as exc:
             if _is_not_found(exc):

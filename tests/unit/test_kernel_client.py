@@ -799,6 +799,45 @@ def test_get_query_state_propagates_non_not_found_error():
         c.get_query_state(cid)
 
 
+def test_get_query_state_uses_retained_owning_handle_before_result_stream():
+    """In-process status polling uses the retained submitting handle so
+    kernel async statement telemetry stays attached to the original
+    ExecuteStatementAsync telemetry object."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    handle = MagicMock()
+    handle.status.return_value = ("Running", None)
+    cid = CommandId.from_sea_statement_id("async-status-owning")
+    c._async_handles[cid.guid] = handle
+
+    assert c.get_query_state(cid) == CommandState.RUNNING
+
+    c._kernel_session.attach_async_statement.assert_not_called()
+    handle.status.assert_called_once_with()
+
+
+def test_get_query_state_attaches_by_id_after_result_stream_started():
+    """Once get_execution_result has claimed the owning handle for result
+    streaming, status polling falls back to attach-by-id."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owning_handle = MagicMock()
+    attached_handle = MagicMock()
+    attached_handle.status.return_value = ("Succeeded", None)
+    c._kernel_session.attach_async_statement.return_value = attached_handle
+    cid = CommandId.from_sea_statement_id("async-status-attached")
+    c._async_handles[cid.guid] = owning_handle
+    c._async_result_stream_started.add(cid.guid)
+
+    assert c.get_query_state(cid) == CommandState.SUCCEEDED
+
+    owning_handle.status.assert_not_called()
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-status-attached"
+    )
+    attached_handle.status.assert_called_once_with()
+
+
 def test_get_execution_result_uses_retained_owning_handle_first():
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
