@@ -33,11 +33,13 @@ Three auth shapes are supported on the kernel path:
     Azure service-principal ``azure_client_id`` / ``azure_client_secret`` (plus
     optional ``azure_tenant_id`` / ``azure_workspace_resource_id``). The kernel
     builds the Entra v2.0 token endpoint and the ``{effective_app_id}/.default``
-    scope, auto-discovers the tenant from the workspace's ``/aad/auth`` redirect
-    when ``azure_tenant_id`` is omitted, and always sends the Azure SP
-    management token (adding the ``X-Databricks-Azure-Workspace-Resource-Id``
-    header when ``azure_workspace_resource_id`` is set) — matching the Thrift
-    connector, so an RBAC-only SP can authenticate (PECOBLR-4141).
+    scope, and auto-discovers the tenant from the workspace's ``/aad/auth``
+    redirect when ``azure_tenant_id`` is omitted. When
+    ``azure_workspace_resource_id`` is set, the kernel also sends the Azure SP
+    management token + ``X-Databricks-Azure-Workspace-Resource-Id`` header
+    (matching the JDBC driver), so an RBAC-only SP — one with an Azure role but
+    no workspace membership — can authenticate; omit it for a workspace-member
+    SP (PECOBLR-4141).
 
 ``identity_federation_client_id`` is forwarded with whichever auth shape
 wins resolution. It selects mandatory SP-wide workload-identity token
@@ -234,11 +236,11 @@ def kernel_auth_kwargs(
     # (so connect() is byte-identical between Thrift and use_kernel=True).
     # PECOBLR-4141.
     #
-    # The Authorization bearer is the Databricks-audience data token; the kernel
-    # also always sends the Azure SP management token, and adds the
-    # X-Databricks-Azure-Workspace-Resource-Id header when
-    # azure_workspace_resource_id is set — matching the Thrift connector, so an
-    # RBAC-only SP (Azure role, not a workspace member) can authenticate.
+    # The Authorization bearer is the Databricks-audience data token, which alone
+    # authenticates a workspace-member SP. When azure_workspace_resource_id is
+    # set, the kernel also sends the Azure SP management token +
+    # X-Databricks-Azure-Workspace-Resource-Id header (matching the JDBC driver),
+    # so an RBAC-only SP (Azure role, not a workspace member) can authenticate.
     if auth_type == "azure-sp-m2m":
         azure_client_id = opts.get("azure_client_id")
         azure_client_secret = opts.get("azure_client_secret")
@@ -253,11 +255,10 @@ def kernel_auth_kwargs(
             "azure_client_secret": azure_client_secret,
         }
         # Optional passthroughs: the kernel auto-discovers the tenant when
-        # absent, and always sends the Azure SP management token. When
-        # azure_workspace_resource_id is set, the kernel adds the
-        # X-Databricks-Azure-Workspace-Resource-Id header alongside it (for an
-        # SP with an Azure RBAC role but no workspace membership) — matching the
-        # Thrift connector.
+        # absent. When azure_workspace_resource_id is set, the kernel sends the
+        # Azure SP management token + X-Databricks-Azure-Workspace-Resource-Id
+        # header (for an SP with an Azure RBAC role but no workspace membership)
+        # — matching the JDBC driver; omit it for a workspace-member SP.
         azure_tenant_id = opts.get("azure_tenant_id")
         if azure_tenant_id:
             kwargs["azure_tenant_id"] = azure_tenant_id
