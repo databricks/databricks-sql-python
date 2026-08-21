@@ -205,6 +205,51 @@ def test_cursor_row_limit(conn, row_limit):
 import logging
 
 
+def test_kernel_and_driver_logs_share_file(kernel_conn_params, tmp_path):
+    """A parent ``databricks.sql`` FileHandler captures both layers."""
+    log_file = tmp_path / "unified.log"
+    connector_logger = logging.getLogger("databricks.sql")
+    original_level = connector_logger.level
+    handler = logging.FileHandler(log_file, encoding="utf-8")
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+
+    connector_logger.setLevel(logging.DEBUG)
+    connector_logger.addHandler(handler)
+
+    # Earlier tests in this module may already have populated pyo3-log's
+    # effective-level cache. Reset it after changing the parent level so this
+    # test behaves like a user configuring logging before connecting.
+    reset_logging = getattr(_kernel_mod, "reset_logging", None)
+    try:
+        if reset_logging is not None:
+            reset_logging()
+        c = sql.connect(**kernel_conn_params)
+        try:
+            with c.cursor() as cur:
+                cur.execute("SELECT 1 AS a")
+                cur.fetchall()
+        finally:
+            c.close()
+    finally:
+        connector_logger.removeHandler(handler)
+        connector_logger.setLevel(original_level)
+        handler.flush()
+        handler.close()
+        if reset_logging is not None:
+            reset_logging()
+
+    lines = log_file.read_text(encoding="utf-8").splitlines()
+    assert any(
+        line.startswith("databricks.sql.session ")
+        and "Creating kernel-backed client for use_kernel=True" in line
+        for line in lines
+    ), "expected a Python-driver record in the shared log file"
+    assert any(
+        line.startswith("databricks.sql.kernel ") for line in lines
+    ), "expected a Rust-kernel record in the shared log file"
+
+
 def test_kernel_logs_reach_python_logging(kernel_conn_params, caplog):
     """A query at DEBUG produces records on the `databricks.sql.kernel`
     logger — proving the tracing -> log -> pyo3-log -> logging chain."""
