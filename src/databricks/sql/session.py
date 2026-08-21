@@ -250,6 +250,28 @@ class Session:
                     "_retry_stop_after_attempts_duration"
                 ),
             }
+            # Forward the binding/runtime identity and telemetry knobs
+            # added by kernel telemetry phase 7. Python-side telemetry
+            # still owns feature-flag evaluation and event export for the
+            # Thrift/SEA paths; the kernel path needs the same driver
+            # identity at Session construction time so kernel-owned
+            # telemetry can populate its system configuration.
+            kernel_telemetry_options = {
+                "enable_telemetry": kwargs.get("enable_telemetry", True),
+                "telemetry_batch_size": kwargs.get("telemetry_batch_size"),
+                "telemetry_flush_interval_ms": kwargs.get(
+                    "telemetry_flush_interval_ms"
+                ),
+                "telemetry_circuit_breaker_enabled": kwargs.get(
+                    "_telemetry_circuit_breaker_enabled"
+                ),
+                "telemetry_circuit_breaker_threshold": kwargs.get(
+                    "telemetry_circuit_breaker_threshold"
+                ),
+                "telemetry_circuit_breaker_timeout_ms": kwargs.get(
+                    "telemetry_circuit_breaker_timeout_ms"
+                ),
+            }
             return KernelDatabricksClient(
                 server_hostname=server_hostname,
                 http_path=http_path,
@@ -263,6 +285,7 @@ class Session:
                 auth_options=kernel_auth_options,
                 retry_options=kernel_retry_options,
                 request_timeout_secs=kwargs.get("_socket_timeout"),
+                telemetry_options=kernel_telemetry_options,
             )
 
         # These reference the lazily-resolved module attributes defined via

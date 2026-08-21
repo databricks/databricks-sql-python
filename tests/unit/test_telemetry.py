@@ -270,6 +270,68 @@ class TestTelemetryHelper:
         assert TelemetryHelper.get_auth_mechanism(fed) is None
         assert TelemetryHelper.get_auth_flow(fed) is None
 
+    @staticmethod
+    def _kernel_telemetry_kwargs_for_test(options):
+        import importlib
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        sys.modules.pop("databricks.sql.backend.kernel.client", None)
+        import databricks.sql.backend.kernel as kernel_pkg
+
+        if hasattr(kernel_pkg, "client"):
+            delattr(kernel_pkg, "client")
+
+        try:
+            with patch.dict(sys.modules, {"databricks_sql_kernel": fake}):
+                kernel_client = importlib.import_module(
+                    "databricks.sql.backend.kernel.client"
+                )
+                return kernel_client._kernel_telemetry_kwargs(options)
+        finally:
+            sys.modules.pop("databricks.sql.backend.kernel.client", None)
+            if hasattr(kernel_pkg, "client"):
+                delattr(kernel_pkg, "client")
+
+    @pytest.mark.parametrize(
+        ("enable_telemetry", "expected_kernel_telemetry_enabled"),
+        [
+            (True, True),
+            (False, False),
+        ],
+    )
+    def test_is_telemetry_enabled_returns_false_for_kernel(
+        self,
+        enable_telemetry,
+        expected_kernel_telemetry_enabled,
+    ):
+        connection = MagicMock()
+        connection.session.use_kernel = True
+        connection.force_enable_telemetry = True
+        connection.enable_telemetry = enable_telemetry
+
+        assert TelemetryHelper.is_telemetry_enabled(connection) is False
+
+        kernel_kwargs = self._kernel_telemetry_kwargs_for_test(
+            {
+                "enable_telemetry": enable_telemetry,
+                "force_enable_telemetry": True,
+            }
+        )
+        assert (
+            kernel_kwargs["telemetry_enabled"]
+            is expected_kernel_telemetry_enabled
+        )
+
 
 class TestTelemetryFactory:
     """Tests for TelemetryClientFactory lifecycle and management."""
