@@ -462,15 +462,14 @@ def test_dml_rowcount_wiring_does_not_break_dml(conn):
             cur.execute(f"DROP TABLE IF EXISTS {tbl}")
 
 
-# ── Async execution: state + result come from the server (attach-by-id) ──
+# ── Async execution: owning handle first, attach-by-id for re-fetch/resume ──
 
 
 def test_async_execute_polls_and_fetches_result(conn):
     """The full async CUJ: ``execute_async`` → poll
-    ``get_query_state`` → ``get_async_execution_result``. State comes
-    from the server by re-attaching to the statement id; first
-    in-process result fetch uses the retained owning handle so kernel
-    async telemetry is finalized."""
+    ``get_query_state`` → ``get_async_execution_result``. The first
+    in-process flow uses the retained owning handle so kernel async
+    telemetry is finalized."""
     with conn.cursor() as cur:
         cur.execute_async("SELECT 7 AS n")
         cur.get_async_execution_result()  # polls to terminal, fetches
