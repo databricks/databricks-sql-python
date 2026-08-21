@@ -270,6 +270,24 @@ def kernel_auth_kwargs(
                 "auth_type='azure-sp-m2m' requires azure_client_id and "
                 "azure_client_secret."
             )
+        # azure-sp-m2m carries its credentials in the azure_* namespace, so a
+        # conflicting OAuth signal is not a routing collision and does not fail
+        # loudly the way the other flows do (see the routing note above). Still,
+        # leave a breadcrumb: a caller who paired azure-sp-m2m with an
+        # oauth_*/credentials_provider value likely misunderstood the routing,
+        # and those values are silently ignored here.
+        ignored_signals = [
+            name
+            for name in ("oauth_client_secret", "oauth_jwt_key_file", "credentials_provider")
+            if opts.get(name) is not None
+        ]
+        if ignored_signals:
+            logger.debug(
+                "auth_type='azure-sp-m2m' selected; ignoring conflicting "
+                "credential signal(s) %s (Azure SP credentials in the azure_* "
+                "namespace take precedence on the kernel path).",
+                ", ".join(ignored_signals),
+            )
         kwargs = {
             "auth_type": "azure-sp-m2m",
             "azure_client_id": azure_client_id,
