@@ -33,7 +33,6 @@ from databricks.sql.auth.auth import (
     PYSQL_OAUTH_SCOPES,
     PYSQL_OAUTH_REDIRECT_PORT_RANGE,
 )
-from databricks.sql.auth.common import get_effective_azure_login_app_id
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     AuthProvider,
@@ -676,7 +675,6 @@ class TestKernelAzureSpM2M:
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             dict(self._CREDS),
-            hostname="adb-1.azuredatabricks.net",
         )
         # Thin forwarding: the kernel owns endpoint/scope resolution, so no
         # token_url / oauth_scopes are constructed here.
@@ -696,9 +694,7 @@ class TestKernelAzureSpM2M:
             "azure_client_id": "azure-sp",
             "azure_client_secret": "azure-secret",
         }
-        kwargs = kernel_auth_kwargs(
-            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
-        )
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
         assert kwargs == {
             "auth_type": "azure-sp-m2m",
             "azure_client_id": "azure-sp",
@@ -714,9 +710,7 @@ class TestKernelAzureSpM2M:
             self._CREDS,
             azure_workspace_resource_id="/subscriptions/s/resourceGroups/rg/workspace/w",
         )
-        kwargs = kernel_auth_kwargs(
-            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
-        )
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
         assert (
             kwargs["azure_workspace_resource_id"]
             == "/subscriptions/s/resourceGroups/rg/workspace/w"
@@ -726,7 +720,6 @@ class TestKernelAzureSpM2M:
         kwargs = kernel_auth_kwargs(
             _FakeOAuthProvider(),
             dict(self._CREDS),
-            hostname="adb-1.azuredatabricks.net",
         )
         assert "azure_workspace_resource_id" not in kwargs
 
@@ -735,14 +728,11 @@ class TestKernelAzureSpM2M:
             kernel_auth_kwargs(
                 _FakeOAuthProvider(),
                 {"auth_type": "azure-sp-m2m", "azure_tenant_id": "t"},
-                hostname="adb-1.azuredatabricks.net",
             )
 
     def test_azure_sp_m2m_forwards_federation_client_id(self):
         opts = dict(self._CREDS, identity_federation_client_id="fed-client")
-        kwargs = kernel_auth_kwargs(
-            _FakeOAuthProvider(), opts, hostname="adb-1.azuredatabricks.net"
-        )
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
         assert kwargs["identity_federation_client_id"] == "fed-client"
 
 

@@ -155,7 +155,6 @@ def _extract_bearer_token(auth_provider: Optional[AuthProvider]) -> Optional[str
 def kernel_auth_kwargs(
     auth_provider: Optional[AuthProvider],
     auth_options: Optional[Dict[str, Any]] = None,
-    hostname: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the kwargs passed to ``databricks_sql_kernel.Session(...)``.
 

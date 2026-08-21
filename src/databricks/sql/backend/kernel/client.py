@@ -312,7 +312,6 @@ class KernelDatabricksClient(DatabricksClient):
             auth_kwargs = kernel_auth_kwargs(
                 self._auth_provider,
                 self._auth_options,
-                hostname=self._server_hostname,
             )
             # Translate the connector's SSLOptions into the kernel's
             # ``tls_*`` Session kwargs. Empty when TLS is at defaults.
