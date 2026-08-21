@@ -270,6 +270,14 @@ class TestTelemetryHelper:
         assert TelemetryHelper.get_auth_mechanism(fed) is None
         assert TelemetryHelper.get_auth_flow(fed) is None
 
+    def test_is_telemetry_enabled_returns_false_for_kernel(self):
+        connection = MagicMock()
+        connection.session.use_kernel = True
+        connection.force_enable_telemetry = True
+        connection.enable_telemetry = True
+
+        assert TelemetryHelper.is_telemetry_enabled(connection) is False
+
 
 class TestTelemetryFactory:
     """Tests for TelemetryClientFactory lifecycle and management."""
