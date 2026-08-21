@@ -178,13 +178,18 @@ def kernel_auth_kwargs(
 
     (The ``azure-sp-m2m`` Azure Entra auth type is handled up front, before
     these guards, forwarding to the kernel's Azure SP flow. ``azure-oauth`` is
-    a U2M type and is handled by step 3 alongside ``databricks-oauth``. See the
-    module docstring.)
-    1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
+    a U2M type and is handled by the OAuth U2M step alongside
+    ``databricks-oauth``. See the module docstring.)
+    1. **OAuth M2M (JWT private key)** — ``oauth_jwt_key_file`` present →
+       forward the private-key + ``oauth_client_id`` + ``oauth_jwt_kid``
+       to the kernel's ``oauth-m2m-jwt`` (RFC 7523 client assertion). The
+       kernel signs the assertion and owns the token lifecycle. Checked
+       first because a private-key file is unambiguous JWT M2M intent.
+    2. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
-    2. **PAT** — the built provider is (or wraps) an
+    3. **PAT** — the built provider is (or wraps) an
        ``AccessTokenAuthProvider`` → extract the bearer token.
-    3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` or ``azure-oauth``
+    4. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` or ``azure-oauth``
        → forward the connector's coupled ``databricks-sql-python`` bundle
        (``client_id`` + ``redirect_ports`` list, defaulting scopes to
        ``PYSQL_OAUTH_SCOPES`` when the caller supplies none) to the kernel's
@@ -194,9 +199,9 @@ def kernel_auth_kwargs(
        (PECOBLR-4039/4040). ``azure-oauth`` resolves identically: the kernel's
        workspace-federated flow serves Azure workspaces too (PECOBLR-4120).
        Unlike the Thrift path, a caller-supplied ``oauth_scopes`` is honored here.
-    4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
+    5. **Custom credentials_provider** → ``NotSupportedError`` (opaque
        token source; no raw creds for the kernel to own).
-    5. Anything else → ``NotSupportedError``.
+    6. Anything else → ``NotSupportedError``.
 
     M2M is checked before PAT so that a workload passing both an
     access token *and* M2M creds resolves to the (refreshing) M2M path
@@ -211,7 +216,12 @@ def kernel_auth_kwargs(
     client_secret = opts.get("oauth_client_secret")
     federation_client_id = opts.get("identity_federation_client_id")
     auth_type = opts.get("auth_type")
+    jwt_key_file = opts.get("oauth_jwt_key_file")
     has_m2m = bool(client_id and client_secret)
+    # A private-key file is unambiguous JWT client-assertion M2M intent
+    # (RFC 7523): the kernel signs a short-lived assertion with the key
+    # rather than sending a client secret.
+    has_jwt_m2m = bool(jwt_key_file)
 
     # Azure Entra (Azure AD) auth types route to the kernel's GENERIC OAuth
     # flows with Azure values supplied as overrides — the kernel needs no
@@ -288,14 +298,68 @@ def kernel_auth_kwargs(
             "(machine-to-machine). Drop oauth_client_secret for U2M, or drop "
             "auth_type for M2M."
         )
+    if has_jwt_m2m and client_secret:
+        raise NotSupportedError(
+            "Ambiguous auth on use_kernel=True: both oauth_jwt_key_file "
+            "(JWT private-key M2M) and oauth_client_secret (shared-secret "
+            "M2M) were provided. Pass exactly one — a private key for "
+            "JWT client-assertion M2M, or a client secret for shared-secret M2M."
+        )
+    if has_jwt_m2m and opts.get("credentials_provider") is not None:
+        raise NotSupportedError(
+            "Ambiguous auth on use_kernel=True: both a custom "
+            "credentials_provider and oauth_jwt_key_file were provided. "
+            "Pass exactly one — oauth_client_id + oauth_jwt_key_file for "
+            "kernel-managed JWT private-key M2M, or use the Thrift backend "
+            "(default) for credentials_provider."
+        )
+    if has_jwt_m2m and auth_type in ("databricks-oauth", "azure-oauth"):
+        raise NotSupportedError(
+            f"Ambiguous auth on use_kernel=True: auth_type={auth_type!r} selects "
+            "the U2M browser flow, but oauth_jwt_key_file was also provided "
+            "(JWT private-key M2M). Drop oauth_jwt_key_file for U2M, or drop "
+            "auth_type for JWT M2M."
+        )
 
-    # 1. OAuth M2M — raw client-credentials pair forwarded to the kernel.
-    if has_m2m:
+    # 1. OAuth M2M (JWT private-key client assertion) — the kernel signs a
+    #    short-lived assertion with the private key and runs the
+    #    client-credentials grant. Checked before shared-secret M2M and PAT
+    #    because a private-key file is unambiguous JWT M2M intent. Requires
+    #    oauth_client_id (the service principal / OAuth client) and
+    #    oauth_jwt_kid (the key id the IdP uses to select the registered
+    #    public key). Optional oauth_jwt_passphrase / oauth_jwt_algorithm /
+    #    oauth_scopes / token_url are forwarded when present; the kernel
+    #    fills defaults (RS256 algorithm, all-apis scope, OIDC discovery)
+    #    for any omitted.
+    if has_jwt_m2m:
+        if not client_id:
+            raise ProgrammingError(
+                "use_kernel=True JWT private-key M2M (oauth_jwt_key_file) "
+                "requires oauth_client_id (the service principal / OAuth "
+                "client id used as the assertion issuer and subject)."
+            )
+        jwt_kid = opts.get("oauth_jwt_kid")
+        if not jwt_kid:
+            raise ProgrammingError(
+                "use_kernel=True JWT private-key M2M (oauth_jwt_key_file) "
+                "requires oauth_jwt_kid (the key id written into the JWT "
+                "header so the IdP can select the registered public key)."
+            )
         kwargs: Dict[str, Any] = {
-            "auth_type": "oauth-m2m",
+            "auth_type": "oauth-m2m-jwt",
             "client_id": client_id,
-            "client_secret": client_secret,
+            "jwt_key_file": jwt_key_file,
+            "jwt_kid": jwt_kid,
         }
+        jwt_passphrase = opts.get("oauth_jwt_passphrase")
+        if jwt_passphrase:
+            kwargs["jwt_passphrase"] = jwt_passphrase
+        jwt_algorithm = opts.get("oauth_jwt_algorithm")
+        if jwt_algorithm:
+            kwargs["jwt_algorithm"] = jwt_algorithm
+        token_url = opts.get("token_url")
+        if token_url:
+            kwargs["token_url"] = token_url
         scopes = _normalize_scopes(opts.get("oauth_scopes"))
         if scopes is not None:
             kwargs["oauth_scopes"] = scopes
@@ -303,7 +367,27 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # 2. PAT (including TokenFederationProvider-wrapped PAT).
+    # 2. OAuth M2M — raw client-credentials pair forwarded to the kernel.
+    if has_m2m:
+        kwargs = {
+            "auth_type": "oauth-m2m",
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+        scopes = _normalize_scopes(opts.get("oauth_scopes"))
+        if scopes is not None:
+            kwargs["oauth_scopes"] = scopes
+        # token_url is an auth-method-agnostic token-endpoint override (JDBC's
+        # OAuth2ConnAuthTokenEndpoint applies it to client-secret M2M too), so
+        # forward it here as well as on the JWT path.
+        token_url = opts.get("token_url")
+        if token_url:
+            kwargs["token_url"] = token_url
+        if federation_client_id:
+            kwargs["identity_federation_client_id"] = federation_client_id
+        return kwargs
+
+    # 3. PAT (including TokenFederationProvider-wrapped PAT).
     if _is_pat(auth_provider):
         token = _extract_bearer_token(auth_provider)
         if not token:
@@ -316,7 +400,7 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
+    # 4. OAuth U2M — browser authorization-code flow; the kernel runs it.
     #    Both databricks-oauth and azure-oauth reach here: on the kernel path
     #    they are the same in-house workspace-federated flow (Azure workspaces
     #    federate the browser login to Entra), so azure-oauth is an alias for
@@ -351,7 +435,7 @@ def kernel_auth_kwargs(
             kwargs["identity_federation_client_id"] = federation_client_id
         return kwargs
 
-    # 4. Custom credentials_provider — the connector's primary M2M path
+    # 5. Custom credentials_provider — the connector's primary M2M path
     #    on Thrift/SEA, but unusable on the kernel: it's an opaque token
     #    source with no extractable client_id/secret, so the kernel
     #    can't own the token lifecycle. Point the caller at the raw
@@ -365,7 +449,7 @@ def kernel_auth_kwargs(
             "credentials_provider."
         )
 
-    # 5. Everything else (including no usable credentials at all —
+    # 6. Everything else (including no usable credentials at all —
     #    ``auth_provider`` is None on the kernel path when no access
     #    token was supplied and no OAuth kwargs resolved above).
     provider_desc = (
@@ -373,7 +457,8 @@ def kernel_auth_kwargs(
     )
     raise NotSupportedError(
         f"use_kernel=True requires PAT (access_token), OAuth M2M "
-        f"(oauth_client_id + oauth_client_secret), OAuth U2M "
+        f"(oauth_client_id + oauth_client_secret), OAuth M2M JWT "
+        f"(oauth_client_id + oauth_jwt_key_file + oauth_jwt_kid), OAuth U2M "
         f"(auth_type='databricks-oauth' or 'azure-oauth'), or Azure SP M2M "
         f"(auth_type='azure-sp-m2m'), but got "
         f"{provider_desc} with auth_type={auth_type!r}. Use the Thrift "

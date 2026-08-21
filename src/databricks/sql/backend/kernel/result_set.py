@@ -21,9 +21,6 @@ kernel as the connector calls ``fetch*``. ``fetchmany(n)`` slices
 within a batch when ``n`` is smaller than the kernel's natural
 batch size; ``fetchall`` drains the whole stream.
 
-When a cursor has ``row_limit`` set, this class caps the logical stream
-before rows reach any of the row or Arrow fetch APIs.
-
 Note: ``buffer_size_bytes`` is accepted by the constructor for
 contract compatibility with the base ``ResultSet`` but is not
 consulted — the kernel backend currently caps buffering by rows
@@ -70,7 +67,6 @@ class KernelResultSet(ResultSet):
         command_id: CommandId,
         arraysize: int,
         buffer_size_bytes: int,
-        row_limit: Optional[int] = None,
     ):
         try:
             schema = kernel_handle.arrow_schema()
@@ -104,30 +100,8 @@ class KernelResultSet(ResultSet):
         # stays O(1) instead of walking the deque.
         self._buffered_count: int = 0
         self._exhausted: bool = False
-        # The PyO3 kernel surface does not currently expose the core
-        # StatementSpec row_limit setter. Enforce the cursor contract at
-        # this streaming boundary until it does. Negative values retain the
-        # existing unlimited behaviour; zero is a real zero-row limit.
-        self._row_limit: Optional[int] = (
-            row_limit if row_limit is not None and row_limit >= 0 else None
-        )
-        if self._row_limit == 0:
-            self._mark_exhausted()
 
     # ----- internal helpers -----
-
-    def _mark_exhausted(self) -> None:
-        self._exhausted = True
-        self.has_more_rows = False
-        self.status = CommandState.SUCCEEDED
-
-    def _remaining_row_limit(self) -> Optional[int]:
-        if self._row_limit is None:
-            return None
-        return max(
-            0,
-            self._row_limit - self._next_row_index - self._buffered_count,
-        )
 
     def _pull_one_batch(self) -> bool:
         """Pull the next batch from the kernel into the local buffer.
@@ -135,24 +109,18 @@ class KernelResultSet(ResultSet):
         is exhausted."""
         if self._exhausted:
             return False
-        remaining_limit = self._remaining_row_limit()
-        if remaining_limit == 0:
-            self._mark_exhausted()
-            return False
         try:
             batch = self._kernel_handle.fetch_next_batch()
         except Exception as exc:
             raise wrap_kernel_exception("fetch_next_batch", exc) from exc
         if batch is None:
-            self._mark_exhausted()
+            self._exhausted = True
+            self.has_more_rows = False
+            self.status = CommandState.SUCCEEDED
             return False
-        if remaining_limit is not None and batch.num_rows > remaining_limit:
-            batch = batch.slice(0, remaining_limit)
         if batch.num_rows > 0:
             self._buffer.append(batch)
             self._buffered_count += batch.num_rows
-        if remaining_limit is not None and batch.num_rows >= remaining_limit:
-            self._mark_exhausted()
         return True
 
     def _ensure_buffered(self, n_rows: int) -> int:
@@ -188,10 +156,36 @@ class KernelResultSet(ResultSet):
         return pyarrow.Table.from_batches(slices, schema=self._schema)
 
     def _drain(self) -> pyarrow.Table:
-        """Consume the remaining logical stream into one table."""
-        while not self._exhausted:
-            self._pull_one_batch()
-        return self._take_buffered(self._buffered_count)
+        """Consume everything left in the buffer + kernel stream
+        and return as a single Table."""
+        chunks: List[pyarrow.RecordBatch] = []
+        if self._buffer and self._buffer_offset > 0:
+            head = self._buffer.popleft()
+            chunks.append(
+                head.slice(self._buffer_offset, head.num_rows - self._buffer_offset)
+            )
+            self._buffer_offset = 0
+        while self._buffer:
+            chunks.append(self._buffer.popleft())
+        if not self._exhausted:
+            while True:
+                try:
+                    batch = self._kernel_handle.fetch_next_batch()
+                except Exception as exc:
+                    raise wrap_kernel_exception("fetch_next_batch", exc) from exc
+                if batch is None:
+                    self._exhausted = True
+                    self.has_more_rows = False
+                    self.status = CommandState.SUCCEEDED
+                    break
+                if batch.num_rows > 0:
+                    chunks.append(batch)
+        rows = sum(c.num_rows for c in chunks)
+        self._buffered_count = 0
+        self._next_row_index += rows
+        if not chunks:
+            return pyarrow.Table.from_batches([], schema=self._schema)
+        return pyarrow.Table.from_batches(chunks, schema=self._schema)
 
     # ----- Arrow fetches -----
 

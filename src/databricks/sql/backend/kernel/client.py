@@ -488,6 +488,7 @@ class KernelDatabricksClient(DatabricksClient):
         try:
             try:
                 stmt.set_sql(operation)
+                stmt.set_row_limit(row_limit)
                 if query_tags:
                     # Per-statement query tags. The kernel serialises the
                     # dict (None value -> bare key) into the SEA
@@ -594,9 +595,7 @@ class KernelDatabricksClient(DatabricksClient):
         # native exception) — wrap the construction so callers see a
         # mapped PEP 249 exception.
         try:
-            return self._make_result_set(
-                executed, cursor, command_id, row_limit=row_limit
-            )
+            return self._make_result_set(executed, cursor, command_id)
         except Exception as exc:
             raise _wrap_kernel_exception("execute_command", exc) from exc
 
@@ -768,9 +767,7 @@ class KernelDatabricksClient(DatabricksClient):
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.
         try:
-            return self._make_result_set(
-                stream, cursor, command_id, row_limit=cursor.row_limit
-            )
+            return self._make_result_set(stream, cursor, command_id)
         except Exception as exc:
             raise _wrap_kernel_exception("get_execution_result", exc) from exc
 
@@ -781,7 +778,6 @@ class KernelDatabricksClient(DatabricksClient):
         kernel_handle: Any,
         cursor: "Cursor",
         command_id: CommandId,
-        row_limit: Optional[int] = None,
     ) -> "ResultSet":
         """Build a ``KernelResultSet`` from any kernel handle. Used
         by sync execute, ``get_execution_result``, and all metadata
@@ -803,7 +799,6 @@ class KernelDatabricksClient(DatabricksClient):
             command_id=command_id,
             arraysize=cursor.arraysize,
             buffer_size_bytes=cursor.buffer_size_bytes,
-            row_limit=row_limit,
         )
 
     def _synthetic_command_id(self) -> CommandId:
