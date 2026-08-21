@@ -735,6 +735,32 @@ class TestKernelAzureSpM2M:
         kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
         assert kwargs["identity_federation_client_id"] == "fed-client"
 
+    @pytest.mark.parametrize(
+        "conflicting_signal",
+        [
+            {"oauth_client_secret": "oauth-secret"},
+            {"oauth_jwt_key_file": "/tmp/key.pem"},
+            {"credentials_provider": object()},
+        ],
+    )
+    def test_azure_sp_m2m_ignores_conflicting_oauth_signal(self, conflicting_signal):
+        # Intentional asymmetry: every OTHER flow treats a conflicting credential
+        # signal as a hard "Ambiguous auth" error, but an explicit azure-sp-m2m
+        # selector carries its creds in the azure_* namespace, so a stray
+        # oauth_*/credentials_provider value is NOT a routing collision — it is
+        # silently ignored (logger.debug breadcrumb only) and the Azure SP flow
+        # still wins. This guards against a refactor accidentally promoting the
+        # ignored signal to an error (see the routing note in auth_bridge.py).
+        opts = dict(self._CREDS, **conflicting_signal)
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        # Does NOT raise, and routes to the Azure SP flow with only azure kwargs.
+        assert kwargs == {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+            "azure_tenant_id": "tenant-123",
+        }
+
 
 class TestKernelScopesNormalization:
     def test_unknown_scope_type_raises(self):
