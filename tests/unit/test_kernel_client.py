@@ -1125,7 +1125,7 @@ def test_kernel_error_during_result_set_construction_is_mapped():
 
 
 # ---------------------------------------------------------------------------
-# get_execution_result is re-callable via attach-by-id
+# get_execution_result uses the owning handle once, then attach-by-id
 # ---------------------------------------------------------------------------
 
 
