@@ -8,9 +8,10 @@ Tests verify:
     look through the wrapper).
   - OAuth M2M (``oauth_client_id`` + ``oauth_client_secret``) routes
     through ``auth_type='oauth-m2m'`` with the raw creds forwarded.
-  - OAuth U2M (``auth_type='databricks-oauth'``) routes through
-    ``auth_type='oauth-u2m'``. ``azure-oauth`` (Azure AD) is not yet
-    supported on the kernel path and is rejected (PECOBLR-4120).
+  - OAuth U2M (``auth_type='databricks-oauth'`` or ``'azure-oauth'``)
+    routes through ``auth_type='oauth-u2m'``; on the kernel path
+    ``azure-oauth`` is an alias for ``databricks-oauth`` (the in-house
+    workspace-federated flow serves Azure workspaces too) (PECOBLR-4120).
   - A custom ``credentials_provider`` and any other non-PAT shape raise
     ``NotSupportedError`` with a clear, actionable message.
 """
@@ -224,7 +225,10 @@ class TestKernelOAuthM2M:
                 "token_url": "https://login.microsoftonline.com/t/oauth2/v2.0/token",
             },
         )
-        assert kwargs["token_url"] == "https://login.microsoftonline.com/t/oauth2/v2.0/token"
+        assert (
+            kwargs["token_url"]
+            == "https://login.microsoftonline.com/t/oauth2/v2.0/token"
+        )
 
     def test_m2m_normalizes_space_delimited_scopes(self):
         # DatabricksOAuthProvider stores scopes as a single
@@ -368,9 +372,11 @@ class TestKernelOAuthM2MJwt:
                 },
             )
 
-    def test_jwt_plus_databricks_oauth_auth_type_is_rejected(self):
-        # auth_type="databricks-oauth" signals U2M intent; a private key
-        # alongside it is ambiguous (mirrors the shared-secret M2M + U2M guard).
+    @pytest.mark.parametrize("u2m_auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_jwt_plus_u2m_auth_type_is_rejected(self, u2m_auth_type):
+        # A U2M auth_type signals browser-flow intent; a private key alongside
+        # it is ambiguous (mirrors the shared-secret M2M + U2M guard). Both U2M
+        # types must trip it — azure-oauth is a U2M type on the kernel path.
         with pytest.raises(NotSupportedError, match="oauth_jwt_key_file"):
             kernel_auth_kwargs(
                 None,
@@ -378,7 +384,7 @@ class TestKernelOAuthM2MJwt:
                     "oauth_client_id": "sp",
                     "oauth_jwt_key_file": "/k.pem",
                     "oauth_jwt_kid": "k",
-                    "auth_type": "databricks-oauth",
+                    "auth_type": u2m_auth_type,
                 },
             )
 
@@ -396,7 +402,7 @@ class TestKernelOAuthM2MJwt:
 
 
 class TestKernelOAuthU2M:
-    """Only ``databricks-oauth`` U2M is supported on the kernel path.
+    """``databricks-oauth`` and ``azure-oauth`` both route to the kernel's U2M.
 
     The kernel core default U2M app is ``databricks-sql-connector`` /
     ``sql offline_access`` / port 8030 (see PECOBLR-4039). The Python
@@ -407,9 +413,10 @@ class TestKernelOAuthU2M:
     may override ``oauth_scopes``; absent one, ``PYSQL_OAUTH_SCOPES`` is
     forwarded as the default.
 
-    ``azure-oauth`` (Azure AD) is deliberately NOT handled yet — the
-    kernel can't drive the Azure AD authorization/token flow — so it is
-    rejected up front (PECOBLR-4120)."""
+    ``azure-oauth`` (Azure AD U2M) resolves identically to ``databricks-oauth``
+    on the kernel path: the kernel runs the in-house workspace-federated flow
+    (which Azure workspaces support), not Thrift's direct-Entra flow — see
+    ``test_azure_oauth_maps_to_in_house_u2m`` (PECOBLR-4120)."""
 
     def test_bare_databricks_oauth_forwards_full_python_bundle(self):
         # No overrides → forward the databricks-sql-python bundle in full
@@ -427,23 +434,42 @@ class TestKernelOAuthU2M:
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
         }
 
-    @pytest.mark.parametrize(
-        "opts",
-        [
+    def test_azure_oauth_maps_to_in_house_u2m(self):
+        # azure-oauth (Azure AD U2M) routes to the kernel's oauth-u2m exactly
+        # like databricks-oauth: the kernel runs the in-house workspace-federated
+        # browser flow (the workspace federates login to Entra), which Azure
+        # workspaces support. It forwards the same databricks-sql-python bundle
+        # — NOT the Thrift Azure app (96eecda7 / port 8030), which is registered
+        # for the direct-Entra flow the kernel does not perform. PECOBLR-4120.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
             {"auth_type": "azure-oauth"},
-            {"auth_type": "azure-oauth", "oauth_client_id": "custom"},
-            {"auth_type": "azure-oauth", "oauth_redirect_port": 8030},
-        ],
-        ids=["bare", "with_client_id", "with_port"],
-    )
-    def test_azure_oauth_not_supported(self, opts):
-        # azure-oauth (Azure AD U2M) can't work through the kernel yet: the
-        # kernel resolves OAuth endpoints only from workspace-native OIDC
-        # discovery and has no Azure AD path. Fail loudly at session-open
-        # rather than forwarding a bundle that authenticates against the
-        # wrong endpoints. Tracked by PECOBLR-4120.
-        with pytest.raises(NotSupportedError, match="azure-oauth"):
-            kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        )
+        assert kwargs == {
+            "auth_type": "oauth-u2m",
+            "client_id": PYSQL_OAUTH_CLIENT_ID,
+            "redirect_ports": list(PYSQL_OAUTH_REDIRECT_PORT_RANGE),
+            "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
+        }
+
+    def test_azure_oauth_honors_custom_client_id_port_and_scopes(self):
+        # The same caller overrides available to databricks-oauth work for
+        # azure-oauth (they share the U2M branch).
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "azure-oauth",
+                "oauth_client_id": "custom-client",
+                "oauth_scopes": ["custom-scope", "offline_access"],
+                "oauth_redirect_port": 9999,
+            },
+        )
+        assert kwargs == {
+            "auth_type": "oauth-u2m",
+            "client_id": "custom-client",
+            "redirect_ports": [9999],
+            "oauth_scopes": ["custom-scope", "offline_access"],
+        }
 
     def test_u2m_custom_client_id_port_and_scopes_honored(self):
         # A caller may override the coupled client_id + redirect port and the
@@ -612,19 +638,128 @@ class TestKernelAuthAmbiguity:
                 },
             )
 
-    def test_u2m_auth_type_plus_client_secret_is_rejected(self):
-        # User asked for U2M (browser) but also passed a secret (M2M).
-        # Don't silently route M2M against the wrong principal. (azure-oauth
-        # is rejected earlier as unsupported, so it's not exercised here.)
+    @pytest.mark.parametrize("u2m_auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_auth_type_plus_client_secret_is_rejected(self, u2m_auth_type):
+        # User asked for U2M (browser) but also passed a secret (M2M). Don't
+        # silently route M2M against the wrong principal. Both U2M auth types
+        # (databricks-oauth and azure-oauth) must trip the ambiguity guard —
+        # azure-oauth is a U2M type on the kernel path, so without the guard it
+        # would fall through to the M2M branch (oauth_client_id + secret).
         with pytest.raises(NotSupportedError, match="Ambiguous auth"):
             kernel_auth_kwargs(
                 _FakeOAuthProvider(),
                 {
-                    "auth_type": "databricks-oauth",
+                    "auth_type": u2m_auth_type,
                     "oauth_client_id": "id",
                     "oauth_client_secret": "sec",
                 },
             )
+
+
+class TestKernelAzureSpM2M:
+    """``azure-sp-m2m`` (Azure service-principal, client-credentials) forwards
+    the Azure SP credentials to the KERNEL, which owns Azure resolution: it
+    builds the Entra token endpoint + ``{app_id}/.default`` scope and
+    auto-discovers the tenant from the workspace when ``azure_tenant_id`` is
+    omitted (Thrift parity). The binding stays thin — it does not construct
+    endpoints or scopes. PECOBLR-4141."""
+
+    _CREDS = {
+        "auth_type": "azure-sp-m2m",
+        "azure_client_id": "azure-sp",
+        "azure_client_secret": "azure-secret",
+        "azure_tenant_id": "tenant-123",
+    }
+
+    def test_azure_sp_m2m_forwards_creds_to_kernel(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            dict(self._CREDS),
+        )
+        # Thin forwarding: the kernel owns endpoint/scope resolution, so no
+        # token_url / oauth_scopes are constructed here.
+        assert kwargs == {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+            "azure_tenant_id": "tenant-123",
+        }
+
+    def test_azure_sp_m2m_tenant_optional_kernel_autodiscovers(self):
+        # Unlike the earlier kernel slice, the kernel now auto-discovers the
+        # tenant from the workspace's /aad/auth redirect (Thrift parity), so
+        # omitting azure_tenant_id must NOT raise — the key is simply absent.
+        opts = {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+        }
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        assert kwargs == {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+        }
+        assert "azure_tenant_id" not in kwargs
+
+    def test_azure_sp_m2m_forwards_workspace_resource_id(self):
+        # The kernel always sends the Azure SP management token and, when
+        # azure_workspace_resource_id is set, adds the resource-id header (for an
+        # RBAC-only SP) — so the bridge forwards it rather than dropping it.
+        opts = dict(
+            self._CREDS,
+            azure_workspace_resource_id="/subscriptions/s/resourceGroups/rg/workspace/w",
+        )
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        assert (
+            kwargs["azure_workspace_resource_id"]
+            == "/subscriptions/s/resourceGroups/rg/workspace/w"
+        )
+
+    def test_azure_sp_m2m_omits_workspace_resource_id_when_absent(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            dict(self._CREDS),
+        )
+        assert "azure_workspace_resource_id" not in kwargs
+
+    def test_azure_sp_m2m_requires_client_id_and_secret(self):
+        with pytest.raises(ProgrammingError, match="azure_client_id"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {"auth_type": "azure-sp-m2m", "azure_tenant_id": "t"},
+            )
+
+    def test_azure_sp_m2m_forwards_federation_client_id(self):
+        opts = dict(self._CREDS, identity_federation_client_id="fed-client")
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        assert kwargs["identity_federation_client_id"] == "fed-client"
+
+    @pytest.mark.parametrize(
+        "conflicting_signal",
+        [
+            {"oauth_client_secret": "oauth-secret"},
+            {"oauth_jwt_key_file": "/tmp/key.pem"},
+            {"credentials_provider": object()},
+        ],
+    )
+    def test_azure_sp_m2m_ignores_conflicting_oauth_signal(self, conflicting_signal):
+        # Intentional asymmetry: every OTHER flow treats a conflicting credential
+        # signal as a hard "Ambiguous auth" error, but an explicit azure-sp-m2m
+        # selector carries its creds in the azure_* namespace, so a stray
+        # oauth_*/credentials_provider value is NOT a routing collision — it is
+        # silently ignored (logger.warning breadcrumb only) and the Azure SP flow
+        # still wins. This guards against a refactor accidentally promoting the
+        # ignored signal to an error (see the routing note in auth_bridge.py).
+        opts = dict(self._CREDS, **conflicting_signal)
+        kwargs = kernel_auth_kwargs(_FakeOAuthProvider(), opts)
+        # Does NOT raise, and routes to the Azure SP flow with only azure kwargs.
+        assert kwargs == {
+            "auth_type": "azure-sp-m2m",
+            "azure_client_id": "azure-sp",
+            "azure_client_secret": "azure-secret",
+            "azure_tenant_id": "tenant-123",
+        }
 
 
 class TestKernelScopesNormalization:
