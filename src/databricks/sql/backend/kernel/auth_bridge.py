@@ -1,7 +1,7 @@
 """Translate the connector's auth configuration into
 ``databricks_sql_kernel`` ``Session`` auth kwargs.
 
-Three auth shapes are supported on the kernel path:
+The following auth shapes are supported on the kernel path:
 
 - **PAT** — extracted from the built ``AuthProvider`` (works for
   ``AccessTokenAuthProvider``, including the ``TokenFederationProvider``
