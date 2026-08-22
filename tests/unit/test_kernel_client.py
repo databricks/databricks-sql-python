@@ -899,6 +899,54 @@ def test_get_execution_result_owning_handle_failure_can_retry_owning_handle():
     c._kernel_session.attach_async_statement.assert_not_called()
 
 
+def test_get_execution_result_construction_failure_retains_marker_and_attaches_by_id():
+    """If the owning handle's ``await_result()`` succeeds but result-set
+    construction then raises, the ``_async_result_stream_started`` marker
+    is deliberately left set (the owning stream may be partially
+    consumed, so re-awaiting it is unsafe). A subsequent call must route
+    through the attach-by-id fallback rather than re-awaiting the owning
+    handle."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owning_stream = MagicMock()
+    # ``KernelResultSet.__init__`` calls ``arrow_schema()``; make that
+    # raise so ``_make_result_set`` fails after a successful await.
+    owning_stream.arrow_schema.side_effect = _FakeKernelError(code="Internal")
+    owning_handle = MagicMock()
+    owning_handle.await_result.return_value = owning_stream
+    cid = CommandId.from_sea_statement_id("async-construct-fail")
+    c._async_handles[cid.guid] = owning_handle
+
+    with pytest.raises(DatabaseError):
+        c.get_execution_result(cid, cursor=MagicMock())
+
+    # Marker stays set even though construction failed.
+    assert cid.guid in c._async_result_stream_started
+    owning_handle.await_result.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_not_called()
+
+    # A retry now attaches by id (fresh stream) instead of re-awaiting
+    # the partially-consumed owning handle.
+    retry_stream = MagicMock()
+    retry_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    attached_handle = MagicMock()
+    attached_handle.await_result.return_value = retry_stream
+    c._kernel_session.attach_async_statement.return_value = attached_handle
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    rs = c.get_execution_result(cid, cursor=cursor)
+
+    assert rs is not None
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-construct-fail"
+    )
+    attached_handle.await_result.assert_called_once_with()
+    # The owning handle was not re-awaited on the retry.
+    owning_handle.await_result.assert_called_once_with()
+
+
 def test_get_execution_result_maps_not_found_to_programming_error():
     """An unknown / aged-out id surfaces the kernel's NotFound as a
     mapped PEP 249 exception rather than a raw error."""
