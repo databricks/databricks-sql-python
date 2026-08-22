@@ -477,6 +477,55 @@ class TestKernelRetryOptionsThreading:
             finally:
                 conn.close()
 
+    def test_azure_sp_m2m_kwargs_threaded_into_kernel_auth_options(self):
+        # The Azure SP credentials a user passes to connect() must reach the
+        # kernel auth bridge via auth_options; without this threading the
+        # azure-sp-m2m path would fail at session-open with "requires
+        # azure_client_id". Guards the session.py -> kernel_auth_options map.
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                auth_type="azure-sp-m2m",
+                azure_client_id="azure-sp",
+                azure_client_secret="azure-secret",
+                azure_tenant_id="tenant-123",
+                azure_workspace_resource_id="/subscriptions/s/rg/w",
+                enable_telemetry=False,
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                opts = kwargs["auth_options"]
+                assert opts["auth_type"] == "azure-sp-m2m"
+                assert opts["azure_client_id"] == "azure-sp"
+                assert opts["azure_client_secret"] == "azure-secret"
+                assert opts["azure_tenant_id"] == "tenant-123"
+                assert opts["azure_workspace_resource_id"] == "/subscriptions/s/rg/w"
+            finally:
+                conn.close()
+
 
 class TestKernelUserAgentForwarding:
     """user_agent_entry must reach the kernel on the use_kernel path —
