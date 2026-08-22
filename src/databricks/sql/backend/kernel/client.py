@@ -694,9 +694,14 @@ class KernelDatabricksClient(DatabricksClient):
         # Server is the source of truth for async command state. Use the
         # retained owning handle before result streaming starts so kernel
         # async statement telemetry is finalized on the original
-        # ExecuteStatementAsync telemetry object. Once result streaming
-        # has been claimed (or when this connector never held the handle
-        # — cross-process / fresh-cursor cases), re-attach to the
+        # ExecuteStatementAsync telemetry object. The owning-handle path
+        # is per-connection, not per-cursor: any cursor on the submitting
+        # connection (including a fresh cursor resuming the id) resolves
+        # the same owning handle until result streaming is claimed — see
+        # the concurrency note below for the limits that places on
+        # concurrent polling. Once result streaming has been claimed, or
+        # when this connector genuinely never held the handle (a
+        # cross-process / restarted-process resume), re-attach to the
         # statement by id. SEA keys GetStatementStatus purely on the id,
         # so a statement the connector no longer holds a handle for is
         # still queryable. CLOSED comes straight from the server: after a
