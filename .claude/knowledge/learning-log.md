@@ -48,4 +48,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #922 removed connector-side `row_limit` normalization/enforcement and delegated it to the kernel/server; the reviewer flagged that boundary cases (`0`, negatives) were dropped from the parametrized tests once enforcement moved server-side.
   **Rule:** When removing connector-side normalization and delegating a contract to the server/kernel, keep tests that pin the boundary values (0, negative, None) — the server's semantics may differ from the old connector behavior, and delegation is exactly when a silent behavior regression can slip through.
 
+### 2026-08-22: learnings since 2026-08-21T17:35:30Z
+- **Context:** PR #924 added an e2e test verifying the kernel (Rust) and Python driver share a single `databricks.sql` FileHandler; it had to call `_kernel_mod.reset_logging()` before/after connecting because earlier tests had populated pyo3-log's effective-level cache.
+  **Rule:** When testing or configuring pyo3-log-backed logging, changing a parent logger's level does not retroactively update pyo3-log's cached effective levels — reset the pyo3-log cache after adjusting levels (and beware cross-test cache pollution) so records actually flow at the expected level.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
