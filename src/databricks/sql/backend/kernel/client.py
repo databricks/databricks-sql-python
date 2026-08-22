@@ -810,17 +810,32 @@ class KernelDatabricksClient(DatabricksClient):
         # attach by id for re-fetch. This preserves the Thrift-parity
         # behavior where results remain re-callable until explicit close.
         #
+        # Concurrency: the owning handle is shared, and ``await_result()``
+        # below runs OUTSIDE the lock, so it must not run on the same
+        # handle a concurrent ``get_query_state`` poll is already using
+        # for ``status()``. Mirror that method's guard here — if a status
+        # poll has the owning handle reserved (guid in
+        # ``_async_status_in_flight``), fall through to attach-by-id and
+        # get a fresh kernel handle, exactly as an in-flight peer poll
+        # does. In the normal serial flow (poll to terminal, then fetch)
+        # the reservation is already discarded, so the fetch still takes
+        # the telemetry-preserving owning-handle path.
+        #
         # If this process does not hold the owning handle (fresh cursor,
-        # restarted process, already re-fetched), ``attach_async_statement``
-        # issues a GetStatementStatus to seed the handle; a 404 (unknown
-        # / aged-out id) surfaces as a NotFound KernelError mapped to
+        # restarted process, already re-fetched, or a concurrent poll
+        # holds it), ``attach_async_statement`` issues a
+        # GetStatementStatus to seed the handle; a 404 (unknown / aged-out
+        # id) surfaces as a NotFound KernelError mapped to
         # ``ProgrammingError`` below via ``_wrap_kernel_exception``.
         if self._kernel_session is None:
             raise InterfaceError("get_execution_result requires an open session.")
         with self._async_handles_lock:
             handle = (
                 None
-                if command_id.guid in self._async_result_stream_started
+                if (
+                    command_id.guid in self._async_result_stream_started
+                    or command_id.guid in self._async_status_in_flight
+                )
                 else self._async_handles.get(command_id.guid)
             )
             uses_owning_handle = handle is not None
