@@ -704,6 +704,15 @@ class KernelDatabricksClient(DatabricksClient):
         # state=CLOSED until the result TTL elapses.
         if self._kernel_session is None:
             raise InterfaceError("get_query_state requires an open session.")
+        # Concurrency note: the lock guards the _async_handles / _async_result_stream_started
+        # bookkeeping only. The retained owning handle it returns is a shared object, and
+        # handle.status() below runs OUTSIDE the lock. Concurrent in-process polling of a
+        # single async id from two cursors (before result streaming is claimed) therefore
+        # invokes status() on the same underlying kernel handle concurrently; the connector
+        # does not serialise that and does not assume the kernel handle is safe for it. Such
+        # concurrent polling of one async id is unsupported — the supported cross-cursor
+        # resume path re-attaches by id (the attach-by-id fallback below) once result
+        # streaming has been claimed.
         with self._async_handles_lock:
             handle = (
                 None
@@ -794,6 +803,17 @@ class KernelDatabricksClient(DatabricksClient):
             raise _wrap_kernel_exception("get_execution_result", exc) from exc
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.
+        #
+        # Unlike the ``await_result()`` failure above, we deliberately do
+        # NOT discard the ``_async_result_stream_started`` marker here.
+        # By this point ``await_result()`` has already succeeded, so the
+        # owning handle's result stream has been started (and may be
+        # partially consumed); re-awaiting that same handle on a retry is
+        # not safe. Leaving the marker set routes any retry through the
+        # attach-by-id fallback, which re-materialises a fresh stream.
+        # The trade-off is that such a retry loses the async-statement
+        # telemetry — an accepted, narrow gap limited to the case where
+        # result-set construction fails after a successful await.
         try:
             return self._make_result_set(stream, cursor, command_id)
         except Exception as exc:
