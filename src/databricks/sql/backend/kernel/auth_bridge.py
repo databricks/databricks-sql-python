@@ -278,7 +278,11 @@ def kernel_auth_kwargs(
         # and those values are silently ignored here.
         ignored_signals = [
             name
-            for name in ("oauth_client_secret", "oauth_jwt_key_file", "credentials_provider")
+            for name in (
+                "oauth_client_secret",
+                "oauth_jwt_key_file",
+                "credentials_provider",
+            )
             if opts.get(name) is not None
         ]
         if ignored_signals:
@@ -288,7 +292,7 @@ def kernel_auth_kwargs(
                 "namespace take precedence on the kernel path).",
                 ", ".join(ignored_signals),
             )
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "auth_type": "azure-sp-m2m",
             "azure_client_id": azure_client_id,
             "azure_client_secret": azure_client_secret,
@@ -371,7 +375,7 @@ def kernel_auth_kwargs(
                 "requires oauth_jwt_kid (the key id written into the JWT "
                 "header so the IdP can select the registered public key)."
             )
-        kwargs: Dict[str, Any] = {
+        kwargs = {
             "auth_type": "oauth-m2m-jwt",
             "client_id": client_id,
             "jwt_key_file": jwt_key_file,
