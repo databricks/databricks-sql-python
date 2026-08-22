@@ -816,6 +816,44 @@ def test_get_query_state_uses_retained_owning_handle_before_result_stream():
     handle.status.assert_called_once_with()
 
 
+def test_get_query_state_concurrent_poll_routes_to_attach_by_id():
+    """A second concurrent poll of the same async id (while the first
+    poll's owning-handle status() is in flight, before result streaming
+    is claimed) falls back to attach-by-id rather than racing status()
+    on the shared owning handle. The owning-handle reservation is
+    released once the first poll returns, so a later serial poll takes
+    the owning-handle path again."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owning_handle = MagicMock()
+    attached_handle = MagicMock()
+    attached_handle.status.return_value = ("Running", None)
+    c._kernel_session.attach_async_statement.return_value = attached_handle
+    cid = CommandId.from_sea_statement_id("async-status-concurrent")
+    c._async_handles[cid.guid] = owning_handle
+
+    # Simulate the first poll being mid-flight: its reservation is set.
+    reentrant_state = {}
+
+    def owning_status():
+        # A concurrent poll arriving while this one holds the reservation
+        # must not touch the owning handle.
+        reentrant_state["state"] = c.get_query_state(cid)
+        return ("Running", None)
+
+    owning_handle.status.side_effect = owning_status
+
+    assert c.get_query_state(cid) == CommandState.RUNNING
+    # The re-entrant (concurrent) poll fell back to attach-by-id.
+    assert reentrant_state["state"] == CommandState.RUNNING
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-status-concurrent"
+    )
+    owning_handle.status.assert_called_once_with()
+    # Reservation released after the first poll returns.
+    assert cid.guid not in c._async_status_in_flight
+
+
 def test_get_query_state_attaches_by_id_after_result_stream_started():
     """Once get_execution_result has claimed the owning handle for result
     streaming, status polling falls back to attach-by-id."""
