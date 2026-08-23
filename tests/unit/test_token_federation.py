@@ -194,14 +194,74 @@ class TestTokenFederationProvider:
         assert parsed_body["client_id"][0] == "test-client-id"
 
     def test_exchange_token_failure(self, token_federation_provider, mock_http_client):
-        """Test token exchange failure handling."""
+        """An OAuth error body is surfaced instead of a bare KeyError."""
+        mock_response = Mock()
+        mock_response.data = (
+            b'{"error": "invalid_request", '
+            b'"error_description": "subject token is not supported"}'
+        )
+        mock_response.status = 400
+        mock_http_client.request.return_value = mock_response
+
+        with pytest.raises(ValueError) as exc_info:
+            token_federation_provider._exchange_token("external-token-123")
+
+        message = str(exc_info.value)
+        assert "invalid_request" in message
+        assert "subject token is not supported" in message
+        assert "400" in message
+        assert "https://test.databricks.com/oidc/v1/token" in message
+
+    def test_exchange_token_failure_without_error_description(
+        self, token_federation_provider, mock_http_client
+    ):
+        """A body carrying no error fields still names the failing endpoint."""
+        mock_response = Mock()
+        mock_response.data = b"{}"
+        mock_response.status = 401
+        mock_http_client.request.return_value = mock_response
+
+        with pytest.raises(ValueError) as exc_info:
+            token_federation_provider._exchange_token("external-token-123")
+
+        assert "unknown_error" in str(exc_info.value)
+
+    def test_exchange_token_non_json_response(
+        self, token_federation_provider, mock_http_client
+    ):
+        """A non-JSON body reports the endpoint rather than a JSONDecodeError."""
+        mock_response = Mock()
+        mock_response.data = b"<html>502 Bad Gateway</html>"
+        mock_response.status = 502
+        mock_http_client.request.return_value = mock_response
+
+        with pytest.raises(ValueError) as exc_info:
+            token_federation_provider._exchange_token("external-token-123")
+
+        message = str(exc_info.value)
+        assert "non-JSON" in message
+        assert "502" in message
+
+    def test_exchange_token_failure_keeps_external_token_fallback(
+        self, token_federation_provider, mock_http_client, mock_external_provider
+    ):
+        """A rejected exchange still falls back to the external token."""
+        external_token = create_jwt_token(
+            issuer="https://login.microsoftonline.com/tenant-id/"
+        )
+        mock_external_provider.add_headers.side_effect = (
+            lambda headers: headers.update({"Authorization": f"Bearer {external_token}"})
+        )
+
         mock_response = Mock()
         mock_response.data = b'{"error": "invalid_request"}'
         mock_response.status = 400
         mock_http_client.request.return_value = mock_response
 
-        with pytest.raises(KeyError):  # Will raise KeyError due to missing access_token
-            token_federation_provider._exchange_token("external-token-123")
+        request_headers: dict = {}
+        token_federation_provider.add_headers(request_headers)
+
+        assert request_headers["Authorization"] == f"Bearer {external_token}"
 
     @pytest.mark.parametrize(
         "external_issuer,should_exchange",
