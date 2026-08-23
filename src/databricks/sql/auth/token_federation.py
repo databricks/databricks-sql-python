@@ -188,7 +188,26 @@ class TokenFederationProvider(AuthProvider):
             HttpMethod.POST, url=token_url, body=body, headers=headers
         )
 
-        token_response = json.loads(response.data.decode())
+        status = getattr(response, "status", None)
+
+        try:
+            token_response = json.loads(response.data.decode())
+        except (ValueError, UnicodeDecodeError) as e:
+            raise ValueError(
+                f"Token exchange at {token_url} returned a non-JSON response "
+                f"(HTTP {status})"
+            ) from e
+
+        if "access_token" not in token_response:
+            # An OAuth error body carries the reason the exchange was refused.
+            # Surface it instead of letting a KeyError hide it. The response
+            # holds no token in this case, so nothing sensitive is exposed.
+            error = token_response.get("error", "unknown_error")
+            description = token_response.get("error_description", "")
+            raise ValueError(
+                f"Token exchange at {token_url} was rejected (HTTP {status}): "
+                f"{error} {description}".strip()
+            )
 
         return Token(
             token_response["access_token"], token_response.get("token_type", "Bearer")
