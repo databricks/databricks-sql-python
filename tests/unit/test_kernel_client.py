@@ -799,9 +799,110 @@ def test_get_query_state_propagates_non_not_found_error():
         c.get_query_state(cid)
 
 
-def test_get_execution_result_attaches_by_id():
-    """``get_execution_result`` re-attaches to the statement by id and
-    awaits its result — no connector-side handle lookup."""
+def test_get_query_state_uses_retained_owning_handle_before_result_stream():
+    """In-process status polling uses the retained submitting handle so
+    kernel async statement telemetry stays attached to the original
+    ExecuteStatementAsync telemetry object."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    handle = MagicMock()
+    handle.status.return_value = ("Running", None)
+    cid = CommandId.from_sea_statement_id("async-status-owning")
+    c._async_handles[cid.guid] = handle
+
+    assert c.get_query_state(cid) == CommandState.RUNNING
+
+    c._kernel_session.attach_async_statement.assert_not_called()
+    handle.status.assert_called_once_with()
+
+
+def test_get_query_state_concurrent_poll_routes_to_attach_by_id():
+    """A second concurrent poll of the same async id (while the first
+    poll's owning-handle status() is in flight, before result streaming
+    is claimed) falls back to attach-by-id rather than racing status()
+    on the shared owning handle. The owning-handle reservation is
+    released once the first poll returns, so a later serial poll takes
+    the owning-handle path again."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owning_handle = MagicMock()
+    attached_handle = MagicMock()
+    attached_handle.status.return_value = ("Running", None)
+    c._kernel_session.attach_async_statement.return_value = attached_handle
+    cid = CommandId.from_sea_statement_id("async-status-concurrent")
+    c._async_handles[cid.guid] = owning_handle
+
+    # Simulate the first poll being mid-flight: its reservation is set.
+    reentrant_state = {}
+
+    def owning_status():
+        # A concurrent poll arriving while this one holds the reservation
+        # must not touch the owning handle.
+        reentrant_state["state"] = c.get_query_state(cid)
+        return ("Running", None)
+
+    owning_handle.status.side_effect = owning_status
+
+    assert c.get_query_state(cid) == CommandState.RUNNING
+    # The re-entrant (concurrent) poll fell back to attach-by-id.
+    assert reentrant_state["state"] == CommandState.RUNNING
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-status-concurrent"
+    )
+    owning_handle.status.assert_called_once_with()
+    # Reservation released after the first poll returns.
+    assert cid.guid not in c._async_status_in_flight
+
+
+def test_get_query_state_attaches_by_id_after_result_stream_started():
+    """Once get_execution_result has claimed the owning handle for result
+    streaming, status polling falls back to attach-by-id."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owning_handle = MagicMock()
+    attached_handle = MagicMock()
+    attached_handle.status.return_value = ("Succeeded", None)
+    c._kernel_session.attach_async_statement.return_value = attached_handle
+    cid = CommandId.from_sea_statement_id("async-status-attached")
+    c._async_handles[cid.guid] = owning_handle
+    c._async_result_stream_started.add(cid.guid)
+
+    assert c.get_query_state(cid) == CommandState.SUCCEEDED
+
+    owning_handle.status.assert_not_called()
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-status-attached"
+    )
+    attached_handle.status.assert_called_once_with()
+
+
+def test_get_execution_result_uses_retained_owning_handle_first():
+    """The first in-process result fetch uses the retained submitting
+    handle so the kernel finalizes the original async statement telemetry."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    fake_stream = MagicMock()
+    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    handle = MagicMock()
+    handle.await_result.return_value = fake_stream
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cursor.row_limit = 5
+    cid = CommandId.from_sea_statement_id("async-1")
+    c._async_handles[cid.guid] = handle
+
+    rs = c.get_execution_result(cid, cursor=cursor)
+
+    assert rs is not None
+    c._kernel_session.attach_async_statement.assert_not_called()
+    handle.await_result.assert_called_once_with()
+    assert cid.guid in c._async_result_stream_started
+
+
+def test_get_execution_result_attaches_by_id_when_no_retained_handle():
+    """Fallback by statement id keeps cross-process / fresh-cursor
+    result retrieval working when this connector lacks the owning handle."""
     c = _make_client()
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
@@ -814,8 +915,74 @@ def test_get_execution_result_attaches_by_id():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
-    c._kernel_session.attach_async_statement.assert_called_with("async-1")
+    c._kernel_session.attach_async_statement.assert_called_once_with("async-1")
     handle.await_result.assert_called_once_with()
+
+
+def test_get_execution_result_owning_handle_failure_can_retry_owning_handle():
+    """If the owning handle's await fails before producing a result
+    stream, clear the claimed marker so a retry can still use the
+    telemetry-bearing owning handle."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    handle = MagicMock()
+    handle.await_result.side_effect = _FakeKernelError(code="Unavailable")
+    cid = CommandId.from_sea_statement_id("async-retry-owning")
+    c._async_handles[cid.guid] = handle
+
+    with pytest.raises(OperationalError):
+        c.get_execution_result(cid, cursor=MagicMock())
+
+    assert cid.guid not in c._async_result_stream_started
+    c._kernel_session.attach_async_statement.assert_not_called()
+
+
+def test_get_execution_result_construction_failure_retains_marker_and_attaches_by_id():
+    """If the owning handle's ``await_result()`` succeeds but result-set
+    construction then raises, the ``_async_result_stream_started`` marker
+    is deliberately left set (the owning stream may be partially
+    consumed, so re-awaiting it is unsafe). A subsequent call must route
+    through the attach-by-id fallback rather than re-awaiting the owning
+    handle."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owning_stream = MagicMock()
+    # ``KernelResultSet.__init__`` calls ``arrow_schema()``; make that
+    # raise so ``_make_result_set`` fails after a successful await.
+    owning_stream.arrow_schema.side_effect = _FakeKernelError(code="Internal")
+    owning_handle = MagicMock()
+    owning_handle.await_result.return_value = owning_stream
+    cid = CommandId.from_sea_statement_id("async-construct-fail")
+    c._async_handles[cid.guid] = owning_handle
+
+    with pytest.raises(DatabaseError):
+        c.get_execution_result(cid, cursor=MagicMock())
+
+    # Marker stays set even though construction failed.
+    assert cid.guid in c._async_result_stream_started
+    owning_handle.await_result.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_not_called()
+
+    # A retry now attaches by id (fresh stream) instead of re-awaiting
+    # the partially-consumed owning handle.
+    retry_stream = MagicMock()
+    retry_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    attached_handle = MagicMock()
+    attached_handle.await_result.return_value = retry_stream
+    c._kernel_session.attach_async_statement.return_value = attached_handle
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    rs = c.get_execution_result(cid, cursor=cursor)
+
+    assert rs is not None
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-construct-fail"
+    )
+    attached_handle.await_result.assert_called_once_with()
+    # The owning handle was not re-awaited on the retry.
+    owning_handle.await_result.assert_called_once_with()
 
 
 def test_get_execution_result_maps_not_found_to_programming_error():
@@ -1044,24 +1211,25 @@ def test_kernel_error_during_result_set_construction_is_mapped():
 
 
 # ---------------------------------------------------------------------------
-# get_execution_result is re-callable via attach-by-id
+# get_execution_result uses the owning handle once, then attach-by-id
 # ---------------------------------------------------------------------------
 
 
 def test_get_execution_result_is_re_callable():
-    """``get_execution_result`` re-attaches by id on every call, so a
-    second fetch for the same async command succeeds (Thrift-parity
-    re-fetch). Each call attaches a fresh handle and awaits its result;
-    neither raises, and the connector never depended on a retained
-    handle. The kernel's ``await_result()`` is idempotent server-side."""
+    """The first result fetch uses the owning handle for telemetry; a
+    second fetch for the same async command re-attaches by id so
+    Thrift-parity re-fetch still works."""
     c = _make_client()
     c._kernel_session = MagicMock()
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
-    handle = MagicMock()
-    handle.await_result.return_value = fake_stream
-    c._kernel_session.attach_async_statement.return_value = handle
+    owning_handle = MagicMock()
+    owning_handle.await_result.return_value = fake_stream
+    attached_handle = MagicMock()
+    attached_handle.await_result.return_value = fake_stream
+    c._kernel_session.attach_async_statement.return_value = attached_handle
     cid = CommandId.from_sea_statement_id("async-recall-twice")
+    c._async_handles[cid.guid] = owning_handle
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1070,10 +1238,11 @@ def test_get_execution_result_is_re_callable():
     rs2 = c.get_execution_result(cid, cursor=cursor)
 
     assert rs1 is not None and rs2 is not None
-    # Two calls -> two attaches -> two await_results. No reliance on a
-    # connector-tracked handle.
-    assert c._kernel_session.attach_async_statement.call_count == 2
-    assert handle.await_result.call_count == 2
+    owning_handle.await_result.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_called_once_with(
+        "async-recall-twice"
+    )
+    attached_handle.await_result.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------

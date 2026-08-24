@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
@@ -251,16 +251,27 @@ class KernelDatabricksClient(DatabricksClient):
         # concurrent cursors on the same connection don't race on submit /
         # close / close-session.
         #
-        # This is a KEEP-ALIVE registry, not a state/result lookup: the
+        # This is primarily a KEEP-ALIVE registry: the
         # submitting ``ExecutedAsyncStatement``'s ``Drop`` fires a
         # fire-and-forget ``close_statement``, which would kill the
         # still-running async query the moment the handle is dropped. We
         # retain it (and its parent ``Statement``) here so the live query
-        # survives until an explicit close. ``get_query_state`` /
-        # ``get_execution_result`` do NOT consult this map — they
-        # re-attach to the statement by id (the server is the source of
-        # truth for async state), so they work even cross-process.
+        # survives until an explicit close. ``get_query_state`` and
+        # ``get_execution_result`` use this owning handle before result
+        # streaming starts so kernel async statement telemetry is
+        # finalized on the original ``ExecuteStatementAsync`` telemetry
+        # object, then fall back to attach-by-id for re-fetch /
+        # cross-process cases.
         self._async_handles: Dict[str, Any] = {}
+        self._async_result_stream_started: Set[str] = set()
+        # Async ids whose owning-handle ``status()`` poll is currently in
+        # flight. A second concurrent poll of the same id (before result
+        # streaming is claimed) is routed to the attach-by-id fallback so
+        # it gets a fresh kernel handle instead of racing ``status()`` on
+        # the shared owning handle. Guarded by ``_async_handles_lock``;
+        # each entry is transient (added before the poll, discarded in a
+        # ``finally``).
+        self._async_status_in_flight: Set[str] = set()
         # Parent ``Statement`` objects kept alive alongside async handles.
         # On the kernel, ``Statement.close()`` flips the validity flag on
         # the produced executed handle (see kernel
@@ -406,6 +417,8 @@ class KernelDatabricksClient(DatabricksClient):
             tracked_stmts = list(self._async_statements.items())
             self._async_handles.clear()
             self._async_statements.clear()
+            self._async_result_stream_started.clear()
+            self._async_status_in_flight.clear()
         for _, handle in tracked:
             # Per-handle close errors are non-fatal — PEP 249
             # discourages raising from session close — so log and
@@ -657,6 +670,8 @@ class KernelDatabricksClient(DatabricksClient):
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)
+            self._async_result_stream_started.discard(command_id.guid)
+            self._async_status_in_flight.discard(command_id.guid)
         # Closing the handle below fires the server-side CloseStatement.
         # A subsequent ``get_query_state`` re-attaches by id and reads
         # ``CLOSED`` straight from the server — no connector-side
@@ -686,18 +701,53 @@ class KernelDatabricksClient(DatabricksClient):
                     pass
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
-        # Server is the source of truth for async command state. Re-attach
-        # to the statement by its id and read the state the server reports
-        # — no connector-side state to drift. SEA keys GetStatementStatus
-        # purely on the id, so a statement the connector no longer holds a
-        # handle for (or never held — a different process) is still
-        # queryable. CLOSED comes straight from the server: after a
+        # Server is the source of truth for async command state. Use the
+        # retained owning handle before result streaming starts so kernel
+        # async statement telemetry is finalized on the original
+        # ExecuteStatementAsync telemetry object. The owning-handle path
+        # is per-connection, not per-cursor: any cursor on the submitting
+        # connection (including a fresh cursor resuming the id) resolves
+        # the same owning handle until result streaming is claimed — see
+        # the concurrency note below for the limits that places on
+        # concurrent polling. Once result streaming has been claimed, or
+        # when this connector genuinely never held the handle (a
+        # cross-process / restarted-process resume), re-attach to the
+        # statement by id. SEA keys GetStatementStatus purely on the id,
+        # so a statement the connector no longer holds a handle for is
+        # still queryable. CLOSED comes straight from the server: after a
         # statement is closed (DELETE) the server still returns 200
         # state=CLOSED until the result TTL elapses.
         if self._kernel_session is None:
             raise InterfaceError("get_query_state requires an open session.")
+        # Concurrency note: the lock guards the _async_handles /
+        # _async_result_stream_started / _async_status_in_flight bookkeeping only.
+        # The retained owning handle it returns is a shared object, and
+        # handle.status() below runs OUTSIDE the lock, so it is not safe to invoke
+        # status() on one owning handle from two threads at once. Rather than leave
+        # concurrent in-process polling of a single async id "unsupported" and
+        # undefined, we reserve the owning handle for the first poller via
+        # _async_status_in_flight: a second concurrent poll of the same id (before
+        # result streaming is claimed) sees the id already in flight and falls
+        # through to the attach-by-id path, getting its own fresh kernel handle —
+        # preserving the pre-change behaviour where every caller re-attached by id
+        # and status() ran on distinct objects. The reservation is transient
+        # (discarded in the finally below), so serial polls still take the
+        # telemetry-preserving owning-handle path.
+        with self._async_handles_lock:
+            handle = (
+                None
+                if (
+                    command_id.guid in self._async_result_stream_started
+                    or command_id.guid in self._async_status_in_flight
+                )
+                else self._async_handles.get(command_id.guid)
+            )
+            reserved_owning_handle = handle is not None
+            if reserved_owning_handle:
+                self._async_status_in_flight.add(command_id.guid)
         try:
-            handle = self._kernel_session.attach_async_statement(command_id.guid)
+            if handle is None:
+                handle = self._kernel_session.attach_async_statement(command_id.guid)
             state, failure = handle.status()
         except Exception as exc:
             if _is_not_found(exc):
@@ -721,6 +771,14 @@ class KernelDatabricksClient(DatabricksClient):
                 # sync-fall-through behaviour.
                 return CommandState.SUCCEEDED
             raise _wrap_kernel_exception("get_query_state", exc) from exc
+        finally:
+            # Release the owning-handle reservation once this poll's
+            # status() has completed (or raised). Only the reserver clears
+            # it, so a concurrent poll that fell through to attach-by-id
+            # never touches another poller's reservation.
+            if reserved_owning_handle:
+                with self._async_handles_lock:
+                    self._async_status_in_flight.discard(command_id.guid)
         if state == "Failed" and failure is not None:
             # Surface server-reported failure as a database error so
             # the cursor's polling loop terminates with the right
@@ -743,28 +801,68 @@ class KernelDatabricksClient(DatabricksClient):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
-        # Re-attach to the statement by id and await its result. SEA keys
-        # GetStatementResult on the id, so this works whether or not the
-        # connector still holds the submitting handle — and it's
-        # inherently re-callable (each call attaches a fresh handle and
-        # re-materialises the result stream), matching the Thrift backend
-        # where the operation handle stays re-fetchable until an explicit
-        # close. No connector-side handle lookup, so no
-        # ``unknown command_id`` failure on a second call.
+        # Prefer the original owning async handle for the first
+        # in-process result stream. The kernel attaches the real
+        # ExecuteStatementAsync telemetry to that handle; attached
+        # handles intentionally use no-op telemetry, so always
+        # re-attaching loses the SEA async statement row when the result
+        # is drained. After the owning result stream has been started,
+        # attach by id for re-fetch. This preserves the Thrift-parity
+        # behavior where results remain re-callable until explicit close.
         #
-        # ``attach_async_statement`` issues a GetStatementStatus to seed
-        # the handle; a 404 (unknown / aged-out id) surfaces as a
-        # NotFound KernelError mapped to ``ProgrammingError`` below via
-        # ``_wrap_kernel_exception``.
+        # Concurrency: the owning handle is shared, and ``await_result()``
+        # below runs OUTSIDE the lock, so it must not run on the same
+        # handle a concurrent ``get_query_state`` poll is already using
+        # for ``status()``. Mirror that method's guard here — if a status
+        # poll has the owning handle reserved (guid in
+        # ``_async_status_in_flight``), fall through to attach-by-id and
+        # get a fresh kernel handle, exactly as an in-flight peer poll
+        # does. In the normal serial flow (poll to terminal, then fetch)
+        # the reservation is already discarded, so the fetch still takes
+        # the telemetry-preserving owning-handle path.
+        #
+        # If this process does not hold the owning handle (fresh cursor,
+        # restarted process, already re-fetched, or a concurrent poll
+        # holds it), ``attach_async_statement`` issues a
+        # GetStatementStatus to seed the handle; a 404 (unknown / aged-out
+        # id) surfaces as a NotFound KernelError mapped to
+        # ``ProgrammingError`` below via ``_wrap_kernel_exception``.
         if self._kernel_session is None:
             raise InterfaceError("get_execution_result requires an open session.")
+        with self._async_handles_lock:
+            handle = (
+                None
+                if (
+                    command_id.guid in self._async_result_stream_started
+                    or command_id.guid in self._async_status_in_flight
+                )
+                else self._async_handles.get(command_id.guid)
+            )
+            uses_owning_handle = handle is not None
+            if uses_owning_handle:
+                self._async_result_stream_started.add(command_id.guid)
         try:
-            handle = self._kernel_session.attach_async_statement(command_id.guid)
+            if handle is None:
+                handle = self._kernel_session.attach_async_statement(command_id.guid)
             stream = handle.await_result()
         except Exception as exc:
+            if uses_owning_handle:
+                with self._async_handles_lock:
+                    self._async_result_stream_started.discard(command_id.guid)
             raise _wrap_kernel_exception("get_execution_result", exc) from exc
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.
+        #
+        # Unlike the ``await_result()`` failure above, we deliberately do
+        # NOT discard the ``_async_result_stream_started`` marker here.
+        # By this point ``await_result()`` has already succeeded, so the
+        # owning handle's result stream has been started (and may be
+        # partially consumed); re-awaiting that same handle on a retry is
+        # not safe. Leaving the marker set routes any retry through the
+        # attach-by-id fallback, which re-materialises a fresh stream.
+        # The trade-off is that such a retry loses the async-statement
+        # telemetry — an accepted, narrow gap limited to the case where
+        # result-set construction fails after a successful await.
         try:
             return self._make_result_set(stream, cursor, command_id)
         except Exception as exc:
