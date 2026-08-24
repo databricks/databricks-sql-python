@@ -137,7 +137,7 @@ to change without notice.
 | `use_cloud_fetch`                     | `bool` |   ✅   |   ❌   | `True`        | Download large result sets in parallel from cloud storage. The kernel manages result transport internally.    |
 | `max_download_threads`                | `int`  |   ✅   |   ❌   | `10`          | Worker threads for cloud-fetch downloads. Not forwarded to the kernel.                                        |
 | `enable_query_result_lz4_compression` | `bool` |   ✅   |   ❌   | `True`        | LZ4-compress result payloads. Not forwarded; the kernel handles compression internally.                       |
-| `_disable_pandas`                     | `bool` |   ✅   |   ❌   | `False`       | Skip the pandas-based Arrow deserialization path. Not forwarded to the kernel.                                |
+| `_disable_pandas`                     | `bool` |   ✅   |   ✅   | `False`       | Skip the pandas-based Arrow→row deserialization and materialize rows directly with PyArrow. This is a **Python-side** result-conversion toggle, not a wire option: the kernel returns results as Arrow (`RecordBatch`es) and the connector runs the *same* `_convert_arrow_table` for both backends, so the flag is honored on the kernel path too. Affects only row fetches (`fetchone`/`fetchmany`/`fetchall`); the `fetch*_arrow` methods return the Arrow table unchanged regardless of this flag. |
 | `_use_arrow_native_complex_types`     | `bool` |   ✅   |   ✅   | `True`        | Return `ARRAY`/`MAP`/`STRUCT` as native Arrow types instead of JSON strings. Forwarded to the kernel.         |
 | `_use_arrow_native_decimals`          | `bool` |   ✅   |   ❌   | `True`        | Return `DECIMAL` as a native Arrow type instead of a string. Thrift-only.                                     |
 | `_use_arrow_native_timestamps`        | `bool` |   ✅   |   ❌   | `True`        | Return `TIMESTAMP` as a native Arrow type instead of a string. Thrift-only.                                   |
@@ -186,7 +186,7 @@ regardless of `use_kernel`.
 4. TLS-client-cert *authentication* (`_use_cert_as_auth`) — note the TLS
    *transport* options (`_tls_*`) themselves **are** honored on both backends.
 5. Result-transport tuning: `use_cloud_fetch`, `max_download_threads`,
-   `enable_query_result_lz4_compression`, `_disable_pandas`.
+   `enable_query_result_lz4_compression`.
 6. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
 7. `staging_allowed_local_path` (Volume `PUT`/`GET`).
