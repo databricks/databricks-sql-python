@@ -85,7 +85,7 @@ to change without notice.
 | `azure_client_id` / `azure_client_secret` / `azure_tenant_id` | `str` | ✅ | ✅ | `None` | Azure service-principal (Entra ID M2M), selected by `auth_type="azure-sp-m2m"`. On the kernel path the connector forwards these to the kernel, which owns Azure resolution (Entra v2.0 token endpoint + the Databricks-resource `.default` scope) (#919). **`azure_tenant_id` is optional on the kernel path too** — like Thrift, the kernel auto-discovers it from the workspace's `/aad/auth` redirect when omitted. |
 | `azure_workspace_resource_id`                       | `str`                |   ✅   |   ✅   | `None`                    | For `azure-sp-m2m`. When set, the SP **management token** (`X-Databricks-Azure-SP-Management-Token`) + `X-Databricks-Azure-Workspace-Resource-Id` header are sent, to authorize an SP that has an Azure RBAC role but is not a workspace member. Omit it for a workspace-member SP (the data token authenticates alone; no management token is fetched). Works on both the kernel and Thrift paths. |
 | `_use_cert_as_auth` (+ `_tls_client_cert_file`)     | `bool`               |   ✅   |   ❌   | `False`                   | Authenticate with a TLS client certificate instead of a token. Thrift-only.                                                                                    |
-| `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported; passing either raises `ValueError`.                                                                            |
+| `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported. On **Thrift**, passing either raises `ValueError`; on the **kernel** path it is silently ignored (the Thrift auth provider that raises is never built).                                                                            |
 
 ## HTTP client, proxy, retries
 
@@ -117,8 +117,9 @@ to change without notice.
 
 > TLS options are assembled into a single `SSLOptions` object in `session.py`
 > and passed to **every** backend, so they are honored on both Thrift and
-> Kernel. Verification is **on by default**; you must pass `_tls_no_verify=True`
-> to disable it.
+> Kernel — with one exception: `_tls_client_cert_key_password` is **not**
+> supported on the kernel path (see below). Verification is **on by default**;
+> you must pass `_tls_no_verify=True` to disable it.
 
 | Option                          | Type  | Thrift | Kernel | Default Value | Note                                                                       |
 | ------------------------------- | ----- | :----: | :----: | ------------- | -------------------------------------------------------------------------- |
@@ -127,7 +128,7 @@ to change without notice.
 | `_tls_trusted_ca_file`          | `str` |   ✅   |   ✅   | `None`        | Path to a CA bundle. Defaults to the system trust store.                   |
 | `_tls_client_cert_file`         | `str` |   ✅   |   ✅   | `None`        | Client certificate for mutual TLS.                                         |
 | `_tls_client_cert_key_file`     | `str` |   ✅   |   ✅   | `None`        | Private key for the client certificate.                                    |
-| `_tls_client_cert_key_password` | `str` |   ✅   |   ✅   | `None`        | Password for an encrypted client-key file.                                 |
+| `_tls_client_cert_key_password` | `str` |   ✅   |   ❌   | `None`        | Password for an encrypted client-key file. **Kernel rejects this** with `NotSupportedError` — the kernel has no surface for an encrypted client key today; pass an unencrypted PEM key, or use the Thrift backend. |
 
 ## Results & type rendering
 
