@@ -432,6 +432,8 @@ class TestKernelOAuthU2M:
             # Full registered port list → the kernel binds the first free one.
             "redirect_ports": list(PYSQL_OAUTH_REDIRECT_PORT_RANGE),
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
+            # token_cache_enabled defaults to False (disable-by-default).
+            "token_cache_enabled": False,
         }
 
     def test_azure_oauth_maps_to_in_house_u2m(self):
@@ -450,6 +452,8 @@ class TestKernelOAuthU2M:
             "client_id": PYSQL_OAUTH_CLIENT_ID,
             "redirect_ports": list(PYSQL_OAUTH_REDIRECT_PORT_RANGE),
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
+            # token_cache_enabled defaults to False (disable-by-default).
+            "token_cache_enabled": False,
         }
 
     def test_azure_oauth_honors_custom_client_id_port_and_scopes(self):
@@ -469,6 +473,8 @@ class TestKernelOAuthU2M:
             "client_id": "custom-client",
             "redirect_ports": [9999],
             "oauth_scopes": ["custom-scope", "offline_access"],
+            # token_cache_enabled defaults to False (disable-by-default).
+            "token_cache_enabled": False,
         }
 
     def test_u2m_custom_client_id_port_and_scopes_honored(self):
@@ -489,6 +495,8 @@ class TestKernelOAuthU2M:
             "client_id": "custom-client",
             "redirect_ports": [9999],
             "oauth_scopes": ["custom-scope", "offline_access"],
+            # token_cache_enabled defaults to False (disable-by-default).
+            "token_cache_enabled": False,
         }
 
     def test_u2m_custom_client_id_only_falls_back_to_connector_defaults(self):
@@ -507,6 +515,8 @@ class TestKernelOAuthU2M:
             "client_id": "custom-client",
             "redirect_ports": list(PYSQL_OAUTH_REDIRECT_PORT_RANGE),
             "oauth_scopes": list(PYSQL_OAUTH_SCOPES),
+            # token_cache_enabled defaults to False (disable-by-default).
+            "token_cache_enabled": False,
         }
 
     def test_u2m_redirect_port_coerced_to_int(self):
@@ -577,6 +587,76 @@ class TestKernelOAuthU2M:
             },
         )
         assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
+
+    def test_u2m_token_cache_enabled_unset_defaults_to_false(self):
+        # When oauth_token_cache_enabled is omitted, the kernel U2M kwargs
+        # must include token_cache_enabled=False (disable-by-default) so the
+        # kernel does not silently start persisting tokens to disk.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {"auth_type": "databricks-oauth"},
+        )
+        assert kwargs["token_cache_enabled"] is False
+
+    def test_u2m_token_cache_enabled_false_forwarded(self):
+        # When oauth_token_cache_enabled=False, forward token_cache_enabled=False.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_token_cache_enabled": False,
+            },
+        )
+        assert kwargs["token_cache_enabled"] is False
+
+    def test_u2m_token_cache_enabled_true_forwarded(self):
+        # When oauth_token_cache_enabled=True, forward token_cache_enabled=True.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_token_cache_enabled": True,
+            },
+        )
+        assert kwargs["token_cache_enabled"] is True
+
+    @pytest.mark.parametrize("u2m_auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_token_cache_enabled_both_auth_types(self, u2m_auth_type):
+        # token_cache_enabled applies to both databricks-oauth and azure-oauth U2M types.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": u2m_auth_type,
+                "oauth_token_cache_enabled": True,
+            },
+        )
+        assert kwargs["token_cache_enabled"] is True
+
+    def test_token_cache_enabled_not_forwarded_to_m2m(self):
+        # oauth_token_cache_enabled should NOT be forwarded on the M2M path
+        # (M2M handles its own token lifecycle independently).
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp-uuid",
+                "oauth_client_secret": "shh",
+                "oauth_token_cache_enabled": True,
+            },
+        )
+        # On the M2M path, token_cache_enabled should NOT be present.
+        assert "token_cache_enabled" not in kwargs
+        assert kwargs["auth_type"] == "oauth-m2m"
+
+    def test_token_cache_enabled_not_forwarded_to_pat(self):
+        # oauth_token_cache_enabled should NOT be forwarded on the PAT path
+        # (PAT is a static token with no refresh/cache mechanism).
+        kwargs = kernel_auth_kwargs(
+            AccessTokenAuthProvider("dapi-xyz"),
+            {"oauth_token_cache_enabled": True},
+        )
+        # On the PAT path, token_cache_enabled should NOT be present.
+        assert "token_cache_enabled" not in kwargs
+        assert kwargs["auth_type"] == "pat"
 
 
 class TestKernelIdentityFederationClientId:

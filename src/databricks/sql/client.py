@@ -225,6 +225,17 @@ class Connection:
                             experimental_oauth_persistence=DevOnlyFilePersistence("~/dev-oauth.json")
                         )
                 ```
+            :param oauth_token_cache_enabled: `bool | None`, optional (default is None)
+                **Kernel-only, U2M-only.** Controls whether the kernel persists OAuth U2M
+                refresh tokens to disk (AES-256 encrypted, at `~/.config/databricks-sql-kernel/oauth/`).
+                When unset (None, the default), the kernel's own default behavior applies.
+                When True, enables persistent on-disk token cache; when False, tokens are
+                held in memory only and the user must re-authenticate when the process restarts.
+                Has no effect on Thrift or SEA backends, which maintain their own token
+                lifecycle via `experimental_oauth_persistence`. This parameter is distinct
+                from the Thrift-only `experimental_oauth_persistence` — this controls the
+                kernel's built-in encrypted storage, whereas `experimental_oauth_persistence`
+                is a pluggable callback interface for Thrift-path custom storage.
             :param _use_arrow_native_complex_types: `bool`, optional
                 Controls whether a complex type field value is returned as a string or as a native Arrow type. Defaults to True.
                 When True:

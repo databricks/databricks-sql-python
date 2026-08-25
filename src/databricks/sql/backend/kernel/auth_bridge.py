@@ -460,6 +460,12 @@ def kernel_auth_kwargs(
                 else list(PYSQL_OAUTH_REDIRECT_PORT_RANGE)
             ),
             "oauth_scopes": scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES),
+            # OAuth U2M token-cache enable/disable: when present in auth_options,
+            # forward to the kernel as token_cache_enabled on the U2M branch.
+            # Default disabled (bool(None) = False) for backward compatibility when
+            # moving token persistence control to the kernel. This ensures callers
+            # must opt-in to on-disk persistence rather than silently enabling it.
+            "token_cache_enabled": bool(opts.get("oauth_token_cache_enabled")),
         }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
