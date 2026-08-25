@@ -276,7 +276,8 @@ class Connection:
         #  On Thrift, the timeout in seconds for socket send, recv and connect
         #  operations. On the kernel path, a positive value is the total HTTP
         #  request deadline. Kernel values of None or 0 select its 120-second
-        #  default; 0 is neither unlimited nor an immediate timeout.
+        #  default; 0 is neither unlimited nor an immediate timeout. Negative
+        #  and non-finite values are rejected.
         # _disable_pandas
         #  In case the deserialisation through pandas causes any issues, it can be disabled with
         #  this flag.

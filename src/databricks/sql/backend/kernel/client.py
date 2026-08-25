@@ -23,6 +23,7 @@ Phase 1 gaps documented in the integration design:
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import uuid
 from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
@@ -219,7 +220,23 @@ class KernelDatabricksClient(DatabricksClient):
         self._retry_options = kwargs.get("retry_options") or {}
         # The connector's ``_socket_timeout`` is already expressed in
         # seconds, matching the kernel's request-timeout binding.
-        self._request_timeout_secs = kwargs.get("request_timeout_secs")
+        request_timeout_secs = kwargs.get("request_timeout_secs")
+        if request_timeout_secs is None:
+            self._request_timeout_secs = None
+        else:
+            try:
+                self._request_timeout_secs = float(request_timeout_secs)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(
+                    "_socket_timeout must be a non-negative finite number of seconds"
+                ) from exc
+            if (
+                not math.isfinite(self._request_timeout_secs)
+                or self._request_timeout_secs < 0
+            ):
+                raise ValueError(
+                    "_socket_timeout must be a non-negative finite number of seconds"
+                )
         self._catalog = catalog
         self._schema = schema
         # ``_use_arrow_native_complex_types`` is the connector-side
