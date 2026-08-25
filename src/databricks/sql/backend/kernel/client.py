@@ -217,6 +217,9 @@ class KernelDatabricksClient(DatabricksClient):
         # to the kernel ``Session``'s ``retry_*`` kwargs in
         # ``open_session`` via ``_kernel_retry_kwargs``.
         self._retry_options = kwargs.get("retry_options") or {}
+        # The connector's ``_socket_timeout`` is already expressed in
+        # seconds, matching the kernel's request-timeout binding.
+        self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._catalog = catalog
         self._schema = schema
         # ``_use_arrow_native_complex_types`` is the connector-side
@@ -330,6 +333,11 @@ class KernelDatabricksClient(DatabricksClient):
             # Translate the connector's ``_retry_*`` kwargs into the
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
+            request_timeout_kwargs: Dict[str, Any] = {}
+            if self._request_timeout_secs is not None:
+                request_timeout_kwargs["request_timeout_secs"] = (
+                    self._request_timeout_secs
+                )
             # Forward caller / connector HTTP headers. The kernel applies
             # them on every request; a caller ``User-Agent`` is appended
             # to the kernel's base UA. Only pass the kwarg when there's
@@ -372,6 +380,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,
+                **request_timeout_kwargs,
                 **http_headers_kwargs,
             )
         except Exception as exc:
