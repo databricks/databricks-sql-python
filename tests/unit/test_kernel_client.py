@@ -1588,9 +1588,8 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("wildcard", ["%", "*"])
-def test_get_columns_normalizes_wildcard_catalog_to_none(wildcard):
-    """The kernel represents the supported all-catalog wildcards as ``None``."""
+@pytest.mark.parametrize("exact_catalog", ["%", "*"])
+def test_get_columns_preserves_exact_catalog(exact_catalog):
     c = _make_client()
     c._kernel_session = MagicMock()
     list_columns = c._kernel_session.metadata.return_value.list_columns
@@ -1604,14 +1603,14 @@ def test_get_columns_normalizes_wildcard_catalog_to_none(wildcard):
         max_rows=1,
         max_bytes=1,
         cursor=cursor,
-        catalog_name=wildcard,
+        catalog_name=exact_catalog,
         schema_name="s",
         table_name="t",
         column_name="c",
     )
 
     list_columns.assert_called_once_with(
-        catalog=None,
+        catalog=exact_catalog,
         schema_pattern="s",
         table_pattern="t",
         column_pattern="c",

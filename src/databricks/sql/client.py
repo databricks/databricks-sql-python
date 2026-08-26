@@ -1640,8 +1640,8 @@ class Cursor:
         """
         Get schemas corresponding to the catalog_name and schema_name.
 
-        ``None`` leaves a filter unset. An empty string is a real empty
-        pattern and matches nothing. Names can contain % wildcards.
+        ``None`` leaves a filter unset and an empty string matches nothing.
+        ``catalog_name`` is exact; ``schema_name`` can contain % wildcards.
         :returns self
         """
         self._check_not_closed()
@@ -1667,8 +1667,8 @@ class Cursor:
         """
         Get tables corresponding to the catalog_name, schema_name and table_name.
 
-        ``None`` leaves a filter unset. An empty string is a real empty
-        pattern and matches nothing. Names can contain % wildcards.
+        ``None`` leaves a filter unset and an empty string matches nothing.
+        Names can contain % wildcards.
         :returns self
         """
         self._check_not_closed()
@@ -1697,8 +1697,8 @@ class Cursor:
         """
         Get columns corresponding to the catalog_name, schema_name, table_name and column_name.
 
-        ``None`` leaves a filter unset. An empty string is a real empty
-        pattern and matches nothing. Names can contain % wildcards.
+        ``None`` leaves a filter unset and an empty string matches nothing.
+        ``catalog_name`` is exact; other names can contain % wildcards.
 
         ``catalog_name=None`` is accepted on all backends and matches
         columns across every catalog (the kernel issues ``SHOW COLUMNS``

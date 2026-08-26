@@ -124,36 +124,13 @@ def _is_not_found(exc: BaseException) -> bool:
     )
 
 
-def _catalog_or_none(value: Optional[str]) -> Optional[str]:
-    """Map all-catalog wildcards to the kernel's unfiltered representation.
-
-    This makes ``columns(catalog='%')`` behave like
-    ``tables(catalog='%')`` / ``schemas(catalog='%')`` — the kernel
-    treats the catalog as an exact identifier for SHOW COLUMNS. ``None``
-    remains the only absent filter. Other strings must be preserved as real
-    filters; in particular, an empty string matches nothing just as it does
-    on the Thrift backend. Non-empty whitespace-only strings remain invalid
-    and are left for kernel validation.
-    """
-    if value is None or value in ("%", "*"):
-        return None
-    return value
-
-
 def _exact_catalog_and_pattern(
     catalog: Optional[str], pattern: Optional[str]
 ) -> Tuple[Optional[str], Optional[str]]:
-    """Adapt an empty exact catalog to an empty subordinate pattern.
-
-    At ``KERNEL_REV``, ``Identifier("")`` is invalid while
-    ``LikePattern("")`` means match-nothing. Schema and column metadata
-    take an exact catalog, so represent an empty catalog as all catalogs
-    constrained by an empty schema pattern. This preserves empty-catalog
-    semantics without passing an invalid identifier to the kernel.
-    """
+    """Avoid constructing the kernel's invalid empty ``Identifier``."""
     if catalog == "":
         return None, ""
-    return _catalog_or_none(catalog), pattern
+    return catalog, pattern
 
 
 def _is_staging_statement(operation: str) -> bool:
@@ -976,7 +953,7 @@ class KernelDatabricksClient(DatabricksClient):
             # do the work — no connector-side drain + refilter. Passing it
             # through preserves streaming for large schemas.
             stream = self._kernel_session.metadata().list_tables(
-                catalog=_catalog_or_none(catalog_name),
+                catalog=catalog_name,
                 schema_pattern=schema_name,
                 table_pattern=table_name,
                 table_types=table_types if table_types else None,
