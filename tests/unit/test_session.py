@@ -410,10 +410,9 @@ class TestKernelAuthProviderBypass:
         assert isinstance(sess.auth_provider, AccessTokenAuthProvider)
 
 
-class TestKernelRetryOptionsThreading:
-    """The connector's ``_retry_*`` kwargs must be forwarded into the
-    kernel client's ``retry_options`` on the use_kernel path (the kernel
-    owns the retry loop). Captures the kwargs session.py passes by
+class TestKernelTransportOptionsThreading:
+    """The connector's retry and socket timeout kwargs must be forwarded
+    on the use_kernel path. Captures the kwargs session.py passes by
     patching ``KernelDatabricksClient`` and inspecting its call args.
 
     Patching ``KernelDatabricksClient`` requires importing
@@ -426,7 +425,7 @@ class TestKernelRetryOptionsThreading:
 
     PACKAGE = "databricks.sql"
 
-    def test_retry_kwargs_threaded_into_kernel_client(self):
+    def test_retry_and_socket_timeout_threaded_into_kernel_client(self):
         import sys
         import types
 
@@ -466,6 +465,7 @@ class TestKernelRetryOptionsThreading:
                 _retry_delay_max=90.0,
                 _retry_stop_after_attempts_count=10,
                 _retry_stop_after_attempts_duration=600.0,
+                _socket_timeout=12.5,
             )
             try:
                 _, kwargs = mock_kernel_client.call_args
@@ -474,6 +474,7 @@ class TestKernelRetryOptionsThreading:
                 assert opts["retry_delay_max"] == 90.0
                 assert opts["retry_stop_after_attempts_count"] == 10
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
+                assert kwargs["request_timeout_secs"] == 12.5
             finally:
                 conn.close()
 

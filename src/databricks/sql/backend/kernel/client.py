@@ -217,6 +217,8 @@ class KernelDatabricksClient(DatabricksClient):
         # to the kernel ``Session``'s ``retry_*`` kwargs in
         # ``open_session`` via ``_kernel_retry_kwargs``.
         self._retry_options = kwargs.get("retry_options") or {}
+        # The kernel binding owns type and range validation.
+        self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._catalog = catalog
         self._schema = schema
         # ``_use_arrow_native_complex_types`` is the connector-side
@@ -369,6 +371,7 @@ class KernelDatabricksClient(DatabricksClient):
                 # backend's surface (interval columns arrive as
                 # strings).
                 intervals_as_string=True,
+                request_timeout_secs=self._request_timeout_secs,
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,

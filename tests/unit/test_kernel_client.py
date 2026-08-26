@@ -344,6 +344,30 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
     assert captured.get("complex_types_as_json") is expected_flag
 
 
+@pytest.mark.parametrize("timeout", [None, 0, 12.5])
+def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        request_timeout_secs=timeout,
+    )
+
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["request_timeout_secs"] == timeout
+
+
 def test_execute_command_forwards_parameters_to_bind_param():
     """``execute_command(parameters=[...])`` routes each parameter
     through ``bind_tspark_params`` onto the kernel statement before

@@ -239,6 +239,7 @@ class Session:
                 _use_arrow_native_complex_types=_use_arrow_native_complex_types,
                 auth_options=kernel_auth_options,
                 retry_options=kernel_retry_options,
+                request_timeout_secs=kwargs.get("_socket_timeout"),
             )
 
         databricks_client_class: Type[DatabricksClient]
