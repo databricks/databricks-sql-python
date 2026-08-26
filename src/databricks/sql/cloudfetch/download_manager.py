@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 
 from concurrent.futures import ThreadPoolExecutor, Future
-from typing import List, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
@@ -10,7 +12,12 @@ from databricks.sql.cloudfetch.downloader import (
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.models.event import StatementType
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+
+if TYPE_CHECKING:
+    # Type-annotation-only import; see the note in downloader.py. Keeping the
+    # ``thrift`` package out of this module lets the SEA/kernel backends use the
+    # cloud-fetch download manager without importing Apache Thrift.
+    from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
 
