@@ -124,6 +124,13 @@ def _is_not_found(exc: BaseException) -> bool:
     )
 
 
+def _catalog_or_none(value: Optional[str]) -> Optional[str]:
+    """Map supported all-catalog wildcards to the kernel's unset filter."""
+    if value is None or value in ("%", "*"):
+        return None
+    return value
+
+
 def _is_staging_statement(operation: str) -> bool:
     """True iff ``operation`` is a volume/staging statement (PUT / GET /
     REMOVE).
@@ -914,7 +921,7 @@ class KernelDatabricksClient(DatabricksClient):
             raise InterfaceError("get_schemas requires an open session.")
         try:
             stream = self._kernel_session.metadata().list_schemas(
-                catalog=catalog_name,
+                catalog=_catalog_or_none(catalog_name),
                 schema_pattern=schema_name,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
@@ -941,7 +948,7 @@ class KernelDatabricksClient(DatabricksClient):
             # do the work — no connector-side drain + refilter. Passing it
             # through preserves streaming for large schemas.
             stream = self._kernel_session.metadata().list_tables(
-                catalog=catalog_name,
+                catalog=_catalog_or_none(catalog_name),
                 schema_pattern=schema_name,
                 table_pattern=table_name,
                 table_types=table_types if table_types else None,
@@ -971,7 +978,7 @@ class KernelDatabricksClient(DatabricksClient):
             # Thrift backend's `getColumns(null, …)` behaviour from
             # the user's perspective.
             stream = self._kernel_session.metadata().list_columns(
-                catalog=catalog_name,
+                catalog=_catalog_or_none(catalog_name),
                 schema_pattern=schema_name,
                 table_pattern=table_name,
                 column_pattern=column_name,
