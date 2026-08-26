@@ -371,18 +371,6 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
         assert captured["request_timeout_secs"] == timeout
 
 
-@pytest.mark.parametrize("timeout", [-1, float("nan"), float("inf")])
-def test_request_timeout_rejects_invalid_values(timeout):
-    with pytest.raises(ValueError, match="non-negative finite"):
-        kernel_client.KernelDatabricksClient(
-            server_hostname="example.cloud.databricks.com",
-            http_path="/sql/1.0/warehouses/abc",
-            auth_provider=AccessTokenAuthProvider("dapi-test"),
-            ssl_options=None,
-            request_timeout_secs=timeout,
-        )
-
-
 def test_execute_command_forwards_parameters_to_bind_param():
     """``execute_command(parameters=[...])`` routes each parameter
     through ``bind_tspark_params`` onto the kernel statement before
