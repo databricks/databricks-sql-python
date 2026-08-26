@@ -1639,8 +1639,7 @@ def test_get_schemas_preserves_empty_pattern():
     list_schemas.assert_called_once_with(catalog="main", schema_pattern="")
 
 
-def test_get_schemas_empty_catalog_uses_empty_pattern():
-    """Avoid passing an empty exact ``Identifier`` to the kernel."""
+def test_get_schemas_preserves_empty_catalog():
     c = _make_client()
     c._kernel_session = MagicMock()
     list_schemas = c._kernel_session.metadata.return_value.list_schemas
@@ -1658,7 +1657,7 @@ def test_get_schemas_empty_catalog_uses_empty_pattern():
         schema_name="ignored",
     )
 
-    list_schemas.assert_called_once_with(catalog=None, schema_pattern="")
+    list_schemas.assert_called_once_with(catalog="", schema_pattern="ignored")
 
 
 def test_get_tables_preserves_empty_patterns():
@@ -1716,8 +1715,7 @@ def test_get_columns_preserves_empty_patterns():
     )
 
 
-def test_get_columns_empty_catalog_uses_empty_pattern():
-    """An empty catalog matches nothing without constructing ``Identifier("")``."""
+def test_get_columns_preserves_empty_catalog():
     c = _make_client()
     c._kernel_session = MagicMock()
     list_columns = c._kernel_session.metadata.return_value.list_columns
@@ -1738,8 +1736,8 @@ def test_get_columns_empty_catalog_uses_empty_pattern():
     )
 
     list_columns.assert_called_once_with(
-        catalog=None,
-        schema_pattern="",
+        catalog="",
+        schema_pattern="ignored",
         table_pattern="table",
         column_pattern="column",
     )

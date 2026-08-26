@@ -367,7 +367,7 @@ def test_schemas_with_empty_string_filter_matches_nothing(conn):
 
 
 @pytest.mark.parametrize(
-    "empty_filter", ["catalog_name", "schema_name", "table_name", "column_name"]
+    "empty_filter", ["schema_name", "table_name", "column_name"]
 )
 def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
     filters = {

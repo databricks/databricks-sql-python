@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
@@ -122,15 +122,6 @@ def _is_not_found(exc: BaseException) -> bool:
         isinstance(exc, _kernel.KernelError)
         and getattr(exc, "code", None) == "NotFound"
     )
-
-
-def _exact_catalog_and_pattern(
-    catalog: Optional[str], pattern: Optional[str]
-) -> Tuple[Optional[str], Optional[str]]:
-    """Avoid constructing the kernel's invalid empty ``Identifier``."""
-    if catalog == "":
-        return None, ""
-    return catalog, pattern
 
 
 def _is_staging_statement(operation: str) -> bool:
@@ -922,12 +913,9 @@ class KernelDatabricksClient(DatabricksClient):
         if self._kernel_session is None:
             raise InterfaceError("get_schemas requires an open session.")
         try:
-            catalog, schema_pattern = _exact_catalog_and_pattern(
-                catalog_name, schema_name
-            )
             stream = self._kernel_session.metadata().list_schemas(
-                catalog=catalog,
-                schema_pattern=schema_pattern,
+                catalog=catalog_name,
+                schema_pattern=schema_name,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:
@@ -982,12 +970,9 @@ class KernelDatabricksClient(DatabricksClient):
             # row's `TABLE_CAT` is correctly attributed. Matches the
             # Thrift backend's `getColumns(null, …)` behaviour from
             # the user's perspective.
-            catalog, schema_pattern = _exact_catalog_and_pattern(
-                catalog_name, schema_name
-            )
             stream = self._kernel_session.metadata().list_columns(
-                catalog=catalog,
-                schema_pattern=schema_pattern,
+                catalog=catalog_name,
+                schema_pattern=schema_name,
                 table_pattern=table_name,
                 column_pattern=column_name,
             )
