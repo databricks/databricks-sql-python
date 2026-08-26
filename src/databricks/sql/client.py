@@ -227,7 +227,9 @@ class Connection:
                 ```
             :param oauth_token_cache_enabled: `bool | None`, optional (default is None)
                 **Kernel-only, U2M-only.** Controls whether the kernel persists OAuth U2M
-                refresh tokens to disk (AES-256 encrypted, at `~/.config/databricks-sql-kernel/oauth/`).
+                refresh tokens to disk (AES-256 encrypted). The cache lives in the
+                OS config directory: `~/Library/Application Support/databricks-sql-kernel/oauth/`
+                on macOS, `~/.config/databricks-sql-kernel/oauth/` on Linux.
                 When unset (None, the default), the connector treats this as False and
                 forwards `token_cache_enabled=False` to the kernel, so on-disk caching is
                 disabled by default — matching the Thrift posture and avoiding silently

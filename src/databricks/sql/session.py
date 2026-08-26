@@ -187,7 +187,9 @@ class Session:
                     "identity_federation_client_id"
                 ),
                 # OAuth U2M token-cache enable/disable: controls whether the kernel
-                # persists U2M refresh tokens to disk (encrypted, at ~/.config/databricks-sql-kernel/oauth/).
+                # persists U2M refresh tokens to disk (encrypted, in the OS config dir:
+                # ~/Library/Application Support/databricks-sql-kernel/oauth/ on macOS,
+                # ~/.config/databricks-sql-kernel/oauth/ on Linux).
                 # A typed Optional[bool]; on the oauth-u2m branch omitted/None
                 # ⇒ token_cache_enabled=False (disabled, in-memory only) — the
                 # opt-in default that preserves backward compat when token
