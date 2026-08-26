@@ -128,7 +128,7 @@ to change without notice.
 | `_tls_trusted_ca_file`          | `str` |   ✅   |   ✅   | `None`        | Path to a CA bundle. Defaults to the system trust store.                   |
 | `_tls_client_cert_file`         | `str` |   ✅   |   ✅   | `None`        | Client certificate for mutual TLS.                                         |
 | `_tls_client_cert_key_file`     | `str` |   ✅   |   ✅   | `None`        | Private key for the client certificate.                                    |
-| `_tls_client_cert_key_password` | `str` |   ✅   |   ❌   | `None`        | Password for an encrypted client-key file. **Kernel rejects this** with `NotSupportedError` — the kernel has no surface for an encrypted client key today; pass an unencrypted PEM key, or use the Thrift backend. |
+| `_tls_client_cert_key_password` | `str` |   ✅   |   ❌   | `None`        | Password for an encrypted client-key file. On the kernel path this is rejected with `NotSupportedError` **only when mTLS is configured** (i.e. `_tls_client_cert_file` is also set); without mTLS it is ignored. The kernel has no surface for an encrypted client key today — pass an unencrypted PEM key, or use the Thrift backend. |
 
 ## Results & type rendering
 
