@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, Union
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
@@ -132,11 +132,28 @@ def _catalog_or_none(value: Optional[str]) -> Optional[str]:
     treats the catalog as an exact identifier for SHOW COLUMNS. ``None``
     remains the only absent filter. Other strings must be preserved as real
     filters; in particular, an empty string matches nothing just as it does
-    on the Thrift backend.
+    on the Thrift backend. Non-empty whitespace-only strings remain invalid
+    and are left for kernel validation.
     """
     if value is None or value in ("%", "*"):
         return None
     return value
+
+
+def _exact_catalog_and_pattern(
+    catalog: Optional[str], pattern: Optional[str]
+) -> Tuple[Optional[str], Optional[str]]:
+    """Adapt an empty exact catalog to an empty subordinate pattern.
+
+    At ``KERNEL_REV``, ``Identifier("")`` is invalid while
+    ``LikePattern("")`` means match-nothing. Schema and column metadata
+    take an exact catalog, so represent an empty catalog as all catalogs
+    constrained by an empty schema pattern. This preserves empty-catalog
+    semantics without passing an invalid identifier to the kernel.
+    """
+    if catalog == "":
+        return None, ""
+    return _catalog_or_none(catalog), pattern
 
 
 def _is_staging_statement(operation: str) -> bool:
@@ -928,9 +945,12 @@ class KernelDatabricksClient(DatabricksClient):
         if self._kernel_session is None:
             raise InterfaceError("get_schemas requires an open session.")
         try:
+            catalog, schema_pattern = _exact_catalog_and_pattern(
+                catalog_name, schema_name
+            )
             stream = self._kernel_session.metadata().list_schemas(
-                catalog=_catalog_or_none(catalog_name),
-                schema_pattern=schema_name,
+                catalog=catalog,
+                schema_pattern=schema_pattern,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:
@@ -985,9 +1005,12 @@ class KernelDatabricksClient(DatabricksClient):
             # row's `TABLE_CAT` is correctly attributed. Matches the
             # Thrift backend's `getColumns(null, …)` behaviour from
             # the user's perspective.
+            catalog, schema_pattern = _exact_catalog_and_pattern(
+                catalog_name, schema_name
+            )
             stream = self._kernel_session.metadata().list_columns(
-                catalog=_catalog_or_none(catalog_name),
-                schema_pattern=schema_name,
+                catalog=catalog,
+                schema_pattern=schema_pattern,
                 table_pattern=table_name,
                 column_pattern=column_name,
             )

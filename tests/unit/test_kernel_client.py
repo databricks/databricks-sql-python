@@ -1640,6 +1640,28 @@ def test_get_schemas_preserves_empty_pattern():
     list_schemas.assert_called_once_with(catalog="main", schema_pattern="")
 
 
+def test_get_schemas_empty_catalog_uses_empty_pattern():
+    """Avoid passing an empty exact ``Identifier`` to the kernel."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_schemas = c._kernel_session.metadata.return_value.list_schemas
+    list_schemas.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_schemas(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="",
+        schema_name="ignored",
+    )
+
+    list_schemas.assert_called_once_with(catalog=None, schema_pattern="")
+
+
 def test_get_tables_preserves_empty_patterns():
     c = _make_client()
     c._kernel_session = MagicMock()
@@ -1667,9 +1689,7 @@ def test_get_tables_preserves_empty_patterns():
     )
 
 
-@pytest.mark.parametrize("filter_value", ["", "   "])
-def test_get_columns_preserves_blank_filters(filter_value):
-    """Blank strings remain filters instead of becoming match-all ``None``."""
+def test_get_columns_preserves_empty_patterns():
     c = _make_client()
     c._kernel_session = MagicMock()
     list_columns = c._kernel_session.metadata.return_value.list_columns
@@ -1683,17 +1703,74 @@ def test_get_columns_preserves_blank_filters(filter_value):
         max_rows=1,
         max_bytes=1,
         cursor=cursor,
-        catalog_name=filter_value,
-        schema_name=filter_value,
-        table_name=filter_value,
-        column_name=filter_value,
+        catalog_name="main",
+        schema_name="",
+        table_name="",
+        column_name="",
     )
 
     list_columns.assert_called_once_with(
-        catalog=filter_value,
-        schema_pattern=filter_value,
-        table_pattern=filter_value,
-        column_pattern=filter_value,
+        catalog="main",
+        schema_pattern="",
+        table_pattern="",
+        column_pattern="",
+    )
+
+
+def test_get_columns_empty_catalog_uses_empty_pattern():
+    """An empty catalog matches nothing without constructing ``Identifier("")``."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_columns = c._kernel_session.metadata.return_value.list_columns
+    list_columns.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="",
+        schema_name="ignored",
+        table_name="table",
+        column_name="column",
+    )
+
+    list_columns.assert_called_once_with(
+        catalog=None,
+        schema_pattern="",
+        table_pattern="table",
+        column_pattern="column",
+    )
+
+
+def test_get_columns_preserves_whitespace_for_kernel_validation():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_columns = c._kernel_session.metadata.return_value.list_columns
+    list_columns.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="   ",
+        schema_name="   ",
+        table_name="   ",
+        column_name="   ",
+    )
+
+    list_columns.assert_called_once_with(
+        catalog="   ",
+        schema_pattern="   ",
+        table_pattern="   ",
+        column_pattern="   ",
     )
 
 
