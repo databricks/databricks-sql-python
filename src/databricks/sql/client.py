@@ -113,20 +113,29 @@ TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ = "REPEATABLE_READ"
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily resolve the Thrift backend class as a module attribute.
+    """Lazily resolve Thrift-related names that ``client.py`` used to expose as
+    real top-level imports.
 
-    ``client.py`` itself never instantiates ``ThriftDatabricksClient`` (the
-    backend is chosen in ``Session.open``), but the name is exposed here as a
-    module attribute so it can be resolved without importing the Apache Thrift
-    ``thrift`` package at module load -- which is what keeps the SEA/kernel
-    connect path Thrift-free (see ``test_lazy_thrift_import``). It also
-    preserves the long-standing test seam
-    ``patch("databricks.sql.client.ThriftDatabricksClient")``.
+    ``client.py`` itself never instantiates these (the backend is chosen in
+    ``Session.open``), but they are resolved here as module attributes so
+    ``from databricks.sql.client import <name>`` keeps working for any existing
+    caller -- and the ``patch("databricks.sql.client.ThriftDatabricksClient")``
+    test seam is preserved -- without importing the Apache Thrift ``thrift``
+    package at module load, which is what keeps the SEA/kernel connect path
+    Thrift-free (see ``test_lazy_thrift_import``).
     """
     if name == "ThriftDatabricksClient":
         from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
         return ThriftDatabricksClient
+    if name == "ThriftResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
+        return ThriftResultSet
+    if name in ("TOpenSessionResp", "TSparkParameter", "TOperationState"):
+        from databricks.sql.thrift_api.TCLIService import ttypes
+
+        return getattr(ttypes, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

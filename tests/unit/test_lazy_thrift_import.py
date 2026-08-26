@@ -21,25 +21,76 @@ import textwrap
 
 import pytest
 
+# Sentinel exit codes emitted by the child *only after* the import completes,
+# so an interpreter crash / uncaught exception (Python's generic exit code 1)
+# can never be misread as a definitive "thrift (not) loaded" answer.
+_EXIT_IMPORTED_NO_THRIFT = 10
+_EXIT_IMPORTED_WITH_THRIFT = 11
+_EXIT_IMPORT_FAILED = 12
 
-def _thrift_loaded_after_importing(module_name: str) -> bool:
-    """Import ``module_name`` in a clean subprocess and report whether the
-    top-level ``thrift`` package ended up in ``sys.modules``."""
+
+class _ImportProbeResult:
+    """Outcome of importing a module in a clean subprocess."""
+
+    def __init__(self, returncode: int, stderr: str):
+        self.returncode = returncode
+        self.stderr = stderr
+
+    @property
+    def imported(self) -> bool:
+        return self.returncode in (
+            _EXIT_IMPORTED_NO_THRIFT,
+            _EXIT_IMPORTED_WITH_THRIFT,
+        )
+
+    @property
+    def thrift_loaded(self) -> bool:
+        return self.returncode == _EXIT_IMPORTED_WITH_THRIFT
+
+    @property
+    def import_failed(self) -> bool:
+        return self.returncode == _EXIT_IMPORT_FAILED
+
+
+def _probe_import(module_name: str) -> _ImportProbeResult:
+    """Import ``module_name`` in a clean subprocess and report, via a dedicated
+    sentinel exit code, whether the top-level ``thrift`` package ended up in
+    ``sys.modules`` -- distinguishing that from an import failure (e.g. a
+    missing optional dependency such as pyarrow), which is reported separately
+    rather than being conflated with "thrift was imported"."""
     script = textwrap.dedent(
         f"""
         import sys
-        import {module_name}  # noqa: F401
-        # Exit code 1 == thrift was imported, 0 == it was not.
-        sys.exit(1 if "thrift" in sys.modules else 0)
+
+        try:
+            import {module_name}  # noqa: F401
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            sys.exit({_EXIT_IMPORT_FAILED})
+
+        sys.exit(
+            {_EXIT_IMPORTED_WITH_THRIFT}
+            if "thrift" in sys.modules
+            else {_EXIT_IMPORTED_NO_THRIFT}
+        )
         """
     )
-    result = subprocess.run([sys.executable, "-c", script])
-    if result.returncode not in (0, 1):
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode not in (
+        _EXIT_IMPORTED_NO_THRIFT,
+        _EXIT_IMPORTED_WITH_THRIFT,
+        _EXIT_IMPORT_FAILED,
+    ):
         raise AssertionError(
-            f"subprocess importing {module_name} failed with exit code "
-            f"{result.returncode}"
+            f"subprocess importing {module_name!r} exited with unexpected code "
+            f"{proc.returncode}. stderr:\n{proc.stderr}"
         )
-    return result.returncode == 1
+    return _ImportProbeResult(proc.returncode, proc.stderr)
 
 
 # Modules on the connect()/execute() path that must stay Thrift-free so the
@@ -69,7 +120,21 @@ def test_module_does_not_import_thrift(module_name):
     This is what unblocks callers (e.g. Buck-based builds) that ship their own
     ``thrift`` package and use only the SEA or kernel backend.
     """
-    assert not _thrift_loaded_after_importing(module_name), (
+    result = _probe_import(module_name)
+
+    if result.import_failed:
+        # A module that can't even be imported in this environment (typically a
+        # missing *optional* dependency, e.g. pyarrow in the "default deps" CI
+        # job) can't leak thrift. Skip rather than fail so this test stays
+        # focused on the thrift invariant and doesn't double as an
+        # optional-dependency presence check.
+        pytest.skip(
+            f"{module_name!r} could not be imported in this environment "
+            f"(likely a missing optional dependency); import error:\n"
+            f"{result.stderr}"
+        )
+
+    assert not result.thrift_loaded, (
         f"Importing {module_name!r} pulled in the top-level 'thrift' package. "
         f"Something on this import chain grew a module-level "
         f"'from databricks.sql.thrift_api...' / 'import thrift' statement (or a "
@@ -83,8 +148,17 @@ def test_thrift_backend_still_imports_thrift():
     """Sanity check the counterpart invariant: the Thrift backend legitimately
     depends on the Thrift runtime, so it must still import it. This guards
     against a future 'fix' that hides thrift so aggressively the Thrift path
-    breaks."""
-    assert _thrift_loaded_after_importing("databricks.sql.backend.thrift_backend"), (
+    breaks.
+
+    A failure to import the module (as opposed to importing it without thrift)
+    is surfaced explicitly rather than being treated as a pass."""
+    result = _probe_import("databricks.sql.backend.thrift_backend")
+
+    assert result.imported, (
+        "The Thrift backend could not be imported at all -- the Thrift code "
+        f"path is broken. Import error:\n{result.stderr}"
+    )
+    assert result.thrift_loaded, (
         "The Thrift backend no longer imports the 'thrift' package; the Thrift "
         "code path is likely broken."
     )
