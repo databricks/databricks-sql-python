@@ -460,6 +460,14 @@ def kernel_auth_kwargs(
                 else list(PYSQL_OAUTH_REDIRECT_PORT_RANGE)
             ),
             "oauth_scopes": scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES),
+            # OAuth U2M on-disk token cache. A typed Optional[bool], like the
+            # connector's other boolean options; only a real ``True`` enables
+            # it. The kernel's own default is *enabled*, so unset (None) must be
+            # forwarded as an explicit ``False`` — disabled, in-memory only —
+            # matching the Thrift posture so moving persistence control to the
+            # kernel never silently starts writing tokens to disk. Opt-in is
+            # therefore an explicit ``oauth_token_cache_enabled=True``.
+            "token_cache_enabled": opts.get("oauth_token_cache_enabled") is True,
         }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
