@@ -235,7 +235,7 @@ class Connection:
                 When True, enables persistent on-disk token cache; when False (or unset),
                 tokens are held in memory only and the user must re-authenticate when the
                 process restarts.
-                Has no effect on Thrift or SEA backends, which maintain their own token
+                Has no effect on the Thrift backend, which maintains its own token
                 lifecycle via `experimental_oauth_persistence`. This parameter is distinct
                 from the Thrift-only `experimental_oauth_persistence` — this controls the
                 kernel's built-in encrypted storage, whereas `experimental_oauth_persistence`
