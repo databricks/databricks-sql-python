@@ -332,11 +332,6 @@ class KernelDatabricksClient(DatabricksClient):
             # Translate the connector's ``_retry_*`` kwargs into the
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
-            request_timeout_kwargs: Dict[str, Any] = {}
-            if self._request_timeout_secs is not None:
-                request_timeout_kwargs["request_timeout_secs"] = (
-                    self._request_timeout_secs
-                )
             # Forward caller / connector HTTP headers. The kernel applies
             # them on every request; a caller ``User-Agent`` is appended
             # to the kernel's base UA. Only pass the kwarg when there's
@@ -376,10 +371,10 @@ class KernelDatabricksClient(DatabricksClient):
                 # backend's surface (interval columns arrive as
                 # strings).
                 intervals_as_string=True,
+                request_timeout_secs=self._request_timeout_secs,
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,
-                **request_timeout_kwargs,
                 **http_headers_kwargs,
             )
         except Exception as exc:

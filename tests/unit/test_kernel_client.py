@@ -365,10 +365,7 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
 
     c.open_session(session_configuration=None, catalog=None, schema=None)
 
-    if timeout is None:
-        assert "request_timeout_secs" not in captured
-    else:
-        assert captured["request_timeout_secs"] == timeout
+    assert captured["request_timeout_secs"] == timeout
 
 
 def test_execute_command_forwards_parameters_to_bind_param():
