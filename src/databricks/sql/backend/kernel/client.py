@@ -47,11 +47,18 @@ from databricks.sql.exc import (
     NotSupportedError,
     ProgrammingError,
 )
-from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
+
+    # Type-annotation-only import (deferred by ``from __future__ import
+    # annotations``). ``execute_command`` accepts the Thrift-shaped
+    # ``TSparkParameter`` for interface compatibility and forwards it to
+    # ``bind_tspark_params``, which only reads its attributes; the kernel
+    # backend never imports the Apache Thrift ``thrift`` package. See
+    # ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
 

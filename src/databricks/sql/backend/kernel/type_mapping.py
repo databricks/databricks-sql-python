@@ -21,13 +21,19 @@ binding without an intermediate Python-typed round-trip.
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 import pyarrow
 
 from databricks.sql.backend.sea.utils.conversion import SqlType
 from databricks.sql.exc import NotSupportedError
-from databricks.sql.thrift_api.TCLIService import ttypes
+
+if TYPE_CHECKING:
+    # Type-annotation-only import (deferred by ``from __future__ import
+    # annotations``). ``bind_tspark_params`` only reads ``TSparkParameter``
+    # attributes (duck-typed) at runtime, so the kernel backend never imports
+    # the Apache Thrift ``thrift`` package. See ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService import ttypes
 
 # Type names that the connector emits as compound TSparkParameter
 # shapes (payload on ``arguments``, not ``value``). The kernel's

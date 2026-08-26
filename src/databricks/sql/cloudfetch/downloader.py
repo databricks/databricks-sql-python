@@ -1,16 +1,25 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import lz4.frame
 import time
 from databricks.sql.common.http import HttpMethod
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.event import StatementType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
+if TYPE_CHECKING:
+    # Imported for type annotations only. ``from __future__ import annotations``
+    # makes every annotation a string, so this import is never evaluated at
+    # runtime -- which keeps the (Apache Thrift) ``thrift`` package out of the
+    # cloud-fetch code path used by the SEA and kernel backends. See the
+    # ``test_lazy_thrift_import`` regression test.
+    from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
 

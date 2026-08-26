@@ -1,8 +1,7 @@
 import logging
 import re
-from typing import Dict, Tuple, List, Optional, Any, Type
+from typing import Dict, Tuple, List, Optional, Any, Type, TYPE_CHECKING
 
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider
@@ -10,14 +9,36 @@ from databricks.sql.auth.common import ClientContext
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
-from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
 
+if TYPE_CHECKING:
+    from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+
 logger = logging.getLogger(__name__)
+
+
+# The backend client classes are resolved lazily (PEP 562) rather than imported
+# at module load. ``ThriftDatabricksClient`` pulls in the Apache Thrift
+# ``thrift`` package, so importing it eagerly would drag ``thrift`` into the
+# SEA and kernel connect paths (breaking build systems that ship their own
+# ``thrift``, e.g. Buck). Exposing them as module attributes -- rather than as
+# function-local imports inside ``open`` -- also keeps the long-standing test
+# seam ``patch("databricks.sql.session.ThriftDatabricksClient")`` working.
+# See ``test_lazy_thrift_import``.
+def __getattr__(name: str) -> Any:
+    if name == "ThriftDatabricksClient":
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+
+        return ThriftDatabricksClient
+    if name == "SeaDatabricksClient":
+        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+
+        return SeaDatabricksClient
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class Session:
@@ -244,13 +265,19 @@ class Session:
                 request_timeout_secs=kwargs.get("_socket_timeout"),
             )
 
+        # These reference the lazily-resolved module attributes defined via
+        # ``__getattr__`` above (or a test's ``patch(...)`` of them), so neither
+        # backend class -- and in particular ``thrift`` -- is imported until the
+        # branch that actually needs it runs.
+        import databricks.sql.session as _session_module
+
         databricks_client_class: Type[DatabricksClient]
         if self.use_sea:
             logger.debug("Creating SEA backend client")
-            databricks_client_class = SeaDatabricksClient
+            databricks_client_class = _session_module.SeaDatabricksClient
         else:
             logger.debug("Creating Thrift backend client")
-            databricks_client_class = ThriftDatabricksClient
+            databricks_client_class = _session_module.ThriftDatabricksClient
 
         common_args = {
             "server_hostname": server_hostname,
@@ -354,6 +381,12 @@ class Session:
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
+        # Function-local import: the protocol-version constant lives in the
+        # Thrift-generated ttypes, but this check only ever runs with a
+        # Thrift-negotiated protocol version, so deferring keeps ``thrift`` out
+        # of the SEA/kernel load path.
+        from databricks.sql.thrift_api.TCLIService import ttypes
+
         if (
             protocolVersion
             and protocolVersion >= ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8

@@ -20,10 +20,16 @@ from databricks.sql.backend.sea.utils.constants import (
     MetadataCommands,
 )
 from databricks.sql.backend.sea.utils.normalize import normalize_sea_type_to_thrift
-from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
+
+    # Type-annotation-only import (deferred by ``from __future__ import
+    # annotations``). ``execute_command`` accepts the Thrift-shaped
+    # ``TSparkParameter`` for interface compatibility, but only reads its
+    # attributes (duck-typed) at runtime, so the SEA backend never imports the
+    # Apache Thrift ``thrift`` package. See ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService import ttypes
 
 from databricks.sql.backend.sea.result_set import SeaResultSet
 

@@ -1,11 +1,21 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
 import logging
 
 from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
 from databricks.sql.telemetry.models.enums import StatementType
-from databricks.sql.thrift_api.TCLIService import ttypes
+
+if TYPE_CHECKING:
+    # Type-annotation-only import (evaluated lazily thanks to
+    # ``from __future__ import annotations``). The runtime uses of ``ttypes``
+    # in this module are function-local imports inside the Thrift-only code
+    # paths (``from_thrift_state``, ``to_thrift_handle``,
+    # ``to_operation_handle``), so importing this module never pulls in the
+    # Apache Thrift ``thrift`` package. See ``test_lazy_thrift_import``.
+    from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +69,11 @@ class CommandState(Enum):
             - CLOSED_STATE -> CLOSED
             - CANCELED_STATE -> CANCELLED
         """
+
+        # Function-local import: this classmethod is only ever called from the
+        # Thrift backend, so deferring the import keeps ``thrift`` out of the
+        # SEA/kernel load path.
+        from databricks.sql.thrift_api.TCLIService import ttypes
 
         if state in (
             ttypes.TOperationState.INITIALIZED_STATE,

@@ -1,19 +1,44 @@
+from __future__ import annotations
+
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Optional, Sequence, Any
+from typing import Optional, Sequence, Any, TYPE_CHECKING
 
 from databricks.sql.exc import NotSupportedError
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkParameter,
-    TSparkParameterValue,
-    TSparkParameterValueArg,
+
+if TYPE_CHECKING:
+    # Type-annotation-only imports. ``from __future__ import annotations`` keeps
+    # these out of the runtime import graph; the ``TSparkParameter*`` objects
+    # are constructed via function-local imports inside the ``as_tspark_param``
+    # / ``_tspark_*`` helpers below, which only run on the Thrift execute path.
+    # This keeps the Apache Thrift ``thrift`` package out of the SEA/kernel
+    # load path (see ``test_lazy_thrift_import``).
+    from databricks.sql.thrift_api.TCLIService.ttypes import (
+        TSparkParameter,
+        TSparkParameterValue,
+        TSparkParameterValueArg,
+    )
+
+from typing import Dict, List, Union
+
+# Names historically re-exported from this module that actually live in the
+# Thrift-generated ``ttypes``. They are resolved lazily via ``__getattr__``
+# (PEP 562) so ``from databricks.sql.parameters.native import TSparkParameter``
+# keeps working for existing callers without importing the Apache Thrift
+# ``thrift`` package at module load -- which is what keeps the SEA/kernel path
+# Thrift-free. See ``test_lazy_thrift_import``.
+_LAZY_THRIFT_REEXPORTS = frozenset(
+    {"TSparkParameter", "TSparkParameterValue", "TSparkParameterValueArg"}
 )
 
-import datetime
-import decimal
-from enum import Enum, auto
-from typing import Dict, List, Union
+
+def __getattr__(name: str) -> Any:
+    if name in _LAZY_THRIFT_REEXPORTS:
+        from databricks.sql.thrift_api.TCLIService import ttypes
+
+        return getattr(ttypes, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class ParameterApproach(Enum):
@@ -98,6 +123,8 @@ class DbsqlParameterBase:
     def as_tspark_param(self, named: bool) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
+        from databricks.sql.thrift_api.TCLIService.ttypes import TSparkParameter
+
         tsp = TSparkParameter(value=self._tspark_param_value(), type=self._cast_expr())
 
         if named:
@@ -108,10 +135,18 @@ class DbsqlParameterBase:
         return tsp
 
     def _tspark_param_value(self):
+        from databricks.sql.thrift_api.TCLIService.ttypes import (
+            TSparkParameterValue,
+        )
+
         return TSparkParameterValue(stringValue=str(self.value))
 
     def _tspark_value_arg(self):
         """Returns a TSparkParameterValueArg object that can be passed to the DBR thrift server."""
+        from databricks.sql.thrift_api.TCLIService.ttypes import (
+            TSparkParameterValueArg,
+        )
+
         return TSparkParameterValueArg(value=str(self.value), type=self._cast_expr())
 
     def _cast_expr(self):
@@ -470,6 +505,8 @@ class ArrayParameter(DbsqlParameterBase):
     def as_tspark_param(self, named: bool = False) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
+        from databricks.sql.thrift_api.TCLIService.ttypes import TSparkParameter
+
         tsp = TSparkParameter(type=self._cast_expr())
         tsp.arguments = [val._tspark_value_arg() for val in self.value]
 
@@ -482,6 +519,10 @@ class ArrayParameter(DbsqlParameterBase):
 
     def _tspark_value_arg(self):
         """Returns a TSparkParameterValueArg object that can be passed to the DBR thrift server."""
+        from databricks.sql.thrift_api.TCLIService.ttypes import (
+            TSparkParameterValueArg,
+        )
+
         tva = TSparkParameterValueArg(type=self._cast_expr())
         tva.arguments = [val._tspark_value_arg() for val in self.value]
         return tva
@@ -519,6 +560,8 @@ class MapParameter(DbsqlParameterBase):
     def as_tspark_param(self, named: bool = False) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
+        from databricks.sql.thrift_api.TCLIService.ttypes import TSparkParameter
+
         tsp = TSparkParameter(type=self._cast_expr())
         tsp.arguments = [val._tspark_value_arg() for val in self.value]
         if named:
@@ -530,6 +573,10 @@ class MapParameter(DbsqlParameterBase):
 
     def _tspark_value_arg(self):
         """Returns a TSparkParameterValueArg object that can be passed to the DBR thrift server."""
+        from databricks.sql.thrift_api.TCLIService.ttypes import (
+            TSparkParameterValueArg,
+        )
+
         tva = TSparkParameterValueArg(type=self._cast_expr())
         tva.arguments = [val._tspark_value_arg() for val in self.value]
         return tva
