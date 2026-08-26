@@ -188,9 +188,12 @@ class Session:
                 ),
                 # OAuth U2M token-cache enable/disable: controls whether the kernel
                 # persists U2M refresh tokens to disk (encrypted, at ~/.config/databricks-sql-kernel/oauth/).
-                # Omitted ⇒ kernel default (enabled); False ⇒ in-memory only.
+                # Coerced via _coerce_bool on the oauth-u2m branch, so omitted/None
+                # ⇒ token_cache_enabled=False (disabled, in-memory only) — the
+                # opt-in default that preserves backward compat when token
+                # persistence moves to the kernel path; True ⇒ on-disk persistence.
                 # This is forwarded to the kernel's pyo3 Session as token_cache_enabled
-                # on the oauth-u2m auth branch only, ensuring backward compat when moved to the kernel path.
+                # on the oauth-u2m auth branch only.
                 "oauth_token_cache_enabled": kwargs.get("oauth_token_cache_enabled"),
                 # Azure Entra SP credentials for the azure-sp-m2m path. The
                 # kernel owns Azure resolution (endpoint/scope/tenant discovery),

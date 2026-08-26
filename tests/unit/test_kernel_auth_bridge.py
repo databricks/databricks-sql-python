@@ -620,6 +620,35 @@ class TestKernelOAuthU2M:
         )
         assert kwargs["token_cache_enabled"] is True
 
+    @pytest.mark.parametrize(
+        "raw_value",
+        ["False", "false", "0", "no", "off", "", "  ", "nope"],
+    )
+    def test_u2m_token_cache_enabled_falsey_string_stays_false(self, raw_value):
+        # A string DSN/env value that reads as falsey (e.g. "False") must NOT
+        # enable on-disk persistence: bool("False") is True, so the flag is
+        # coerced via _coerce_bool rather than bool().
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_token_cache_enabled": raw_value,
+            },
+        )
+        assert kwargs["token_cache_enabled"] is False
+
+    @pytest.mark.parametrize("raw_value", ["True", "true", "1", "yes", "on"])
+    def test_u2m_token_cache_enabled_truthy_string_enables(self, raw_value):
+        # An explicit truthy string DSN/env value enables persistence.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_token_cache_enabled": raw_value,
+            },
+        )
+        assert kwargs["token_cache_enabled"] is True
+
     @pytest.mark.parametrize("u2m_auth_type", ["databricks-oauth", "azure-oauth"])
     def test_u2m_token_cache_enabled_both_auth_types(self, u2m_auth_type):
         # token_cache_enabled applies to both databricks-oauth and azure-oauth U2M types.
