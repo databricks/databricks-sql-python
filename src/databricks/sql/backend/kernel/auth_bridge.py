@@ -460,16 +460,14 @@ def kernel_auth_kwargs(
                 else list(PYSQL_OAUTH_REDIRECT_PORT_RANGE)
             ),
             "oauth_scopes": scopes if scopes is not None else list(PYSQL_OAUTH_SCOPES),
-            # OAuth U2M token-cache enable/disable: when present in auth_options,
-            # forward to the kernel as token_cache_enabled on the U2M branch.
-            # Default disabled for backward compatibility when moving token
-            # persistence control to the kernel. This ensures callers must
-            # opt-in to on-disk persistence rather than silently enabling it.
-            # Coerced via _coerce_bool so a string DSN/env value like "False"
-            # is not treated as truthy (bool("False") is True).
-            "token_cache_enabled": _coerce_bool(
-                opts.get("oauth_token_cache_enabled")
-            ),
+            # OAuth U2M on-disk token cache. A typed Optional[bool], like the
+            # connector's other boolean options; only a real ``True`` enables
+            # it. The kernel's own default is *enabled*, so unset (None) must be
+            # forwarded as an explicit ``False`` — disabled, in-memory only —
+            # matching the Thrift posture so moving persistence control to the
+            # kernel never silently starts writing tokens to disk. Opt-in is
+            # therefore an explicit ``oauth_token_cache_enabled=True``.
+            "token_cache_enabled": opts.get("oauth_token_cache_enabled") is True,
         }
         if federation_client_id:
             kwargs["identity_federation_client_id"] = federation_client_id
@@ -521,28 +519,6 @@ def _coerce_redirect_port(redirect_port: Any) -> int:
             f"oauth_redirect_port must be an integer (or a string parseable as "
             f"one), got {redirect_port!r}."
         )
-
-
-def _coerce_bool(value: Any) -> bool:
-    """Coerce an opt-in boolean flag (e.g. ``oauth_token_cache_enabled``,
-    which may arrive as a string from a DSN/env) to a ``bool``.
-
-    A plain ``bool(value)`` is wrong for string inputs: ``bool("False")`` is
-    ``True``, which would silently enable on-disk token persistence whenever
-    the flag arrived as the string ``"False"``. Only genuinely truthy values
-    enable the flag: real booleans, and the usual textual/numeric truthy
-    spellings ("true"/"1"/"yes"/"on"). ``None`` (unset) and anything else
-    disable it (opt-in default)."""
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return value.strip().lower() in ("true", "1", "yes", "on")
-    if isinstance(value, (int, float)):
-        return value != 0
-    # Unknown types default to disabled rather than truthy-by-accident.
-    return False
 
 
 def _normalize_scopes(scopes: Any) -> Optional[list]:

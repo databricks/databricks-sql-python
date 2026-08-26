@@ -188,7 +188,7 @@ class Session:
                 ),
                 # OAuth U2M token-cache enable/disable: controls whether the kernel
                 # persists U2M refresh tokens to disk (encrypted, at ~/.config/databricks-sql-kernel/oauth/).
-                # Coerced via _coerce_bool on the oauth-u2m branch, so omitted/None
+                # A typed Optional[bool]; on the oauth-u2m branch omitted/None
                 # ⇒ token_cache_enabled=False (disabled, in-memory only) — the
                 # opt-in default that preserves backward compat when token
                 # persistence moves to the kernel path; True ⇒ on-disk persistence.
