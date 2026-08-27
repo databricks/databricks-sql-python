@@ -89,7 +89,6 @@ from databricks.sql.backend.kernel import client as kernel_client
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.exc import (
     DatabaseError,
-    Error,
     InterfaceError,
     NotSupportedError,
     OperationalError,
@@ -307,73 +306,35 @@ def test_open_session_rejects_double_open(monkeypatch):
         c.open_session(session_configuration=None, catalog=None, schema=None)
 
 
-def test_open_session_rejects_timestamp_as_string_true(monkeypatch):
-    session_ctor = MagicMock()
-    monkeypatch.setattr(kernel_client._kernel, "Session", session_ctor)
+def test_open_session_forwards_timestamp_as_string_verbatim(monkeypatch):
+    """The kernel/SEA path does NOT guard the Thrift-only
+    ``timestampAsString`` conf: it is forwarded to the kernel verbatim
+    (stringified) rather than rejected, since that flag has no meaning
+    on the SEA session path and nobody passes it on purpose."""
+    captured = {}
 
-    c = _make_client()
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
 
-    with pytest.raises(Error, match="timestampAsString cannot be changed"):
-        c.open_session(
-            session_configuration={
-                "spark.thriftserver.arrowBasedRowSet.timestampAsString": True
-            },
-            catalog=None,
-            schema=None,
-        )
-
-    session_ctor.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["TRUE", "True", "true"],  # ``.lower()`` normalizes case before comparison
-)
-def test_open_session_rejects_timestamp_as_string_true_case_insensitive(
-    monkeypatch, value
-):
-    """A truthy ``TIMESTAMP_AS_STRING_CONFIG`` string is rejected
-    regardless of case — the guard lower-cases before comparing."""
-    session_ctor = MagicMock()
-    monkeypatch.setattr(kernel_client._kernel, "Session", session_ctor)
-
-    c = _make_client()
-
-    with pytest.raises(Error, match="timestampAsString cannot be changed"):
-        c.open_session(
-            session_configuration={
-                "spark.thriftserver.arrowBasedRowSet.timestampAsString": value
-            },
-            catalog=None,
-            schema=None,
-        )
-
-    session_ctor.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["false", "False", "FALSE"],  # a valid pin must NOT be rejected, any case
-)
-def test_open_session_accepts_timestamp_as_string_false(monkeypatch, value):
-    """A legitimate ``TIMESTAMP_AS_STRING_CONFIG = "false"`` pin (any
-    case) still opens the session — the guard rejects only non-false
-    overrides, so a valid config is not wrongly refused."""
-    fake_session = MagicMock()
-    fake_session.return_value.session_id = "sess-id"
     monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
 
     c = _make_client()
 
     c.open_session(
         session_configuration={
-            "spark.thriftserver.arrowBasedRowSet.timestampAsString": value
+            "spark.thriftserver.arrowBasedRowSet.timestampAsString": True
         },
         catalog=None,
         schema=None,
     )
 
-    fake_session.assert_called_once()
+    assert (
+        captured["session_conf"]["spark.thriftserver.arrowBasedRowSet.timestampAsString"]
+        == "True"
+    )
 
 
 @pytest.mark.parametrize(

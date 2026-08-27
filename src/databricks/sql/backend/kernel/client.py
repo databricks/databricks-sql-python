@@ -43,7 +43,6 @@ from databricks.sql.backend.types import (
     SessionId,
 )
 from databricks.sql.exc import (
-    Error,
     InterfaceError,
     NotSupportedError,
     ProgrammingError,
@@ -63,8 +62,6 @@ logger = logging.getLogger(__name__)
 # http_path). Forwarding either is redundant and trips the kernel's
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
-
-TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 
 # Leading verbs of SQL volume/staging statements. Detected by the
 # leading token (case-insensitive) so the kernel backend can fail loud
@@ -100,21 +97,6 @@ def _strip_leading_sql_comments(sql: str) -> str:
         else:
             break
     return sql[i:]
-
-
-def _check_session_configuration(session_configuration: Dict[str, str]) -> None:
-    # This client expects timestampAsString to be false, so do not allow overrides.
-    if (
-        session_configuration.get(TIMESTAMP_AS_STRING_CONFIG, "false").lower()
-        != "false"
-    ):
-        raise Error(
-            "Invalid session configuration: {} cannot be changed "
-            "while using the Databricks SQL connector, it must be false not {}".format(
-                TIMESTAMP_AS_STRING_CONFIG,
-                session_configuration[TIMESTAMP_AS_STRING_CONFIG],
-            )
-        )
 
 
 def _is_not_found(exc: BaseException) -> bool:
@@ -341,16 +323,12 @@ class KernelDatabricksClient(DatabricksClient):
         auth_kwargs: Dict[str, Any] = {}
         tls_kwargs: Dict[str, Any] = {}
         try:
-            if session_conf is not None:
-                # ``_check_session_configuration`` only *rejects* a non-``false``
-                # ``TIMESTAMP_AS_STRING_CONFIG`` override; unlike the Thrift backend
-                # (``thrift_backend.py``), it deliberately does NOT inject
-                # ``TIMESTAMP_AS_STRING_CONFIG = "false"`` into ``session_conf``.
-                # The kernel owns type handling natively (Arrow / complex-types),
-                # and the Thrift-specific conf may be unsupported on the SEA session
-                # path, so pinning it here would be redundant at best and rejected
-                # at worst. The divergence is intentional, not accidental.
-                _check_session_configuration(session_conf)
+            # ``session_conf`` is forwarded to the kernel verbatim. Unlike the
+            # Thrift backend (``thrift_backend.py``), the kernel/SEA path does
+            # NOT inject or validate ``timestampAsString``: the kernel owns type
+            # handling natively (Arrow / complex-types), and that flag is a
+            # Thrift-only ``ExecuteStatement`` conf that has no meaning on the
+            # SEA session path, so there is nothing to pin or guard here.
             auth_kwargs = kernel_auth_kwargs(
                 self._auth_provider,
                 self._auth_options,
