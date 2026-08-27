@@ -326,6 +326,57 @@ def test_open_session_rejects_timestamp_as_string_true(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "value",
+    ["TRUE", "True", "true"],  # ``.lower()`` normalizes case before comparison
+)
+def test_open_session_rejects_timestamp_as_string_true_case_insensitive(
+    monkeypatch, value
+):
+    """A truthy ``TIMESTAMP_AS_STRING_CONFIG`` string is rejected
+    regardless of case — the guard lower-cases before comparing."""
+    session_ctor = MagicMock()
+    monkeypatch.setattr(kernel_client._kernel, "Session", session_ctor)
+
+    c = _make_client()
+
+    with pytest.raises(Error, match="timestampAsString cannot be changed"):
+        c.open_session(
+            session_configuration={
+                "spark.thriftserver.arrowBasedRowSet.timestampAsString": value
+            },
+            catalog=None,
+            schema=None,
+        )
+
+    session_ctor.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["false", "False", "FALSE"],  # a valid pin must NOT be rejected, any case
+)
+def test_open_session_accepts_timestamp_as_string_false(monkeypatch, value):
+    """A legitimate ``TIMESTAMP_AS_STRING_CONFIG = "false"`` pin (any
+    case) still opens the session — the guard rejects only non-false
+    overrides, so a valid config is not wrongly refused."""
+    fake_session = MagicMock()
+    fake_session.return_value.session_id = "sess-id"
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+
+    c = _make_client()
+
+    c.open_session(
+        session_configuration={
+            "spark.thriftserver.arrowBasedRowSet.timestampAsString": value
+        },
+        catalog=None,
+        schema=None,
+    )
+
+    fake_session.assert_called_once()
+
+
+@pytest.mark.parametrize(
     "kwargs, expected_flag",
     [
         ({}, False),  # default → arrow-native → kernel JSON off
