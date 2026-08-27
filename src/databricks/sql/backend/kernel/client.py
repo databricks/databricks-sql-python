@@ -328,6 +328,14 @@ class KernelDatabricksClient(DatabricksClient):
         session_conf: Optional[Dict[str, str]] = None
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
+            # ``_check_session_configuration`` only *rejects* a non-``false``
+            # ``TIMESTAMP_AS_STRING_CONFIG`` override; unlike the Thrift backend
+            # (``thrift_backend.py``), it deliberately does NOT inject
+            # ``TIMESTAMP_AS_STRING_CONFIG = "false"`` into ``session_conf``.
+            # The kernel owns type handling natively (Arrow / complex-types),
+            # and the Thrift-specific conf may be unsupported on the SEA session
+            # path, so pinning it here would be redundant at best and rejected
+            # at worst. The divergence is intentional, not accidental.
             _check_session_configuration(session_conf)
         # The kwarg builds run INSIDE the try so the ``finally`` scrub
         # below always fires — including when ``kernel_auth_kwargs``
