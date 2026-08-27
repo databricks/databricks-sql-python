@@ -406,10 +406,7 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
         telemetry_options={
             "enable_telemetry": True,
             "telemetry_batch_size": 17,
-            "telemetry_flush_interval_ms": 250,
             "telemetry_circuit_breaker_enabled": False,
-            "telemetry_circuit_breaker_threshold": 9,
-            "telemetry_circuit_breaker_timeout_ms": 60000,
         },
     )
     c.open_session(session_configuration=None, catalog=None, schema=None)
@@ -428,10 +425,7 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     assert captured["process_name"] is None
     assert captured["telemetry_enabled"] is True
     assert captured["telemetry_batch_size"] == 17
-    assert captured["telemetry_flush_interval_ms"] == 250
     assert captured["telemetry_circuit_breaker_enabled"] is False
-    assert captured["telemetry_circuit_breaker_threshold"] == 9
-    assert captured["telemetry_circuit_breaker_timeout_ms"] == 60000
 
 
 def test_execute_command_forwards_parameters_to_bind_param():

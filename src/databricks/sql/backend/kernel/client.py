@@ -195,19 +195,9 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
     }
     if options.get("telemetry_batch_size") is not None:
         out["telemetry_batch_size"] = options["telemetry_batch_size"]
-    if options.get("telemetry_flush_interval_ms") is not None:
-        out["telemetry_flush_interval_ms"] = options["telemetry_flush_interval_ms"]
     if options.get("telemetry_circuit_breaker_enabled") is not None:
         out["telemetry_circuit_breaker_enabled"] = options[
             "telemetry_circuit_breaker_enabled"
-        ]
-    if options.get("telemetry_circuit_breaker_threshold") is not None:
-        out["telemetry_circuit_breaker_threshold"] = options[
-            "telemetry_circuit_breaker_threshold"
-        ]
-    if options.get("telemetry_circuit_breaker_timeout_ms") is not None:
-        out["telemetry_circuit_breaker_timeout_ms"] = options[
-            "telemetry_circuit_breaker_timeout_ms"
         ]
     return out
 

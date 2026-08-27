@@ -608,20 +608,14 @@ class TestKernelTelemetryOptionsThreading:
                 enable_telemetry=True,
                 force_enable_telemetry=False,
                 telemetry_batch_size=17,
-                telemetry_flush_interval_ms=250,
                 _telemetry_circuit_breaker_enabled=False,
-                telemetry_circuit_breaker_threshold=9,
-                telemetry_circuit_breaker_timeout_ms=60000,
             )
             try:
                 _, kwargs = mock_kernel_client.call_args
                 opts = kwargs["telemetry_options"]
                 assert opts["enable_telemetry"] is True
                 assert opts["telemetry_batch_size"] == 17
-                assert opts["telemetry_flush_interval_ms"] == 250
                 assert opts["telemetry_circuit_breaker_enabled"] is False
-                assert opts["telemetry_circuit_breaker_threshold"] == 9
-                assert opts["telemetry_circuit_breaker_timeout_ms"] == 60000
             finally:
                 conn.close()
 

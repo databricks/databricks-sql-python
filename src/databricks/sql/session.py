@@ -259,17 +259,8 @@ class Session:
             kernel_telemetry_options = {
                 "enable_telemetry": kwargs.get("enable_telemetry", True),
                 "telemetry_batch_size": kwargs.get("telemetry_batch_size"),
-                "telemetry_flush_interval_ms": kwargs.get(
-                    "telemetry_flush_interval_ms"
-                ),
                 "telemetry_circuit_breaker_enabled": kwargs.get(
                     "_telemetry_circuit_breaker_enabled"
-                ),
-                "telemetry_circuit_breaker_threshold": kwargs.get(
-                    "telemetry_circuit_breaker_threshold"
-                ),
-                "telemetry_circuit_breaker_timeout_ms": kwargs.get(
-                    "telemetry_circuit_breaker_timeout_ms"
                 ),
             }
             return KernelDatabricksClient(
