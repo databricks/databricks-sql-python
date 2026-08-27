@@ -191,7 +191,7 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
         # The Python telemetry model does not currently track process
         # name; omit it and let the kernel fill what it can derive.
         "process_name": None,
-        "telemetry_enabled": bool(options.get("enable_telemetry", True)),
+        "telemetry_enabled": bool(options.get("enable_telemetry", False)),
     }
     if options.get("telemetry_batch_size") is not None:
         out["telemetry_batch_size"] = options["telemetry_batch_size"]

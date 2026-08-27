@@ -332,6 +332,11 @@ class TestTelemetryHelper:
             is expected_kernel_telemetry_enabled
         )
 
+    def test_kernel_telemetry_enabled_defaults_false(self):
+        kernel_kwargs = self._kernel_telemetry_kwargs_for_test({})
+
+        assert kernel_kwargs["telemetry_enabled"] is False
+
 
 class TestTelemetryFactory:
     """Tests for TelemetryClientFactory lifecycle and management."""

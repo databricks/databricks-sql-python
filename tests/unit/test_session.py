@@ -619,6 +619,42 @@ class TestKernelTelemetryOptionsThreading:
             finally:
                 conn.close()
 
+    def test_telemetry_enabled_defaults_false_for_kernel_client(self):
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                opts = kwargs["telemetry_options"]
+                assert opts["enable_telemetry"] is False
+            finally:
+                conn.close()
+
 
 class TestKernelUserAgentForwarding:
     """user_agent_entry must reach the kernel on the use_kernel path —

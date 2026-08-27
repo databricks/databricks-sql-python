@@ -257,7 +257,7 @@ class Session:
             # identity at Session construction time so kernel-owned
             # telemetry can populate its system configuration.
             kernel_telemetry_options = {
-                "enable_telemetry": kwargs.get("enable_telemetry", True),
+                "enable_telemetry": kwargs.get("enable_telemetry", False),
                 "telemetry_batch_size": kwargs.get("telemetry_batch_size"),
                 "telemetry_circuit_breaker_enabled": kwargs.get(
                     "_telemetry_circuit_breaker_enabled"
