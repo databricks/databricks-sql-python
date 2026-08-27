@@ -13,6 +13,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
+from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
@@ -257,8 +258,21 @@ class Session:
             # identity at Session construction time so kernel-owned
             # telemetry can populate its system configuration.
             kernel_telemetry_options = {
+                # Intentionally defaults to False, diverging from the
+                # connector-wide True default on the Thrift/SEA path
+                # (client.py). The kernel path opts out of telemetry unless
+                # explicitly enabled; this is asserted by
+                # test_telemetry_enabled_defaults_false_for_kernel_client.
+                # Do not "fix" this back to True to match the other backends.
                 "enable_telemetry": kwargs.get("enable_telemetry", False),
-                "telemetry_batch_size": kwargs.get("telemetry_batch_size"),
+                # Match the connector's default batch size (client.py forwards
+                # the same TelemetryClientFactory.DEFAULT_BATCH_SIZE fallback)
+                # so an unset telemetry_batch_size resolves to the same value
+                # on the kernel path as on the Thrift/SEA path, rather than
+                # letting the kernel silently pick its own internal default.
+                "telemetry_batch_size": kwargs.get(
+                    "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
+                ),
                 "telemetry_circuit_breaker_enabled": kwargs.get(
                     "_telemetry_circuit_breaker_enabled"
                 ),

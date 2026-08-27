@@ -524,6 +524,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=True)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-true"
+        mock_session_instance.use_kernel = False
         mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
@@ -555,6 +556,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=False)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-false"
+        mock_session_instance.use_kernel = False
         mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
@@ -586,6 +588,7 @@ class TestTelemetryFeatureFlag:
         mock_http_request.side_effect = Exception("Network is down")
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-fail"
+        mock_session_instance.use_kernel = False
         mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
@@ -838,6 +841,7 @@ class TestConnectionParameterTelemetry:
         """Test that proxy configuration is captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-proxy"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = True
@@ -873,6 +877,7 @@ class TestConnectionParameterTelemetry:
         """Test that Azure-specific parameters are captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-azure"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = False
@@ -902,6 +907,7 @@ class TestConnectionParameterTelemetry:
         """Test that Arrow and performance parameters are captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-perf"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = True
@@ -946,6 +952,7 @@ class TestConnectionParameterTelemetry:
         )
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-fed-pat"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = federated_pat
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = False
@@ -973,6 +980,7 @@ class TestConnectionParameterTelemetry:
         """Test that CloudFlare proxy fields default to False/None (not yet supported)."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-cfproxy"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = True
