@@ -86,7 +86,7 @@ to change without notice.
 | `azure_client_id` / `azure_client_secret` / `azure_tenant_id` | `str` | ✅ | ✅ | `None` | Azure service-principal (Entra ID M2M), selected by `auth_type="azure-sp-m2m"`. On the kernel path the connector forwards these to the kernel, which owns Azure resolution (Entra v2.0 token endpoint + the Databricks-resource `.default` scope) (#919). **`azure_tenant_id` is optional on the kernel path too** — like Thrift, the kernel auto-discovers it from the workspace's `/aad/auth` redirect when omitted. |
 | `azure_workspace_resource_id`                       | `str`                |   ✅   |   ✅   | `None`                    | For `azure-sp-m2m`. When set, the SP **management token** (`X-Databricks-Azure-SP-Management-Token`) + `X-Databricks-Azure-Workspace-Resource-Id` header are sent, to authorize an SP that has an Azure RBAC role but is not a workspace member. Omit it for a workspace-member SP (the data token authenticates alone; no management token is fetched). Works on both the kernel and Thrift paths. |
 | `_use_cert_as_auth` (+ `_tls_client_cert_file`)     | `bool`               |   ✅   |   ❌   | `False`                   | Authenticate with a TLS client certificate instead of a token. Thrift-only.                                                                                    |
-| `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported; passing either raises `ValueError`.                                                                            |
+| `username` / `password`                             | `str`                |   ❌   |   ❌   | `None`                    | **Removed.** Basic auth is no longer supported. On **Thrift**, passing either raises `ValueError`; on the **kernel** path it is silently ignored (the Thrift auth provider that raises is never built).                                                                            |
 
 ## HTTP client, proxy, retries
 
@@ -118,8 +118,9 @@ to change without notice.
 
 > TLS options are assembled into a single `SSLOptions` object in `session.py`
 > and passed to **every** backend, so they are honored on both Thrift and
-> Kernel. Verification is **on by default**; you must pass `_tls_no_verify=True`
-> to disable it.
+> Kernel — with one exception: `_tls_client_cert_key_password` is **not**
+> supported on the kernel path (see below). Verification is **on by default**;
+> you must pass `_tls_no_verify=True` to disable it.
 
 | Option                          | Type  | Thrift | Kernel | Default Value | Note                                                                       |
 | ------------------------------- | ----- | :----: | :----: | ------------- | -------------------------------------------------------------------------- |
@@ -128,7 +129,7 @@ to change without notice.
 | `_tls_trusted_ca_file`          | `str` |   ✅   |   ✅   | `None`        | Path to a CA bundle. Defaults to the system trust store.                   |
 | `_tls_client_cert_file`         | `str` |   ✅   |   ✅   | `None`        | Client certificate for mutual TLS.                                         |
 | `_tls_client_cert_key_file`     | `str` |   ✅   |   ✅   | `None`        | Private key for the client certificate.                                    |
-| `_tls_client_cert_key_password` | `str` |   ✅   |   ✅   | `None`        | Password for an encrypted client-key file.                                 |
+| `_tls_client_cert_key_password` | `str` |   ✅   |   ❌   | `None`        | Password for an encrypted client-key file. On the kernel path this is rejected with `NotSupportedError` **only when mTLS is configured** (i.e. `_tls_client_cert_file` is also set); without mTLS it is ignored. The kernel has no surface for an encrypted client key today — pass an unencrypted PEM key, or use the Thrift backend. |
 
 ## Results & type rendering
 
@@ -137,10 +138,10 @@ to change without notice.
 | `use_cloud_fetch`                     | `bool` |   ✅   |   ❌   | `True`        | Download large result sets in parallel from cloud storage. The kernel manages result transport internally.    |
 | `max_download_threads`                | `int`  |   ✅   |   ❌   | `10`          | Worker threads for cloud-fetch downloads. Not forwarded to the kernel.                                        |
 | `enable_query_result_lz4_compression` | `bool` |   ✅   |   ❌   | `True`        | LZ4-compress result payloads. Not forwarded; the kernel handles compression internally.                       |
-| `_disable_pandas`                     | `bool` |   ✅   |   ❌   | `False`       | Skip the pandas-based Arrow deserialization path. Not forwarded to the kernel.                                |
+| `_disable_pandas`                     | `bool` |   ✅   |   ✅   | `False`       | Skip the pandas-based Arrow→row deserialization and materialize rows directly with PyArrow. This is a **Python-side** result-conversion toggle, not a wire option: the kernel returns results as Arrow (`RecordBatch`es) and the connector runs the *same* `_convert_arrow_table` for both backends, so the flag is honored on the kernel path too. Affects only row fetches (`fetchone`/`fetchmany`/`fetchall`); the `fetch*_arrow` methods return the Arrow table unchanged regardless of this flag. |
 | `_use_arrow_native_complex_types`     | `bool` |   ✅   |   ✅   | `True`        | Return `ARRAY`/`MAP`/`STRUCT` as native Arrow types instead of JSON strings. Forwarded to the kernel.         |
-| `_use_arrow_native_decimals`          | `bool` |   ✅   |   ❌   | `True`        | Return `DECIMAL` as a native Arrow type instead of a string. Thrift-only.                                     |
-| `_use_arrow_native_timestamps`        | `bool` |   ✅   |   ❌   | `True`        | Return `TIMESTAMP` as a native Arrow type instead of a string. Thrift-only.                                   |
+| `_use_arrow_native_decimals`          | `bool` |   ✅   |   ❌   | `True`        | Thrift wire encoding for `DECIMAL`: `True` → native Arrow `decimal128`, `False` → Arrow string. **No value-level effect**, though: the connector unconditionally re-casts the column back to `decimal128` (`convert_decimals_in_arrow_table`, `thrift_backend.py`), so both `fetchall()` and `fetchall_arrow()` yield `Decimal` / `decimal128(p,s)` either way (verified live). Not forwarded to the kernel, which always returns native Arrow decimals. |
+| `_use_arrow_native_timestamps`        | `bool` |   ✅   |   ❌   | `True`        | Thrift wire encoding for `TIMESTAMP`: `True` → native Arrow timestamp (→ Python `datetime`), `False` → Arrow string (→ Python **`str`**). **Unlike decimals there is no re-cast**, so `False` genuinely surfaces strings — and `cursor.description` still reports the type code as `'timestamp'`, a mismatch to watch for (verified live). Note the connector always also sends the `spark.thriftserver.arrowBasedRowSet.timestampAsString=false` conf, but the `timestampAsArrow=False` flag wins. Not forwarded to the kernel, which always returns native Arrow timestamps. |
 
 ## Session defaults & transactions
 
@@ -186,7 +187,7 @@ regardless of `use_kernel`.
 4. TLS-client-cert *authentication* (`_use_cert_as_auth`) — note the TLS
    *transport* options (`_tls_*`) themselves **are** honored on both backends.
 5. Result-transport tuning: `use_cloud_fetch`, `max_download_threads`,
-   `enable_query_result_lz4_compression`, `_disable_pandas`.
+   `enable_query_result_lz4_compression`.
 6. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
 7. `staging_allowed_local_path` (Volume `PUT`/`GET`).
