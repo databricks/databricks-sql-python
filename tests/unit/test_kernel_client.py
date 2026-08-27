@@ -425,7 +425,10 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     assert captured["process_name"] is None
     assert captured["telemetry_enabled"] is True
     assert captured["telemetry_batch_size"] == 17
+    assert captured["telemetry_flush_interval_ms"] == 300000
     assert captured["telemetry_circuit_breaker_enabled"] is False
+    assert captured["telemetry_circuit_breaker_threshold"] == 20
+    assert captured["telemetry_circuit_breaker_timeout_ms"] == 30000
 
 
 def test_execute_command_forwards_parameters_to_bind_param():

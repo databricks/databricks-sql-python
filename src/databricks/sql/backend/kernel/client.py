@@ -47,7 +47,14 @@ from databricks.sql.exc import (
     NotSupportedError,
     ProgrammingError,
 )
-from databricks.sql.telemetry.telemetry_client import TelemetryHelper
+from databricks.sql.telemetry.circuit_breaker_manager import (
+    MINIMUM_CALLS,
+    RESET_TIMEOUT,
+)
+from databricks.sql.telemetry.telemetry_client import (
+    TelemetryClientFactory,
+    TelemetryHelper,
+)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -192,6 +199,11 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
         # name; omit it and let the kernel fill what it can derive.
         "process_name": None,
         "telemetry_enabled": bool(options.get("enable_telemetry", True)),
+        "telemetry_flush_interval_ms": (
+            TelemetryClientFactory._flush_interval_seconds * 1000
+        ),
+        "telemetry_circuit_breaker_threshold": MINIMUM_CALLS,
+        "telemetry_circuit_breaker_timeout_ms": RESET_TIMEOUT * 1000,
     }
     if options.get("telemetry_batch_size") is not None:
         out["telemetry_batch_size"] = options["telemetry_batch_size"]
