@@ -43,6 +43,7 @@ from databricks.sql.backend.types import (
     SessionId,
 )
 from databricks.sql.exc import (
+    Error,
     InterfaceError,
     NotSupportedError,
     ProgrammingError,
@@ -62,6 +63,8 @@ logger = logging.getLogger(__name__)
 # http_path). Forwarding either is redundant and trips the kernel's
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
+
+TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 
 # Leading verbs of SQL volume/staging statements. Detected by the
 # leading token (case-insensitive) so the kernel backend can fail loud
@@ -97,6 +100,21 @@ def _strip_leading_sql_comments(sql: str) -> str:
         else:
             break
     return sql[i:]
+
+
+def _check_session_configuration(session_configuration: Dict[str, str]) -> None:
+    # This client expects timestampAsString to be false, so do not allow overrides.
+    if (
+        session_configuration.get(TIMESTAMP_AS_STRING_CONFIG, "false").lower()
+        != "false"
+    ):
+        raise Error(
+            "Invalid session configuration: {} cannot be changed "
+            "while using the Databricks SQL connector, it must be false not {}".format(
+                TIMESTAMP_AS_STRING_CONFIG,
+                session_configuration[TIMESTAMP_AS_STRING_CONFIG],
+            )
+        )
 
 
 def _is_not_found(exc: BaseException) -> bool:
@@ -310,6 +328,7 @@ class KernelDatabricksClient(DatabricksClient):
         session_conf: Optional[Dict[str, str]] = None
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
+            _check_session_configuration(session_conf)
         # The kwarg builds run INSIDE the try so the ``finally`` scrub
         # below always fires — including when ``kernel_auth_kwargs``
         # itself raises mid-build (e.g. an OAuth token-exchange failure

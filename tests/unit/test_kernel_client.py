@@ -89,6 +89,7 @@ from databricks.sql.backend.kernel import client as kernel_client
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.exc import (
     DatabaseError,
+    Error,
     InterfaceError,
     NotSupportedError,
     OperationalError,
@@ -304,6 +305,24 @@ def test_open_session_rejects_double_open(monkeypatch):
     c._kernel_session = MagicMock()  # pretend already open
     with pytest.raises(InterfaceError, match="already has an open session"):
         c.open_session(session_configuration=None, catalog=None, schema=None)
+
+
+def test_open_session_rejects_timestamp_as_string_true(monkeypatch):
+    session_ctor = MagicMock()
+    monkeypatch.setattr(kernel_client._kernel, "Session", session_ctor)
+
+    c = _make_client()
+
+    with pytest.raises(Error, match="timestampAsString cannot be changed"):
+        c.open_session(
+            session_configuration={
+                "spark.thriftserver.arrowBasedRowSet.timestampAsString": True
+            },
+            catalog=None,
+            schema=None,
+        )
+
+    session_ctor.assert_not_called()
 
 
 @pytest.mark.parametrize(
