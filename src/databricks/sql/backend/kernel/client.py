@@ -328,25 +328,29 @@ class KernelDatabricksClient(DatabricksClient):
         session_conf: Optional[Dict[str, str]] = None
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
-            # ``_check_session_configuration`` only *rejects* a non-``false``
-            # ``TIMESTAMP_AS_STRING_CONFIG`` override; unlike the Thrift backend
-            # (``thrift_backend.py``), it deliberately does NOT inject
-            # ``TIMESTAMP_AS_STRING_CONFIG = "false"`` into ``session_conf``.
-            # The kernel owns type handling natively (Arrow / complex-types),
-            # and the Thrift-specific conf may be unsupported on the SEA session
-            # path, so pinning it here would be redundant at best and rejected
-            # at worst. The divergence is intentional, not accidental.
-            _check_session_configuration(session_conf)
-        # The kwarg builds run INSIDE the try so the ``finally`` scrub
-        # below always fires — including when ``kernel_auth_kwargs``
+        # The kwarg builds — and the session-conf validation — run INSIDE
+        # the try so the ``finally`` scrub below always fires, including
+        # when the validation rejects or when ``kernel_auth_kwargs``
         # itself raises mid-build (e.g. an OAuth token-exchange failure
-        # while the M2M secret is in hand). Pre-declared empty so the
-        # ``finally`` can reference them unconditionally even on an early
-        # raise. Building here (not in ``__init__``) keeps the bearer
-        # token's in-process lifetime as short as possible.
+        # while the M2M secret is in hand). ``self._auth_options`` already
+        # holds the secret at this point (set in ``__init__``), so an
+        # early raise before the try would leave it un-scrubbed. Pre-declared
+        # empty so the ``finally`` can reference them unconditionally even
+        # on an early raise. Building here (not in ``__init__``) keeps the
+        # bearer token's in-process lifetime as short as possible.
         auth_kwargs: Dict[str, Any] = {}
         tls_kwargs: Dict[str, Any] = {}
         try:
+            if session_conf is not None:
+                # ``_check_session_configuration`` only *rejects* a non-``false``
+                # ``TIMESTAMP_AS_STRING_CONFIG`` override; unlike the Thrift backend
+                # (``thrift_backend.py``), it deliberately does NOT inject
+                # ``TIMESTAMP_AS_STRING_CONFIG = "false"`` into ``session_conf``.
+                # The kernel owns type handling natively (Arrow / complex-types),
+                # and the Thrift-specific conf may be unsupported on the SEA session
+                # path, so pinning it here would be redundant at best and rejected
+                # at worst. The divergence is intentional, not accidental.
+                _check_session_configuration(session_conf)
             auth_kwargs = kernel_auth_kwargs(
                 self._auth_provider,
                 self._auth_options,
