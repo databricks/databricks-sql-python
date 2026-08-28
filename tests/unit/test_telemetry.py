@@ -332,10 +332,17 @@ class TestTelemetryHelper:
             is expected_kernel_telemetry_enabled
         )
 
-    def test_kernel_telemetry_enabled_defaults_false(self):
+    def test_kernel_telemetry_enabled_omitted_when_unset(self):
         kernel_kwargs = self._kernel_telemetry_kwargs_for_test({})
 
-        assert kernel_kwargs["telemetry_enabled"] is False
+        assert "telemetry_enabled" not in kernel_kwargs
+
+    def test_kernel_telemetry_enabled_omitted_when_none(self):
+        kernel_kwargs = self._kernel_telemetry_kwargs_for_test(
+            {"enable_telemetry": None}
+        )
+
+        assert "telemetry_enabled" not in kernel_kwargs
 
 
 class TestTelemetryFactory:

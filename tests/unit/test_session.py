@@ -619,7 +619,7 @@ class TestKernelTelemetryOptionsThreading:
             finally:
                 conn.close()
 
-    def test_telemetry_enabled_defaults_false_for_kernel_client(self):
+    def test_telemetry_enabled_defaults_none_for_kernel_client(self):
         import sys
         import types
 
@@ -651,7 +651,7 @@ class TestKernelTelemetryOptionsThreading:
             try:
                 _, kwargs = mock_kernel_client.call_args
                 opts = kwargs["telemetry_options"]
-                assert opts["enable_telemetry"] is False
+                assert opts["enable_telemetry"] is None
             finally:
                 conn.close()
 
