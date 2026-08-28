@@ -259,7 +259,19 @@ class Session:
             # telemetry can populate its system configuration.
             kernel_telemetry_options = {
                 # Preserve the caller's explicit telemetry choice. When unset,
-                # leave it as None so the kernel applies its own default.
+                # leave it as None so the kernel owns the enable decision --
+                # this is an INTENTIONAL divergence from the Thrift/SEA path,
+                # not an oversight. There, an unset enable_telemetry defaults to
+                # True (client.py) but only actually emits when the
+                # `enableTelemetryForPythonDriver` server feature flag is on
+                # (telemetry_client.py). That feature-flag gate is Python-side
+                # and is bypassed on the kernel path (is_telemetry_enabled
+                # short-circuits to False for use_kernel), so forwarding the
+                # connector's True default here would force telemetry on without
+                # an equivalent gate. Passing None instead defers to the
+                # kernel's own default/gating, which is expected to mirror the
+                # feature-flag-gated wrapper behaviour; only an explicit caller
+                # opt-in/opt-out overrides it.
                 "enable_telemetry": kwargs.get("enable_telemetry"),
                 # Match the connector's default batch size (client.py forwards
                 # the same TelemetryClientFactory.DEFAULT_BATCH_SIZE fallback)
