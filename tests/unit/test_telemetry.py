@@ -488,6 +488,36 @@ class TestTelemetryFactory:
         assert call_arguments[0][0] == "Exception"
         assert call_arguments[0][1] == error_message
 
+    @patch(
+        "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log"
+    )
+    @patch("databricks.sql.client.Session")
+    def test_connection_failure_does_not_send_telemetry_for_kernel(
+        self, mock_session, mock_export_failure_log
+    ):
+        """
+        A use_kernel=True connection that fails to open must NOT emit a
+        wrapper-side failure log — the kernel owns telemetry, so emitting
+        here would duplicate the kernel's own failure reporting.
+        """
+
+        error_message = "Could not connect to host"
+        mock_session_instance = MagicMock()
+        mock_session_instance.is_open = False
+        mock_session_instance.open.side_effect = Exception(error_message)
+        mock_session.return_value = mock_session_instance
+
+        try:
+            sql.connect(
+                server_hostname="test-host",
+                http_path="/test-path",
+                use_kernel=True,
+            )
+        except Exception as e:
+            assert str(e) == error_message
+
+        mock_export_failure_log.assert_not_called()
+
 
 @patch("databricks.sql.client.Session")
 class TestTelemetryFeatureFlag:
