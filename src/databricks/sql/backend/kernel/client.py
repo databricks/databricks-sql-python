@@ -22,6 +22,7 @@ Phase 1 gaps documented in the integration design:
 
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 import uuid
@@ -173,10 +174,39 @@ def _is_staging_statement(operation: str) -> bool:
     return verb in _STAGING_VERBS
 
 
+def _kernel_session_accepts_kwarg(name: str) -> bool:
+    """True iff the installed ``databricks_sql_kernel.Session`` constructor
+    declares keyword ``name``.
+
+    The kernel ``Session`` is a PyO3 class with a **fixed** signature (no
+    ``**kwargs`` catch-all), so forwarding a kwarg it doesn't declare raises
+    ``TypeError`` at construction. The phase-7 identity/telemetry kwargs
+    (``driver_name`` etc.) only exist on wheels newer than the pinned
+    ``^0.2.0`` (whose ``Session`` accepts none of them), so we must gate them
+    on what the actually-installed wheel supports rather than pass them
+    unconditionally. Falls open (returns ``True``) only when the signature
+    can't be introspected, so a future non-introspectable binding still gets
+    the kwargs.
+    """
+    try:
+        params = inspect.signature(_kernel.Session).parameters
+    except (TypeError, ValueError):
+        return True
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return name in params
+
+
 def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
-    """Build phase-7 telemetry/system kwargs for ``databricks_sql_kernel.Session``."""
+    """Build phase-7 telemetry/system kwargs for ``databricks_sql_kernel.Session``.
+
+    Only kwargs the installed ``Session`` constructor actually accepts are
+    returned; on the pinned ``^0.2.0`` wheel (which predates phase 7) this is
+    empty, so ``open_session`` doesn't break with ``TypeError`` on a wheel
+    that doesn't yet know these kwargs.
+    """
     system = TelemetryHelper.get_driver_system_configuration()
-    out: Dict[str, Any] = {
+    candidates: Dict[str, Any] = {
         "driver_name": system.driver_name,
         "driver_version": system.driver_version,
         "runtime_name": system.runtime_name,
@@ -193,14 +223,18 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
         "process_name": None,
     }
     if options.get("enable_telemetry") is not None:
-        out["telemetry_enabled"] = bool(options["enable_telemetry"])
+        candidates["telemetry_enabled"] = bool(options["enable_telemetry"])
     if options.get("telemetry_batch_size") is not None:
-        out["telemetry_batch_size"] = options["telemetry_batch_size"]
+        candidates["telemetry_batch_size"] = options["telemetry_batch_size"]
     if options.get("telemetry_circuit_breaker_enabled") is not None:
-        out["telemetry_circuit_breaker_enabled"] = options[
+        candidates["telemetry_circuit_breaker_enabled"] = options[
             "telemetry_circuit_breaker_enabled"
         ]
-    return out
+    return {
+        name: value
+        for name, value in candidates.items()
+        if _kernel_session_accepts_kwarg(name)
+    }
 
 
 # ─── Client ─────────────────────────────────────────────────────────────────
