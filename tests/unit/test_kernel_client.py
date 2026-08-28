@@ -1786,15 +1786,12 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
 
 
 # ---------------------------------------------------------------------------
-# Metadata filter normalization — wildcard catalog + empty-string patterns
+# Metadata filter semantics
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("wildcard", ["%", "*", "", "   "])
-def test_get_columns_normalizes_wildcard_catalog_to_none(wildcard):
-    """``catalog_name`` of ``%``/``*``/blank → ``None`` (all-catalogs),
-    matching JDBC exact-or-all semantics and keeping the three metadata
-    methods symmetric."""
+@pytest.mark.parametrize("catalog_wildcard", ["%", "*"])
+def test_get_columns_normalizes_all_catalog_wildcard(catalog_wildcard):
     c = _make_client()
     c._kernel_session = MagicMock()
     list_columns = c._kernel_session.metadata.return_value.list_columns
@@ -1808,7 +1805,7 @@ def test_get_columns_normalizes_wildcard_catalog_to_none(wildcard):
         max_rows=1,
         max_bytes=1,
         cursor=cursor,
-        catalog_name=wildcard,
+        catalog_name=catalog_wildcard,
         schema_name="s",
         table_name="t",
         column_name="c",
@@ -1822,10 +1819,8 @@ def test_get_columns_normalizes_wildcard_catalog_to_none(wildcard):
     )
 
 
-def test_get_schemas_normalizes_blank_pattern_to_none():
-    """An empty-string schema pattern → ``None`` (match-all), mapping
-    the kernel's ``InvalidArgument``-on-``""`` to Thrift's effective
-    match-all. ``%``/``*`` stay as real LIKE wildcards on patterns."""
+def test_get_schemas_preserves_empty_pattern():
+    """An empty pattern is distinct from the absent ``None`` filter."""
     c = _make_client()
     c._kernel_session = MagicMock()
     list_schemas = c._kernel_session.metadata.return_value.list_schemas
@@ -1843,7 +1838,139 @@ def test_get_schemas_normalizes_blank_pattern_to_none():
         schema_name="",
     )
 
-    list_schemas.assert_called_once_with(catalog="main", schema_pattern=None)
+    list_schemas.assert_called_once_with(catalog="main", schema_pattern="")
+
+
+def test_get_schemas_preserves_empty_catalog():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_schemas = c._kernel_session.metadata.return_value.list_schemas
+    list_schemas.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_schemas(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="",
+        schema_name="ignored",
+    )
+
+    list_schemas.assert_called_once_with(catalog="", schema_pattern="ignored")
+
+
+def test_get_tables_preserves_empty_patterns():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_tables = c._kernel_session.metadata.return_value.list_tables
+    list_tables.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_tables(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="",
+        schema_name="",
+        table_name="",
+    )
+
+    list_tables.assert_called_once_with(
+        catalog="",
+        schema_pattern="",
+        table_pattern="",
+        table_types=None,
+    )
+
+
+def test_get_columns_preserves_empty_patterns():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_columns = c._kernel_session.metadata.return_value.list_columns
+    list_columns.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="main",
+        schema_name="",
+        table_name="",
+        column_name="",
+    )
+
+    list_columns.assert_called_once_with(
+        catalog="main",
+        schema_pattern="",
+        table_pattern="",
+        column_pattern="",
+    )
+
+
+def test_get_columns_preserves_empty_catalog():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_columns = c._kernel_session.metadata.return_value.list_columns
+    list_columns.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="",
+        schema_name="ignored",
+        table_name="table",
+        column_name="column",
+    )
+
+    list_columns.assert_called_once_with(
+        catalog="",
+        schema_pattern="ignored",
+        table_pattern="table",
+        column_pattern="column",
+    )
+
+
+def test_get_columns_preserves_whitespace_for_kernel_validation():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    list_columns = c._kernel_session.metadata.return_value.list_columns
+    list_columns.return_value = _stream_with_schema()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name="   ",
+        schema_name="   ",
+        table_name="   ",
+        column_name="   ",
+    )
+
+    list_columns.assert_called_once_with(
+        catalog="   ",
+        schema_pattern="   ",
+        table_pattern="   ",
+        column_pattern="   ",
+    )
 
 
 def test_get_schemas_keeps_wildcard_pattern():

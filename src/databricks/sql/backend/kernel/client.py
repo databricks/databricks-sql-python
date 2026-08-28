@@ -126,35 +126,9 @@ def _is_not_found(exc: BaseException) -> bool:
     )
 
 
-def _none_if_blank(value: Optional[str]) -> Optional[str]:
-    """Map an empty/whitespace-only metadata filter to ``None``
-    ("match all"), matching the Thrift backend's effective behaviour.
-
-    The kernel's ``Identifier`` / ``LikePattern`` reject ``""`` with
-    ``InvalidArgument`` (-> ``ProgrammingError``); ``None`` is the
-    kernel's canonical "match all". Applied to schema / table / column
-    *pattern* args (which otherwise keep ``%`` / ``_`` as real LIKE
-    wildcards)."""
-    if value is None:
-        return None
-    return value if value.strip() else None
-
-
 def _catalog_or_none(value: Optional[str]) -> Optional[str]:
-    """Normalise a catalog filter: ``None`` / blank / ``'%'`` / ``'*'``
-    all mean "all catalogs" -> ``None``.
-
-    This makes ``columns(catalog='%')`` behave like
-    ``tables(catalog='%')`` / ``schemas(catalog='%')`` — the kernel
-    already treats blank/``%``/``*`` as "all catalogs" for SHOW SCHEMAS
-    / SHOW TABLES (``is_null_or_wildcard``) but treats the catalog as an
-    exact identifier for SHOW COLUMNS, so the three diverged. Normalising
-    connector-side makes them symmetric. This intentionally diverges from
-    raw-Thrift literalness (Thrift treats ``%`` as a literal catalog
-    name) in favour of JDBC "catalog is exact-or-all, not a pattern" +
-    internal consistency. Catalog is the only arg normalised this way;
-    schema/table/column patterns keep ``%`` / ``*`` as LIKE wildcards."""
-    if value is None or not value.strip() or value in ("%", "*"):
+    """Map supported all-catalog wildcards to the kernel's unset filter."""
+    if value is None or value in ("%", "*"):
         return None
     return value
 
@@ -1024,7 +998,7 @@ class KernelDatabricksClient(DatabricksClient):
         try:
             stream = self._kernel_session.metadata().list_schemas(
                 catalog=_catalog_or_none(catalog_name),
-                schema_pattern=_none_if_blank(schema_name),
+                schema_pattern=schema_name,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:
@@ -1051,8 +1025,8 @@ class KernelDatabricksClient(DatabricksClient):
             # through preserves streaming for large schemas.
             stream = self._kernel_session.metadata().list_tables(
                 catalog=_catalog_or_none(catalog_name),
-                schema_pattern=_none_if_blank(schema_name),
-                table_pattern=_none_if_blank(table_name),
+                schema_pattern=schema_name,
+                table_pattern=table_name,
                 table_types=table_types if table_types else None,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
@@ -1081,9 +1055,9 @@ class KernelDatabricksClient(DatabricksClient):
             # the user's perspective.
             stream = self._kernel_session.metadata().list_columns(
                 catalog=_catalog_or_none(catalog_name),
-                schema_pattern=_none_if_blank(schema_name),
-                table_pattern=_none_if_blank(table_name),
-                column_pattern=_none_if_blank(column_name),
+                schema_pattern=schema_name,
+                table_pattern=table_name,
+                column_pattern=column_name,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
         except Exception as exc:

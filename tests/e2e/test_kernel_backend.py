@@ -356,17 +356,31 @@ def test_metadata_columns(conn):
         assert len(rows) > 0
 
 
-# ── Metadata filter normalization (batch 3) ───────────────────────
+# ── Metadata filter semantics ─────────────────────────────────────
 
 
-def test_schemas_with_empty_string_filter_matches_all(conn):
-    """An empty-string schema pattern normalizes to match-all rather
-    than raising ``ProgrammingError`` (kernel rejects ``""``) — locks
-    ``_none_if_blank`` on the pattern args."""
+def test_schemas_with_empty_string_filter_matches_nothing(conn):
+    """An empty string is a real pattern, distinct from absent ``None``."""
     with conn.cursor() as cur:
         cur.schemas(catalog_name="main", schema_name="")
-        rows = cur.fetchall()
-        assert len(rows) > 0
+        assert cur.fetchall() == []
+
+
+@pytest.mark.parametrize(
+    "empty_filter", ["schema_name", "table_name", "column_name"]
+)
+def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
+    filters = {
+        "catalog_name": "system",
+        "schema_name": "information_schema",
+        "table_name": "tables",
+        "column_name": "table_catalog",
+    }
+    filters[empty_filter] = ""
+
+    with conn.cursor() as cur:
+        cur.columns(**filters)
+        assert cur.fetchall() == []
 
 
 def test_tables_table_types_filter_is_case_insensitive(conn):
