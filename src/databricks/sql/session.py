@@ -258,13 +258,9 @@ class Session:
             # identity at Session construction time so kernel-owned
             # telemetry can populate its system configuration.
             kernel_telemetry_options = {
-                # Intentionally defaults to False, diverging from the
-                # connector-wide True default on the Thrift/SEA path
-                # (client.py). The kernel path opts out of telemetry unless
-                # explicitly enabled; this is asserted by
-                # test_telemetry_enabled_defaults_false_for_kernel_client.
-                # Do not "fix" this back to True to match the other backends.
-                "enable_telemetry": kwargs.get("enable_telemetry", False),
+                # Preserve the caller's explicit telemetry choice. When unset,
+                # leave it as None so the kernel applies its own default.
+                "enable_telemetry": kwargs.get("enable_telemetry"),
                 # Match the connector's default batch size (client.py forwards
                 # the same TelemetryClientFactory.DEFAULT_BATCH_SIZE fallback)
                 # so an unset telemetry_batch_size resolves to the same value
