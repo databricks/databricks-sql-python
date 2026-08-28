@@ -191,11 +191,9 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
         # The Python telemetry model does not currently track process
         # name; omit it and let the kernel fill what it can derive.
         "process_name": None,
-        # Defaults to False by design: the kernel path deliberately diverges
-        # from the connector-wide True default (see session.py and client.py).
-        # Telemetry is off unless explicitly enabled on this backend.
-        "telemetry_enabled": bool(options.get("enable_telemetry", False)),
     }
+    if options.get("enable_telemetry") is not None:
+        out["telemetry_enabled"] = bool(options["enable_telemetry"])
     if options.get("telemetry_batch_size") is not None:
         out["telemetry_batch_size"] = options["telemetry_batch_size"]
     if options.get("telemetry_circuit_breaker_enabled") is not None:
