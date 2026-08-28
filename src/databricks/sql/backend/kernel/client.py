@@ -184,14 +184,20 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     (``driver_name`` etc.) only exist on wheels newer than the pinned
     ``^0.2.0`` (whose ``Session`` accepts none of them), so we must gate them
     on what the actually-installed wheel supports rather than pass them
-    unconditionally. Falls open (returns ``True``) only when the signature
-    can't be introspected, so a future non-introspectable binding still gets
-    the kwargs.
+    unconditionally. Falls **closed** (returns ``False``) when the signature
+    can't be introspected: a PyO3 class only exposes ``__text_signature__``
+    (and thus an introspectable signature) when built with
+    ``#[pyo3(signature=...)]``; otherwise ``inspect.signature`` raises
+    ``ValueError``. Since the pinned ``^0.2.0`` ``Session`` accepts none of
+    these kwargs, forwarding one it doesn't declare is a hard ``TypeError`` at
+    construction that breaks every ``use_kernel=True`` connection, whereas
+    omitting one the wheel *would* have accepted only loses telemetry
+    richness — so we omit the kwarg on introspection failure.
     """
     try:
         params = inspect.signature(_kernel.Session).parameters
     except (TypeError, ValueError):
-        return True
+        return False
     if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
         return True
     return name in params

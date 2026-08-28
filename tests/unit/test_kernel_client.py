@@ -519,6 +519,57 @@ def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
     assert captured["host"] == "example.cloud.databricks.com"
 
 
+def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monkeypatch):
+    """When ``inspect.signature(_kernel.Session)`` raises (a PyO3 class built
+    without ``#[pyo3(signature=...)]`` exposes no ``__text_signature__``, so
+    ``inspect.signature`` raises ``ValueError``), the gate must fall
+    **closed** and omit every phase-7 kwarg.
+
+    Forwarding a kwarg the installed ``Session`` doesn't declare is a hard
+    ``TypeError`` at construction that breaks every ``use_kernel=True``
+    connection; omitting one it would have accepted only loses telemetry
+    richness. The fixed-signature fake in the sibling test always introspects,
+    so this test uses a stand-in whose signature genuinely can't be read to
+    cover the real non-introspectable PyO3 binding.
+    """
+
+    class NonIntrospectableSession:
+        # Mirrors a PyO3 class with no exposed __text_signature__:
+        # inspect.signature() raises ValueError on it.
+        def __init__(self, *args, **kwargs):  # pragma: no cover - never called
+            pass
+
+    def raise_value_error(_obj):
+        raise ValueError("no signature found for builtin type")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", NonIntrospectableSession)
+    monkeypatch.setattr(kernel_client.inspect, "signature", raise_value_error)
+
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is False
+
+    monkeypatch.setattr(
+        kernel_client.TelemetryHelper,
+        "get_driver_system_configuration",
+        lambda: types.SimpleNamespace(
+            driver_name="Databricks SQL Python Connector",
+            driver_version="1.2.3",
+            runtime_name="Python 3.12.0",
+            runtime_version="3.12.0",
+            runtime_vendor="CPython",
+            os_name="Linux",
+            os_version="6.1",
+            os_arch="x86_64",
+            client_app_name=None,
+            locale_name="en_US",
+            char_set_encoding="utf-8",
+        ),
+    )
+    kwargs = kernel_client._kernel_telemetry_kwargs(
+        {"enable_telemetry": True, "telemetry_batch_size": 17}
+    )
+    assert kwargs == {}, f"expected no phase-7 kwargs when signature unreadable, got {kwargs}"
+
+
 def test_execute_command_forwards_parameters_to_bind_param():
     """``execute_command(parameters=[...])`` routes each parameter
     through ``bind_tspark_params`` onto the kernel statement before
