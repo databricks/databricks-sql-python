@@ -254,7 +254,7 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional catalog name filter
+            catalog_name: Optional catalog name pattern to filter by
             schema_name: Optional schema name pattern to filter by
 
         Returns:
@@ -289,7 +289,8 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional catalog name filter
+            catalog_name: Optional catalog name pattern to filter by
+                if catalog_name is None, we fetch across all catalogs
             schema_name: Optional schema name pattern to filter by
                 if schema_name is None, we fetch across all schemas
             table_name: Optional table name pattern to filter by
@@ -327,7 +328,7 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional catalog name filter
+            catalog_name: Optional catalog name pattern to filter by
             schema_name: Optional schema name pattern to filter by
             table_name: Optional table name pattern to filter by
                 if table_name is None, we fetch across all tables
