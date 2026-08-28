@@ -178,6 +178,16 @@ class Connection:
                 ``ImportError``. Supports PAT, OAuth M2M, and OAuth
                 U2M auth, and native (positional and named) parameter
                 binding. Mutually exclusive with ``use_sea``.
+
+                Telemetry note: on the kernel path telemetry is
+                strictly opt-in. An explicit ``enable_telemetry=True``
+                turns telemetry on unconditionally; it is NOT gated by
+                the server-side ``enableTelemetryForPythonDriver``
+                feature flag that applies on the Thrift/SEA paths. When
+                ``enable_telemetry`` is unset the kernel owns the enable
+                decision. This is an intentional divergence from the
+                Thrift/SEA paths, where an explicit ``True`` can still
+                be suppressed by the feature flag.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
