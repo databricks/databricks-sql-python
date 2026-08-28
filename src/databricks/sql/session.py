@@ -281,14 +281,23 @@ class Session:
                 "telemetry_batch_size": kwargs.get(
                     "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
                 ),
-                # Match the connector-wide True default (auth/common.py:55,
-                # where ClientContext defaults telemetry_circuit_breaker_enabled
-                # to True on the Thrift/SEA path). Forwarding an explicit default
-                # here keeps parity with telemetry_batch_size above, rather than
-                # passing None and letting the kernel silently pick its own
-                # internal default.
+                # Preserve the caller's explicit circuit-breaker choice. When
+                # unset, leave it as None so the kernel owns the decision --
+                # mirroring the enable_telemetry handling above rather than
+                # forcing a default. This is deliberately NOT defaulted to True:
+                # although ClientContext's signature default is True
+                # (auth/common.py:55), the Thrift/SEA path never reaches it --
+                # build_client_context (utils.py:1018) always passes
+                # _telemetry_circuit_breaker_enabled explicitly (None when the
+                # caller leaves it unset), and ClientContext coerces it with
+                # bool(None) -> False (auth/common.py:89). So the *effective*
+                # Thrift/SEA default when unset is False, not True; forwarding
+                # True here would turn the circuit breaker on for an
+                # unconfigured connection while Thrift/SEA leaves it off.
+                # Passing None instead defers to the kernel's own default;
+                # only an explicit caller value overrides it.
                 "telemetry_circuit_breaker_enabled": kwargs.get(
-                    "_telemetry_circuit_breaker_enabled", True
+                    "_telemetry_circuit_breaker_enabled"
                 ),
             }
             return KernelDatabricksClient(
