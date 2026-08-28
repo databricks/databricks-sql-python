@@ -273,8 +273,14 @@ class Session:
                 "telemetry_batch_size": kwargs.get(
                     "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
                 ),
+                # Match the connector-wide True default (auth/common.py:55,
+                # where ClientContext defaults telemetry_circuit_breaker_enabled
+                # to True on the Thrift/SEA path). Forwarding an explicit default
+                # here keeps parity with telemetry_batch_size above, rather than
+                # passing None and letting the kernel silently pick its own
+                # internal default.
                 "telemetry_circuit_breaker_enabled": kwargs.get(
-                    "_telemetry_circuit_breaker_enabled"
+                    "_telemetry_circuit_breaker_enabled", True
                 ),
             }
             return KernelDatabricksClient(
