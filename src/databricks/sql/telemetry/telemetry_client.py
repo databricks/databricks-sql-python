@@ -122,6 +122,9 @@ class TelemetryHelper:
 
     @staticmethod
     def is_telemetry_enabled(connection: "Connection") -> bool:
+        if getattr(connection.session, "use_kernel", False):
+            return False
+
         # Fast path: force enabled - skip feature flag fetch entirely
         if connection.force_enable_telemetry:
             return True

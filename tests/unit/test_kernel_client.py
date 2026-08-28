@@ -368,6 +368,208 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     assert captured["request_timeout_secs"] == timeout
 
 
+def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
+    """Kernel telemetry phase 7 added binding/runtime identity and
+    telemetry config kwargs to ``databricks_sql_kernel.Session``."""
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    monkeypatch.setattr(
+        kernel_client.TelemetryHelper,
+        "get_driver_system_configuration",
+        lambda: types.SimpleNamespace(
+            driver_name="Databricks SQL Python Connector",
+            driver_version="1.2.3",
+            runtime_name="Python 3.12.0",
+            runtime_version="3.12.0",
+            runtime_vendor="CPython",
+            os_name="Linux",
+            os_version="6.1",
+            os_arch="x86_64",
+            client_app_name=None,
+            locale_name="en_US",
+            char_set_encoding="utf-8",
+        ),
+    )
+
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        telemetry_options={
+            "enable_telemetry": True,
+            "telemetry_batch_size": 17,
+            "telemetry_circuit_breaker_enabled": False,
+        },
+    )
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["driver_name"] == "Databricks SQL Python Connector"
+    assert captured["driver_version"] == "1.2.3"
+    assert captured["runtime_name"] == "Python 3.12.0"
+    assert captured["runtime_version"] == "3.12.0"
+    assert captured["runtime_vendor"] == "CPython"
+    assert captured["os_name"] == "Linux"
+    assert captured["os_version"] == "6.1"
+    assert captured["os_arch"] == "x86_64"
+    assert captured["client_app_name"] is None
+    assert captured["locale_name"] == "en_US"
+    assert captured["char_set_encoding"] == "utf-8"
+    assert captured["process_name"] is None
+    assert captured["telemetry_enabled"] is True
+    assert captured["telemetry_batch_size"] == 17
+    assert captured["telemetry_circuit_breaker_enabled"] is False
+
+
+def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
+    """Phase-7 identity/telemetry kwargs must NOT be forwarded to a kernel
+    ``Session`` whose (fixed, no-``**kwargs``) constructor doesn't declare
+    them.
+
+    The real ``databricks_sql_kernel.Session`` is a PyO3 class with a fixed
+    signature; the pinned ``^0.2.0`` wheel predates phase 7 and accepts none
+    of these kwargs, so forwarding them unconditionally raises ``TypeError``
+    and breaks every ``use_kernel=True`` connection. The other tests here use
+    a ``**kwargs`` MagicMock that silently swallows the kwargs and hides the
+    break; this one uses a fixed-signature fake mirroring the real 0.2.0
+    surface to prove the client gates on what the installed Session supports.
+    """
+    captured = {}
+
+    # Fixed signature mirroring the pinned 0.2.0 kernel Session: it accepts
+    # the base connection/tls/retry kwargs but NONE of the phase-7 identity
+    # or telemetry kwargs, and has no **kwargs catch-all.
+    def fake_session_v0_2_0(
+        host,
+        http_path,
+        *,
+        auth_type=None,
+        access_token=None,
+        client_id=None,
+        client_secret=None,
+        oauth_scopes=None,
+        token_url=None,
+        redirect_port=None,
+        oauth_callback_timeout_secs=None,
+        tls_ca_cert=None,
+        tls_skip_verify=False,
+        tls_skip_hostname_verify=False,
+        tls_client_cert=None,
+        tls_client_key=None,
+        retry_min_wait_secs=None,
+        retry_max_wait_secs=None,
+        retry_max_attempts=None,
+        retry_overall_timeout_secs=None,
+        http_headers=None,
+        catalog=None,
+        schema=None,
+        session_conf=None,
+        complex_types_as_json=False,
+        intervals_as_string=False,
+        request_timeout_secs=None,
+    ):
+        captured["host"] = host
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session_v0_2_0)
+    monkeypatch.setattr(
+        kernel_client.TelemetryHelper,
+        "get_driver_system_configuration",
+        lambda: types.SimpleNamespace(
+            driver_name="Databricks SQL Python Connector",
+            driver_version="1.2.3",
+            runtime_name="Python 3.12.0",
+            runtime_version="3.12.0",
+            runtime_vendor="CPython",
+            os_name="Linux",
+            os_version="6.1",
+            os_arch="x86_64",
+            client_app_name=None,
+            locale_name="en_US",
+            char_set_encoding="utf-8",
+        ),
+    )
+
+    # The kwargs the client builds must be filtered to what fake_session
+    # accepts, so open_session succeeds instead of raising TypeError.
+    kwargs = kernel_client._kernel_telemetry_kwargs(
+        {"enable_telemetry": True, "telemetry_batch_size": 17}
+    )
+    assert kwargs == {}, f"expected no phase-7 kwargs on 0.2.0 Session, got {kwargs}"
+
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        telemetry_options={"enable_telemetry": True, "telemetry_batch_size": 17},
+    )
+    # Would raise TypeError: unexpected keyword argument if the client
+    # forwarded phase-7 kwargs the fixed-signature Session doesn't declare.
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+    assert captured["host"] == "example.cloud.databricks.com"
+
+
+def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monkeypatch):
+    """When ``inspect.signature(_kernel.Session)`` raises (a PyO3 class built
+    without ``#[pyo3(signature=...)]`` exposes no ``__text_signature__``, so
+    ``inspect.signature`` raises ``ValueError``), the gate must fall
+    **closed** and omit every phase-7 kwarg.
+
+    Forwarding a kwarg the installed ``Session`` doesn't declare is a hard
+    ``TypeError`` at construction that breaks every ``use_kernel=True``
+    connection; omitting one it would have accepted only loses telemetry
+    richness. The fixed-signature fake in the sibling test always introspects,
+    so this test uses a stand-in whose signature genuinely can't be read to
+    cover the real non-introspectable PyO3 binding.
+    """
+
+    class NonIntrospectableSession:
+        # Mirrors a PyO3 class with no exposed __text_signature__:
+        # inspect.signature() raises ValueError on it.
+        def __init__(self, *args, **kwargs):  # pragma: no cover - never called
+            pass
+
+    def raise_value_error(_obj):
+        raise ValueError("no signature found for builtin type")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", NonIntrospectableSession)
+    monkeypatch.setattr(kernel_client.inspect, "signature", raise_value_error)
+
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is False
+
+    monkeypatch.setattr(
+        kernel_client.TelemetryHelper,
+        "get_driver_system_configuration",
+        lambda: types.SimpleNamespace(
+            driver_name="Databricks SQL Python Connector",
+            driver_version="1.2.3",
+            runtime_name="Python 3.12.0",
+            runtime_version="3.12.0",
+            runtime_vendor="CPython",
+            os_name="Linux",
+            os_version="6.1",
+            os_arch="x86_64",
+            client_app_name=None,
+            locale_name="en_US",
+            char_set_encoding="utf-8",
+        ),
+    )
+    kwargs = kernel_client._kernel_telemetry_kwargs(
+        {"enable_telemetry": True, "telemetry_batch_size": 17}
+    )
+    assert kwargs == {}, f"expected no phase-7 kwargs when signature unreadable, got {kwargs}"
+
+
 def test_execute_command_forwards_parameters_to_bind_param():
     """``execute_command(parameters=[...])`` routes each parameter
     through ``bind_tspark_params`` onto the kernel statement before

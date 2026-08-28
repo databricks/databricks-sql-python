@@ -13,6 +13,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
+from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
@@ -250,6 +251,55 @@ class Session:
                     "_retry_stop_after_attempts_duration"
                 ),
             }
+            # Forward the binding/runtime identity and telemetry knobs
+            # added by kernel telemetry phase 7. Python-side telemetry
+            # still owns feature-flag evaluation and event export for the
+            # Thrift/SEA paths; the kernel path needs the same driver
+            # identity at Session construction time so kernel-owned
+            # telemetry can populate its system configuration.
+            kernel_telemetry_options = {
+                # Preserve the caller's explicit telemetry choice. When unset,
+                # leave it as None so the kernel owns the enable decision --
+                # this is an INTENTIONAL divergence from the Thrift/SEA path,
+                # not an oversight. There, an unset enable_telemetry defaults to
+                # True (client.py) but only actually emits when the
+                # `enableTelemetryForPythonDriver` server feature flag is on
+                # (telemetry_client.py). That feature-flag gate is Python-side
+                # and is bypassed on the kernel path (is_telemetry_enabled
+                # short-circuits to False for use_kernel), so forwarding the
+                # connector's True default here would force telemetry on without
+                # an equivalent gate. Passing None instead defers to the
+                # kernel's own default/gating, which is expected to mirror the
+                # feature-flag-gated wrapper behaviour; only an explicit caller
+                # opt-in/opt-out overrides it.
+                "enable_telemetry": kwargs.get("enable_telemetry"),
+                # Match the connector's default batch size (client.py forwards
+                # the same TelemetryClientFactory.DEFAULT_BATCH_SIZE fallback)
+                # so an unset telemetry_batch_size resolves to the same value
+                # on the kernel path as on the Thrift/SEA path, rather than
+                # letting the kernel silently pick its own internal default.
+                "telemetry_batch_size": kwargs.get(
+                    "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
+                ),
+                # Preserve the caller's explicit circuit-breaker choice. When
+                # unset, leave it as None so the kernel owns the decision --
+                # mirroring the enable_telemetry handling above rather than
+                # forcing a default. This is deliberately NOT defaulted to True:
+                # although ClientContext's signature default is True
+                # (auth/common.py:55), the Thrift/SEA path never reaches it --
+                # build_client_context (utils.py:1018) always passes
+                # _telemetry_circuit_breaker_enabled explicitly (None when the
+                # caller leaves it unset), and ClientContext coerces it with
+                # bool(None) -> False (auth/common.py:89). So the *effective*
+                # Thrift/SEA default when unset is False, not True; forwarding
+                # True here would turn the circuit breaker on for an
+                # unconfigured connection while Thrift/SEA leaves it off.
+                # Passing None instead defers to the kernel's own default;
+                # only an explicit caller value overrides it.
+                "telemetry_circuit_breaker_enabled": kwargs.get(
+                    "_telemetry_circuit_breaker_enabled"
+                ),
+            }
             return KernelDatabricksClient(
                 server_hostname=server_hostname,
                 http_path=http_path,
@@ -263,6 +313,7 @@ class Session:
                 auth_options=kernel_auth_options,
                 retry_options=kernel_retry_options,
                 request_timeout_secs=kwargs.get("_socket_timeout"),
+                telemetry_options=kernel_telemetry_options,
             )
 
         # These reference the lazily-resolved module attributes defined via

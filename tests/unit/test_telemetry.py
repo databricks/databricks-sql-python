@@ -270,6 +270,80 @@ class TestTelemetryHelper:
         assert TelemetryHelper.get_auth_mechanism(fed) is None
         assert TelemetryHelper.get_auth_flow(fed) is None
 
+    @staticmethod
+    def _kernel_telemetry_kwargs_for_test(options):
+        import importlib
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        sys.modules.pop("databricks.sql.backend.kernel.client", None)
+        import databricks.sql.backend.kernel as kernel_pkg
+
+        if hasattr(kernel_pkg, "client"):
+            delattr(kernel_pkg, "client")
+
+        try:
+            with patch.dict(sys.modules, {"databricks_sql_kernel": fake}):
+                kernel_client = importlib.import_module(
+                    "databricks.sql.backend.kernel.client"
+                )
+                return kernel_client._kernel_telemetry_kwargs(options)
+        finally:
+            sys.modules.pop("databricks.sql.backend.kernel.client", None)
+            if hasattr(kernel_pkg, "client"):
+                delattr(kernel_pkg, "client")
+
+    @pytest.mark.parametrize(
+        ("enable_telemetry", "expected_kernel_telemetry_enabled"),
+        [
+            (True, True),
+            (False, False),
+        ],
+    )
+    def test_is_telemetry_enabled_returns_false_for_kernel(
+        self,
+        enable_telemetry,
+        expected_kernel_telemetry_enabled,
+    ):
+        connection = MagicMock()
+        connection.session.use_kernel = True
+        connection.force_enable_telemetry = True
+        connection.enable_telemetry = enable_telemetry
+
+        assert TelemetryHelper.is_telemetry_enabled(connection) is False
+
+        kernel_kwargs = self._kernel_telemetry_kwargs_for_test(
+            {
+                "enable_telemetry": enable_telemetry,
+                "force_enable_telemetry": True,
+            }
+        )
+        assert (
+            kernel_kwargs["telemetry_enabled"]
+            is expected_kernel_telemetry_enabled
+        )
+
+    def test_kernel_telemetry_enabled_omitted_when_unset(self):
+        kernel_kwargs = self._kernel_telemetry_kwargs_for_test({})
+
+        assert "telemetry_enabled" not in kernel_kwargs
+
+    def test_kernel_telemetry_enabled_omitted_when_none(self):
+        kernel_kwargs = self._kernel_telemetry_kwargs_for_test(
+            {"enable_telemetry": None}
+        )
+
+        assert "telemetry_enabled" not in kernel_kwargs
+
 
 class TestTelemetryFactory:
     """Tests for TelemetryClientFactory lifecycle and management."""
@@ -421,6 +495,36 @@ class TestTelemetryFactory:
         assert call_arguments[0][0] == "Exception"
         assert call_arguments[0][1] == error_message
 
+    @patch(
+        "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log"
+    )
+    @patch("databricks.sql.client.Session")
+    def test_connection_failure_does_not_send_telemetry_for_kernel(
+        self, mock_session, mock_export_failure_log
+    ):
+        """
+        A use_kernel=True connection that fails to open must NOT emit a
+        wrapper-side failure log — the kernel owns telemetry, so emitting
+        here would duplicate the kernel's own failure reporting.
+        """
+
+        error_message = "Could not connect to host"
+        mock_session_instance = MagicMock()
+        mock_session_instance.is_open = False
+        mock_session_instance.open.side_effect = Exception(error_message)
+        mock_session.return_value = mock_session_instance
+
+        try:
+            sql.connect(
+                server_hostname="test-host",
+                http_path="/test-path",
+                use_kernel=True,
+            )
+        except Exception as e:
+            assert str(e) == error_message
+
+        mock_export_failure_log.assert_not_called()
+
 
 @patch("databricks.sql.client.Session")
 class TestTelemetryFeatureFlag:
@@ -457,6 +561,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=True)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-true"
+        mock_session_instance.use_kernel = False
         mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
@@ -488,6 +593,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=False)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-false"
+        mock_session_instance.use_kernel = False
         mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
@@ -519,6 +625,7 @@ class TestTelemetryFeatureFlag:
         mock_http_request.side_effect = Exception("Network is down")
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-fail"
+        mock_session_instance.use_kernel = False
         mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
@@ -771,6 +878,7 @@ class TestConnectionParameterTelemetry:
         """Test that proxy configuration is captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-proxy"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = True
@@ -806,6 +914,7 @@ class TestConnectionParameterTelemetry:
         """Test that Azure-specific parameters are captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-azure"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = False
@@ -835,6 +944,7 @@ class TestConnectionParameterTelemetry:
         """Test that Arrow and performance parameters are captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-perf"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = True
@@ -879,6 +989,7 @@ class TestConnectionParameterTelemetry:
         )
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-fed-pat"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = federated_pat
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = False
@@ -906,6 +1017,7 @@ class TestConnectionParameterTelemetry:
         """Test that CloudFlare proxy fields default to False/None (not yet supported)."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-cfproxy"
+        mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
         mock_session_instance.use_sea = True

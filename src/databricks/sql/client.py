@@ -178,6 +178,16 @@ class Connection:
                 ``ImportError``. Supports PAT, OAuth M2M, and OAuth
                 U2M auth, and native (positional and named) parameter
                 binding. Mutually exclusive with ``use_sea``.
+
+                Telemetry note: on the kernel path telemetry is
+                strictly opt-in. An explicit ``enable_telemetry=True``
+                turns telemetry on unconditionally; it is NOT gated by
+                the server-side ``enableTelemetryForPythonDriver``
+                feature flag that applies on the Thrift/SEA paths. When
+                ``enable_telemetry`` is unset the kernel owns the enable
+                decision. This is an intentional divergence from the
+                Thrift/SEA paths, where an explicit ``True`` can still
+                be suppressed by the feature flag.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
@@ -402,8 +412,12 @@ class Connection:
             )
             self.session.open()
         except Exception as e:
-            # Respect user's telemetry preference even during connection failure
-            enable_telemetry = kwargs.get("enable_telemetry", True)
+            # Respect user's telemetry preference even during connection failure.
+            # For use_kernel connections the kernel owns telemetry, so suppress
+            # the wrapper-side failure log to avoid wrapper-vs-kernel duplication.
+            enable_telemetry = kwargs.get("enable_telemetry", True) and not kwargs.get(
+                "use_kernel", False
+            )
             TelemetryClientFactory.connection_failure_log(
                 error_name="Exception",
                 error_message=str(e),
