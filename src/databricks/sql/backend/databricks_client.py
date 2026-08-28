@@ -254,11 +254,8 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional exact catalog name. ``None`` leaves the
-                filter unset; ``%`` and ``*`` select all catalogs; an empty
-                string is preserved.
-            schema_name: Optional schema name pattern to filter by. ``None``
-                leaves the filter unset; an empty string matches nothing.
+            catalog_name: Optional catalog name filter
+            schema_name: Optional schema name pattern to filter by
 
         Returns:
             ResultSet: An object containing the schema metadata
@@ -292,14 +289,10 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional exact catalog name. ``None`` leaves the
-                filter unset; ``%`` and ``*`` select all catalogs; an empty
-                string is preserved.
+            catalog_name: Optional catalog name filter
             schema_name: Optional schema name pattern to filter by
-                if schema_name is None, we fetch across all schemas; an empty
-                string matches nothing
-            table_name: Optional table name pattern to filter by. ``None``
-                leaves the filter unset; an empty string matches nothing.
+                if schema_name is None, we fetch across all schemas
+            table_name: Optional table name pattern to filter by
             table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
 
         Returns:
@@ -334,16 +327,11 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional exact catalog name. ``None`` leaves the
-                filter unset; ``%`` and ``*`` select all catalogs; an empty
-                string is preserved.
-            schema_name: Optional schema name pattern to filter by. ``None``
-                leaves the filter unset; an empty string matches nothing.
+            catalog_name: Optional catalog name filter
+            schema_name: Optional schema name pattern to filter by
             table_name: Optional table name pattern to filter by
-                if table_name is None, we fetch across all tables; an empty
-                string matches nothing
-            column_name: Optional column name pattern to filter by. ``None``
-                leaves the filter unset; an empty string matches nothing.
+                if table_name is None, we fetch across all tables
+            column_name: Optional column name pattern to filter by
 
         Returns:
             ResultSet: An object containing the column metadata

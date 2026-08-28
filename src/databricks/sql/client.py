@@ -1640,9 +1640,10 @@ class Cursor:
         """
         Get schemas corresponding to the catalog_name and schema_name.
 
-        Empty strings are preserved; ``None`` leaves a filter unset.
-        ``catalog_name`` is exact except that % and * select all catalogs.
-        ``schema_name`` is a pattern; an empty pattern matches nothing.
+        ``None`` leaves a filter unset. With ``use_kernel=True``,
+        ``catalog_name`` is exact except that ``%`` and ``*`` select all
+        catalogs; ``schema_name`` is a pattern, and empty strings match
+        nothing. The Thrift backend forwards filter strings unchanged.
         :returns self
         """
         self._check_not_closed()
@@ -1668,9 +1669,10 @@ class Cursor:
         """
         Get tables corresponding to the catalog_name, schema_name and table_name.
 
-        Empty strings are preserved; ``None`` leaves a filter unset.
-        ``catalog_name`` is exact except that % and * select all catalogs.
-        ``schema_name`` and ``table_name`` are patterns; empty patterns match nothing.
+        ``None`` leaves a filter unset. With ``use_kernel=True``,
+        ``catalog_name`` is exact except that ``%`` and ``*`` select all
+        catalogs; ``schema_name`` and ``table_name`` are patterns, and empty
+        strings match nothing. The Thrift backend forwards filter strings unchanged.
         :returns self
         """
         self._check_not_closed()
@@ -1699,9 +1701,10 @@ class Cursor:
         """
         Get columns corresponding to the catalog_name, schema_name, table_name and column_name.
 
-        Empty strings are preserved; ``None`` leaves a filter unset.
-        ``catalog_name`` is exact except that % and * select all catalogs.
-        Other names are patterns; empty patterns match nothing.
+        ``None`` leaves a filter unset. With ``use_kernel=True``,
+        ``catalog_name`` is exact except that ``%`` and ``*`` select all
+        catalogs; the other names are patterns, and empty strings match
+        nothing. The Thrift backend forwards filter strings unchanged.
 
         ``catalog_name=None`` is accepted on all backends and matches
         columns across every catalog (the kernel issues ``SHOW COLUMNS``
