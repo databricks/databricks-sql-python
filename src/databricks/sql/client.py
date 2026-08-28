@@ -1668,8 +1668,9 @@ class Cursor:
         """
         Get tables corresponding to the catalog_name, schema_name and table_name.
 
-        Empty strings are preserved; ``None`` leaves a filter unset. Names are
-        patterns, can contain % wildcards, and empty patterns match nothing.
+        Empty strings are preserved; ``None`` leaves a filter unset.
+        ``catalog_name`` is exact except that % and * select all catalogs.
+        ``schema_name`` and ``table_name`` are patterns; empty patterns match nothing.
         :returns self
         """
         self._check_not_closed()
