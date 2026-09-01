@@ -154,19 +154,10 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
 
     The kernel ``Session`` is a PyO3 class with a **fixed** signature (no
     ``**kwargs`` catch-all), so forwarding a kwarg it doesn't declare raises
-    ``TypeError`` at construction. The phase-7 identity/telemetry kwargs
-    (``driver_name`` etc.) only exist on wheels newer than the pinned
-    ``^0.2.0`` (whose ``Session`` accepts none of them), so we must gate them
-    on what the actually-installed wheel supports rather than pass them
-    unconditionally. Falls **closed** (returns ``False``) when the signature
-    can't be introspected: a PyO3 class only exposes ``__text_signature__``
-    (and thus an introspectable signature) when built with
-    ``#[pyo3(signature=...)]``; otherwise ``inspect.signature`` raises
-    ``ValueError``. Since the pinned ``^0.2.0`` ``Session`` accepts none of
-    these kwargs, forwarding one it doesn't declare is a hard ``TypeError`` at
-    construction that breaks every ``use_kernel=True`` connection, whereas
-    omitting one the wheel *would* have accepted only loses telemetry
-    richness — so we omit the kwarg on introspection failure.
+    ``TypeError`` at construction, so we gate kwargs on what the installed
+    wheel supports. Falls **closed** (returns ``False``) when the signature
+    can't be introspected because omitting an accepted telemetry kwarg is safer
+    than forwarding an unsupported one.
     """
     try:
         params = inspect.signature(_kernel.Session).parameters
@@ -181,9 +172,7 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
     """Build phase-7 telemetry/system kwargs for ``databricks_sql_kernel.Session``.
 
     Only kwargs the installed ``Session`` constructor actually accepts are
-    returned; on the pinned ``^0.2.0`` wheel (which predates phase 7) this is
-    empty, so ``open_session`` doesn't break with ``TypeError`` on a wheel
-    that doesn't yet know these kwargs.
+    returned, preventing ``TypeError`` when the binding lacks an option.
     """
     system = TelemetryHelper.get_driver_system_configuration()
     candidates: Dict[str, Any] = {
