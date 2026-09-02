@@ -342,6 +342,50 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert len(result) == x_dimension * y_dimension
 
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_execute_async__close_without_fetch_frees_handle(self, extra_params):
+        """Closing a cursor whose async command result was never fetched must free
+        the server-side statement handle (issue #791). Otherwise the handle leaks
+        until the session closes."""
+        with self.cursor(extra_params) as cursor:
+            cursor.execute_async("SELECT 1")
+
+            # Capture the server-side command id before we close the cursor.
+            command_id = cursor.active_command_id
+            assert command_id is not None
+
+            backend = cursor.backend
+
+            # Sanity: the handle is live and pollable before close.
+            backend.get_query_state(command_id)
+
+            # User decides not to wait for the result and closes the cursor
+            # without ever calling get_async_execution_result().
+            cursor.close()
+
+            # After close, the server-side handle must have been freed. How a
+            # re-poll of the saved command id surfaces that is backend-specific:
+            #   - Thrift raises a server error on the closed handle.
+            #   - SEA's get_query_state() does a plain GET and returns the
+            #     status.state, so a freed statement may come back as a terminal
+            #     CLOSED/CANCELLED state instead of raising.
+            # Accept either signal as proof the handle was freed. Pre-fix (leak),
+            # the poll instead returns a live/terminal-success state.
+            try:
+                state = backend.get_query_state(command_id)
+            except (RequestError, OperationalError, DatabaseError):
+                pass
+            else:
+                assert state in (CommandState.CLOSED, CommandState.CANCELLED)
+
 
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
 # tests
