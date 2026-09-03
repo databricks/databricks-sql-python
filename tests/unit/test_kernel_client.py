@@ -368,13 +368,8 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     assert captured["request_timeout_secs"] == timeout
 
 
-@pytest.mark.parametrize(
-    ("max_connections", "kernel_accepts_kwarg", "expected_forwarded"),
-    [(None, True, False), (41, True, True), (41, False, False)],
-)
-def test_open_session_gates_max_connections_for_kernel_compatibility(
-    monkeypatch, max_connections, kernel_accepts_kwarg, expected_forwarded
-):
+@pytest.mark.parametrize("max_connections", [None, 41])
+def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connections):
     captured = {}
 
     def fake_session(**kw):
@@ -384,11 +379,6 @@ def test_open_session_gates_max_connections_for_kernel_compatibility(
         return sess
 
     monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
-    monkeypatch.setattr(
-        kernel_client,
-        "_kernel_session_accepts_kwarg",
-        lambda name: name == "max_connections" and kernel_accepts_kwarg,
-    )
     c = kernel_client.KernelDatabricksClient(
         server_hostname="example.cloud.databricks.com",
         http_path="/sql/1.0/warehouses/abc",
@@ -399,10 +389,7 @@ def test_open_session_gates_max_connections_for_kernel_compatibility(
 
     c.open_session(session_configuration=None, catalog=None, schema=None)
 
-    if expected_forwarded:
-        assert captured["max_connections"] == max_connections
-    else:
-        assert "max_connections" not in captured
+    assert captured["max_connections"] == max_connections
 
 
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
@@ -471,18 +458,14 @@ def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
     them.
 
     The real ``databricks_sql_kernel.Session`` is a PyO3 class with a fixed
-    signature; the pinned ``^0.2.0`` wheel predates phase 7 and accepts none
-    of these kwargs, so forwarding them unconditionally raises ``TypeError``
-    and breaks every ``use_kernel=True`` connection. The other tests here use
-    a ``**kwargs`` MagicMock that silently swallows the kwargs and hides the
-    break; this one uses a fixed-signature fake mirroring the real 0.2.0
-    surface to prove the client gates on what the installed Session supports.
+    signature. The other tests here use a ``**kwargs`` MagicMock that silently
+    swallows unsupported kwargs; this fixed-signature fake proves the client
+    filters optional telemetry kwargs.
     """
     captured = {}
 
-    # Fixed signature mirroring the pinned 0.2.0 kernel Session: it accepts
-    # the base connection/tls/retry kwargs but NONE of the phase-7 identity
-    # or telemetry kwargs, and has no **kwargs catch-all.
+    # Accept baseline connection/tls/retry/pool kwargs but no phase-7 identity
+    # or telemetry kwargs, and no **kwargs catch-all.
     def fake_session_v0_2_0(
         host,
         http_path,
@@ -511,6 +494,7 @@ def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
         complex_types_as_json=False,
         intervals_as_string=False,
         request_timeout_secs=None,
+        max_connections=None,
     ):
         captured["host"] = host
         sess = MagicMock()

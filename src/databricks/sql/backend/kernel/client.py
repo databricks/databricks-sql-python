@@ -156,7 +156,7 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     ``**kwargs`` catch-all), so forwarding a kwarg it doesn't declare raises
     ``TypeError`` at construction, so we gate kwargs on what the installed
     wheel supports. Falls **closed** (returns ``False``) when the signature
-    can't be introspected because omitting an accepted optional kwarg is safer
+    can't be introspected because omitting an accepted telemetry kwarg is safer
     than forwarding an unsupported one.
     """
     try:
@@ -400,11 +400,6 @@ class KernelDatabricksClient(DatabricksClient):
                 ]
                 if forwarded:
                     http_headers_kwargs["http_headers"] = forwarded
-            pool_kwargs: Dict[str, Any] = {}
-            if self._max_connections is not None and _kernel_session_accepts_kwarg(
-                "max_connections"
-            ):
-                pool_kwargs["max_connections"] = self._max_connections
             self._kernel_session = _kernel.Session(
                 host=self._server_hostname,
                 http_path=self._http_path,
@@ -423,7 +418,7 @@ class KernelDatabricksClient(DatabricksClient):
                 # strings).
                 intervals_as_string=True,
                 request_timeout_secs=self._request_timeout_secs,
-                **pool_kwargs,
+                max_connections=self._max_connections,
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,
