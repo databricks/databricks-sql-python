@@ -368,8 +368,13 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     assert captured["request_timeout_secs"] == timeout
 
 
-@pytest.mark.parametrize("max_connections", [None, 41])
-def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connections):
+@pytest.mark.parametrize(
+    ("max_connections", "kernel_accepts_kwarg", "expected_forwarded"),
+    [(None, True, False), (41, True, True), (41, False, False)],
+)
+def test_open_session_gates_max_connections_for_kernel_compatibility(
+    monkeypatch, max_connections, kernel_accepts_kwarg, expected_forwarded
+):
     captured = {}
 
     def fake_session(**kw):
@@ -379,6 +384,11 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
         return sess
 
     monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    monkeypatch.setattr(
+        kernel_client,
+        "_kernel_session_accepts_kwarg",
+        lambda name: name == "max_connections" and kernel_accepts_kwarg,
+    )
     c = kernel_client.KernelDatabricksClient(
         server_hostname="example.cloud.databricks.com",
         http_path="/sql/1.0/warehouses/abc",
@@ -389,10 +399,10 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
     c.open_session(session_configuration=None, catalog=None, schema=None)
 
-    if max_connections is None:
-        assert "max_connections" not in captured
-    else:
+    if expected_forwarded:
         assert captured["max_connections"] == max_connections
+    else:
+        assert "max_connections" not in captured
 
 
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
