@@ -102,7 +102,7 @@ to change without notice.
 | ------------------------------------ | ----------- | :----: | :----: | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `_socket_timeout`                    | `float` (s) |   ✅   |   ✅   | `900` (Thrift); `120` (kernel) | Thrift: socket send/recv/connect timeout. Kernel: total HTTP request deadline from connect through response-body completion. A positive value is forwarded; unset or `0` selects the kernel's 120s default. On the kernel path, `0` is neither unlimited nor an immediate timeout. |
 | `_pool_connections`                  | `int`       |   ✅   |   ⚠️   | `10`          | Number of urllib3 connection pools. Configures the connector's shared Python HTTP client; the kernel's query transport is its own Rust stack.  |
-| `_pool_maxsize`                      | `int`       |   ✅   |   ⚠️   | `20`          | Max connections per pool on the shared Python HTTP client. Same kernel caveat as `_pool_connections`.                                          |
+| `_pool_maxsize`                      | `int`       |   ✅   |   ✅   | `20` (Thrift); `100` (kernel when unset) | Max idle connections retained per host. An explicit value configures both the shared Python HTTP client and the kernel's Rust HTTP pool. |
 | `_proxy_auth_method`                 | `str`       |   ✅   |   ⚠️   | `None`        | `basic` or `negotiate` (Kerberos). Applies to the shared Python HTTP client; not threaded to the kernel query transport. See [`docs/proxy.md`](docs/proxy.md). |
 | `_retry_stop_after_attempts_count`   | `int`       |   ✅   |   ✅   | `30`          | Max attempts in a retry sequence. Bounded to `[1, 60]` on Thrift; forwarded to the kernel's retry policy.                                       |
 | `_retry_stop_after_attempts_duration`| `float` (s) |   ✅   |   ✅   | `900`         | Max total wall-clock seconds spent retrying. Forwarded to the kernel.                                                                           |
@@ -202,9 +202,9 @@ None — the kernel's parameter surface is currently a subset of Thrift's.
 
 ### Behavioral divergences to watch
 
-- **Connection pooling / proxy** (`_pool_connections`, `_pool_maxsize`,
-  `_proxy_auth_method`) configure the connector's shared Python HTTP client
-  (auth/telemetry); the kernel's query traffic uses its own Rust transport.
+- **Connection pooling / proxy**: `_pool_connections` and `_proxy_auth_method`
+  configure only the shared Python HTTP client. `_pool_maxsize` also configures
+  the kernel's Rust HTTP pool when explicitly set.
 - **`use_inline_params`** renders parameters inline on Thrift; the kernel uses
   native parameter binding.
 

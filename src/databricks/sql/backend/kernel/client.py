@@ -260,6 +260,7 @@ class KernelDatabricksClient(DatabricksClient):
         self._retry_options = kwargs.get("retry_options") or {}
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
+        self._max_connections = kwargs.get("max_connections")
         # Kernel telemetry phase 7 adds binding/runtime identity and
         # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
         self._telemetry_options = kwargs.get("telemetry_options") or {}
@@ -399,6 +400,9 @@ class KernelDatabricksClient(DatabricksClient):
                 ]
                 if forwarded:
                     http_headers_kwargs["http_headers"] = forwarded
+            pool_kwargs: Dict[str, Any] = {}
+            if self._max_connections is not None:
+                pool_kwargs["max_connections"] = self._max_connections
             self._kernel_session = _kernel.Session(
                 host=self._server_hostname,
                 http_path=self._http_path,
@@ -417,6 +421,7 @@ class KernelDatabricksClient(DatabricksClient):
                 # strings).
                 intervals_as_string=True,
                 request_timeout_secs=self._request_timeout_secs,
+                **pool_kwargs,
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,

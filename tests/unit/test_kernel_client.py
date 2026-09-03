@@ -368,6 +368,33 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     assert captured["request_timeout_secs"] == timeout
 
 
+@pytest.mark.parametrize("max_connections", [None, 41])
+def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connections):
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        max_connections=max_connections,
+    )
+
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    if max_connections is None:
+        assert "max_connections" not in captured
+    else:
+        assert captured["max_connections"] == max_connections
+
+
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     """Kernel telemetry phase 7 added binding/runtime identity and
     telemetry config kwargs to ``databricks_sql_kernel.Session``."""
