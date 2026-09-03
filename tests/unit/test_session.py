@@ -480,6 +480,20 @@ class TestKernelTransportOptionsThreading:
             finally:
                 conn.close()
 
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                _pool_maxsize=0,
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                assert kwargs["max_connections"] is None
+            finally:
+                conn.close()
+
     def test_azure_sp_m2m_kwargs_threaded_into_kernel_auth_options(self):
         # The Azure SP credentials a user passes to connect() must reach the
         # kernel auth bridge via auth_options; without this threading the

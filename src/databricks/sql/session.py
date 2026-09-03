@@ -313,7 +313,7 @@ class Session:
                 auth_options=kernel_auth_options,
                 retry_options=kernel_retry_options,
                 request_timeout_secs=kwargs.get("_socket_timeout"),
-                max_connections=kwargs.get("_pool_maxsize"),
+                max_connections=kwargs.get("_pool_maxsize") or None,
                 telemetry_options=kernel_telemetry_options,
             )
 
