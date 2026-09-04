@@ -466,6 +466,7 @@ class TestKernelTransportOptionsThreading:
                 _retry_stop_after_attempts_count=10,
                 _retry_stop_after_attempts_duration=600.0,
                 _socket_timeout=12.5,
+                _pool_maxsize=41,
             )
             try:
                 _, kwargs = mock_kernel_client.call_args
@@ -475,6 +476,21 @@ class TestKernelTransportOptionsThreading:
                 assert opts["retry_stop_after_attempts_count"] == 10
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
                 assert kwargs["request_timeout_secs"] == 12.5
+                assert kwargs["max_connections"] == 41
+            finally:
+                conn.close()
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                _pool_maxsize=0,
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                assert kwargs["max_connections"] is None
             finally:
                 conn.close()
 

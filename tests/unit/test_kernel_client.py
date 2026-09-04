@@ -368,6 +368,30 @@ def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     assert captured["request_timeout_secs"] == timeout
 
 
+@pytest.mark.parametrize("max_connections", [None, 41])
+def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connections):
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        max_connections=max_connections,
+    )
+
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["max_connections"] == max_connections
+
+
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     """Kernel telemetry phase 7 added binding/runtime identity and
     telemetry config kwargs to ``databricks_sql_kernel.Session``."""
@@ -428,25 +452,20 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     assert captured["telemetry_circuit_breaker_enabled"] is False
 
 
-def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
-    """Phase-7 identity/telemetry kwargs must NOT be forwarded to a kernel
-    ``Session`` whose (fixed, no-``**kwargs``) constructor doesn't declare
-    them.
+def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
+    """Optional kwargs must NOT be forwarded to a kernel ``Session`` whose
+    fixed constructor doesn't declare them.
 
     The real ``databricks_sql_kernel.Session`` is a PyO3 class with a fixed
-    signature; the pinned ``^0.2.0`` wheel predates phase 7 and accepts none
-    of these kwargs, so forwarding them unconditionally raises ``TypeError``
-    and breaks every ``use_kernel=True`` connection. The other tests here use
-    a ``**kwargs`` MagicMock that silently swallows the kwargs and hides the
-    break; this one uses a fixed-signature fake mirroring the real 0.2.0
-    surface to prove the client gates on what the installed Session supports.
+    signature. The other tests here use a ``**kwargs`` MagicMock that silently
+    swallows unsupported kwargs; this fixed-signature fake proves the client
+    filters optional kwargs.
     """
     captured = {}
 
-    # Fixed signature mirroring the pinned 0.2.0 kernel Session: it accepts
-    # the base connection/tls/retry kwargs but NONE of the phase-7 identity
-    # or telemetry kwargs, and has no **kwargs catch-all.
-    def fake_session_v0_2_0(
+    # Accept baseline connection/tls/retry kwargs but no max-connections,
+    # phase-7 identity, or telemetry kwargs, and no **kwargs catch-all.
+    def fake_session_without_optional_kwargs(
         host,
         http_path,
         *,
@@ -480,7 +499,9 @@ def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
         sess.session_id = "sess-id"
         return sess
 
-    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session_v0_2_0)
+    monkeypatch.setattr(
+        kernel_client._kernel, "Session", fake_session_without_optional_kwargs
+    )
     monkeypatch.setattr(
         kernel_client.TelemetryHelper,
         "get_driver_system_configuration",
@@ -504,17 +525,18 @@ def test_open_session_omits_phase_7_kwargs_kernel_does_not_accept(monkeypatch):
     kwargs = kernel_client._kernel_telemetry_kwargs(
         {"enable_telemetry": True, "telemetry_batch_size": 17}
     )
-    assert kwargs == {}, f"expected no phase-7 kwargs on 0.2.0 Session, got {kwargs}"
+    assert kwargs == {}, f"expected no unsupported phase-7 kwargs, got {kwargs}"
 
     c = kernel_client.KernelDatabricksClient(
         server_hostname="example.cloud.databricks.com",
         http_path="/sql/1.0/warehouses/abc",
         auth_provider=AccessTokenAuthProvider("dapi-test"),
         ssl_options=None,
+        max_connections=41,
         telemetry_options={"enable_telemetry": True, "telemetry_batch_size": 17},
     )
-    # Would raise TypeError: unexpected keyword argument if the client
-    # forwarded phase-7 kwargs the fixed-signature Session doesn't declare.
+    # Would raise TypeError if the client forwarded max-connections or
+    # phase-7 kwargs the fixed-signature Session doesn't declare.
     c.open_session(session_configuration=None, catalog=None, schema=None)
     assert captured["host"] == "example.cloud.databricks.com"
 

@@ -156,7 +156,7 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     ``**kwargs`` catch-all), so forwarding a kwarg it doesn't declare raises
     ``TypeError`` at construction, so we gate kwargs on what the installed
     wheel supports. Falls **closed** (returns ``False``) when the signature
-    can't be introspected because omitting an accepted telemetry kwarg is safer
+    can't be introspected because omitting an accepted optional kwarg is safer
     than forwarding an unsupported one.
     """
     try:
@@ -260,6 +260,7 @@ class KernelDatabricksClient(DatabricksClient):
         self._retry_options = kwargs.get("retry_options") or {}
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
+        self._max_connections = kwargs.get("max_connections")
         # Kernel telemetry phase 7 adds binding/runtime identity and
         # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
         self._telemetry_options = kwargs.get("telemetry_options") or {}
@@ -377,6 +378,9 @@ class KernelDatabricksClient(DatabricksClient):
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
             telemetry_kwargs = _kernel_telemetry_kwargs(self._telemetry_options)
+            max_connections_kwargs: Dict[str, Any] = {}
+            if _kernel_session_accepts_kwarg("max_connections"):
+                max_connections_kwargs["max_connections"] = self._max_connections
             # Forward caller / connector HTTP headers. The kernel applies
             # them on every request; a caller ``User-Agent`` is appended
             # to the kernel's base UA. Only pass the kwarg when there's
@@ -421,6 +425,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **tls_kwargs,
                 **retry_kwargs,
                 **telemetry_kwargs,
+                **max_connections_kwargs,
                 **http_headers_kwargs,
             )
         except Exception as exc:
