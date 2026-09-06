@@ -300,7 +300,9 @@ class TestSpogHeaders:
         assert result == {}
 
     def test_empty_query_param_returns_empty(self):
-        result = Session._extract_spog_headers("/sql/1.0/warehouses/abc123?o=", [])
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=", []
+        )
         assert result == {}
 
     def test_extracts_org_id_from_cluster_path_segment(self):
