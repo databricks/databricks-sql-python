@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.
+
 # 4.5.0 (2026-09-01)
 - Upgrade Databricks SQL Kernel to 1.0.0.
 - Add JWT private-key M2M and Azure Entra authentication for kernel connections.

@@ -289,6 +289,13 @@ class ThriftDatabricksClient(DatabricksClient):
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]:
+            # A Reyden / Real-Time warehouse rejects the legacy Thrift protocol
+            # with SQLSTATE KP001. Surface a distinct marker so the connection
+            # layer can transparently re-open on the kernel backend. host_url is
+            # deliberately omitted: this is a recoverable signal, not a terminal
+            # failure, so it must not emit a failure-telemetry event here.
+            if response.status.sqlState == ReydenThriftUnsupportedError.SQL_STATE:
+                raise ReydenThriftUnsupportedError(response.status.errorMessage)
             raise DatabaseError(
                 response.status.errorMessage,
                 host_url=host_url,

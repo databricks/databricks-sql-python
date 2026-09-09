@@ -35,6 +35,12 @@ from databricks.sql.exc import (
     ProgrammingError,
     TransactionError,
     DatabaseError,
+    ReydenThriftUnsupportedError,
+)
+from databricks.sql.backend.reyden_warehouse_cache import (
+    extract_warehouse_id,
+    is_known_reyden,
+    mark_reyden,
 )
 
 from databricks.sql.backend.databricks_client import DatabricksClient
@@ -399,18 +405,16 @@ class Connection:
         self.http_client = UnifiedHttpClient(client_context)
 
         try:
-            self.session = Session(
+            self.session = self._open_session_with_reyden_fallback(
                 server_hostname,
                 http_path,
-                self.http_client,
                 http_headers,
                 session_configuration,
                 catalog,
                 schema,
                 _use_arrow_native_complex_types,
-                **kwargs,
+                kwargs,
             )
-            self.session.open()
         except Exception as e:
             # Respect user's telemetry preference even during connection failure.
             # For use_kernel connections the kernel owns telemetry, so suppress
@@ -511,6 +515,85 @@ class Connection:
             user_agent=self.session.useragent_header,
             session_id=self.get_session_id_hex(),
         )
+
+    def _open_session_with_reyden_fallback(
+        self,
+        server_hostname: str,
+        http_path: str,
+        http_headers,
+        session_configuration,
+        catalog,
+        schema,
+        _use_arrow_native_complex_types,
+        kwargs: dict,
+    ) -> Session:
+        """Open a ``Session``, transparently recovering onto the kernel backend
+        when a Reyden / Real-Time warehouse rejects the default Thrift protocol.
+
+        Reyden warehouses reject a Thrift ``OpenSession`` (SQLSTATE ``KP001``);
+        the kernel (SEA) backend is the supported path. Auto-recovery applies
+        only when the caller did not pick a backend explicitly (neither
+        ``use_kernel`` nor ``use_sea``). On a rejection the warehouse is
+        remembered so later connections skip the doomed Thrift attempt.
+        """
+
+        def build_session(session_kwargs: dict) -> Session:
+            # Assign self.session before open() so a failed open still leaves the
+            # attempted session on the connection — __del__ and the failure
+            # telemetry log both rely on self.session being present.
+            self.session = Session(
+                server_hostname,
+                http_path,
+                self.http_client,
+                http_headers,
+                session_configuration,
+                catalog,
+                schema,
+                _use_arrow_native_complex_types,
+                **session_kwargs,
+            )
+            self.session.open()
+            return self.session
+
+        # An explicit backend choice is always honored — auto-recovery engages
+        # only on the default (Thrift) path.
+        explicit_backend = kwargs.get("use_kernel", False) or kwargs.get(
+            "use_sea", False
+        )
+        if explicit_backend:
+            return build_session(kwargs)
+
+        warehouse_id = extract_warehouse_id(http_path)
+
+        # Pre-check: a warehouse already seen to reject Thrift opens straight on
+        # the kernel, skipping the doomed Thrift OpenSession round-trip.
+        if warehouse_id and is_known_reyden(server_hostname, warehouse_id):
+            logger.info(
+                "Warehouse %s on %s is known to require the kernel backend; "
+                "opening on the kernel and skipping Thrift.",
+                warehouse_id,
+                server_hostname,
+            )
+            return build_session({**kwargs, "use_kernel": True})
+
+        try:
+            return build_session(kwargs)
+        except ReydenThriftUnsupportedError as thrift_ex:
+            logger.info(
+                "Thrift is not supported for this Reyden/Real-Time warehouse; "
+                "transparently re-opening the session on the kernel backend."
+            )
+            # Remember the rejection regardless of the retry's outcome — the
+            # warehouse is Reyden either way, so future connects should skip
+            # Thrift; a kernel failure below is a separate, orthogonal problem.
+            if warehouse_id:
+                mark_reyden(server_hostname, warehouse_id)
+            try:
+                return build_session({**kwargs, "use_kernel": True})
+            except Exception as kernel_ex:
+                # Surface the kernel failure (the actionable one) while keeping
+                # the original Thrift rejection in the chain for diagnosis.
+                raise kernel_ex from thrift_ex
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"

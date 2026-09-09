@@ -594,6 +594,39 @@ class ThriftBackendTestSuite(unittest.TestCase):
             mock_response.status.statusCode = code
             thrift_backend.make_request(lambda _: mock_response, Mock())
 
+    def test_reyden_sqlstate_raises_distinct_marker(self):
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+
+        # KP001 on an ERROR_STATUS → the recoverable Reyden marker.
+        reyden_resp = Mock()
+        reyden_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState=ReydenThriftUnsupportedError.SQL_STATE,
+            errorMessage="Lakehouse/RT is not supported for Thrift protocol",
+        )
+        with self.assertRaises(ReydenThriftUnsupportedError):
+            thrift_backend.make_request(lambda _: reyden_resp, Mock())
+
+        # Any other sqlState on an ERROR_STATUS → the generic DatabaseError, and
+        # explicitly NOT the Reyden marker.
+        other_resp = Mock()
+        other_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState="42000",
+            errorMessage="a syntax error",
+        )
+        with self.assertRaises(DatabaseError) as cm:
+            thrift_backend.make_request(lambda _: other_resp, Mock())
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
+
     def test_handle_execute_response_checks_operation_state_in_direct_results(self):
         for resp_type in self.execute_response_types:
             with self.subTest(resp_type=resp_type):

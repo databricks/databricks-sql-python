@@ -114,6 +114,20 @@ class ServerOperationError(DatabaseError):
     pass
 
 
+class ReydenThriftUnsupportedError(DatabaseError):
+    """Marker for a Reyden / Real-Time warehouse rejecting the legacy Thrift
+    protocol at OpenSession (the SQL Gateway proxy stamps SQLSTATE ``KP001``).
+
+    It signals the connection layer to transparently re-open the session on the
+    kernel backend. Subclassing ``DatabaseError`` means that when auto-recovery
+    does not apply (an explicit backend was chosen) or the kernel retry also
+    fails, callers catching ``DatabaseError`` still observe it.
+    """
+
+    # SQLSTATE the SQL Gateway proxy stamps on the Reyden Thrift rejection.
+    SQL_STATE = "KP001"
+
+
 class RequestError(OperationalError):
     """Thrown if there was a error during request to the server.
     Its context will have the following keys:
