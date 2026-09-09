@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Fix: a rejected token-federation exchange now reports the reason the endpoint gave. `_exchange_token` raised `KeyError: 'access_token'` on an OAuth error body, so the connection logged `Token exchange failed, using external token: 'access_token'` and the endpoint's `error` / `error_description` were discarded. It now raises a `ValueError` naming the endpoint, the HTTP status, and the returned error, and a non-JSON body reports the endpoint and status instead of surfacing a `JSONDecodeError`. The graceful fallback to the external token is unchanged ([#904](https://github.com/databricks/databricks-sql-python/issues/904))
+
 # 4.5.0 (2026-09-01)
 - Upgrade Databricks SQL Kernel to 1.0.0.
 - Add JWT private-key M2M and Azure Entra authentication for kernel connections.
