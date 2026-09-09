@@ -30,16 +30,16 @@ class RedactUrlQueryParamsFilter(logging.Filter):
     def redact(self, string):
         return re.sub(self.pattern, self.mask, str(string))
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord):
         record.msg = self.redact(str(record.msg))
         if isinstance(record.args, dict):
             for k in record.args.keys():
                 record.args[k] = (
                     self.redact(record.args[k])
-                    if isinstance(record.arg[k], str)
+                    if isinstance(record.args[k], str)
                     else record.args[k]
                 )
-        else:
+        elif record.args is not None:
             record.args = tuple(
                 (self.redact(arg) if isinstance(arg, str) else arg)
                 for arg in record.args
