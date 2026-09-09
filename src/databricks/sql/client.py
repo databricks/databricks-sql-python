@@ -417,10 +417,18 @@ class Connection:
             )
         except Exception as e:
             # Respect user's telemetry preference even during connection failure.
-            # For use_kernel connections the kernel owns telemetry, so suppress
-            # the wrapper-side failure log to avoid wrapper-vs-kernel duplication.
-            enable_telemetry = kwargs.get("enable_telemetry", True) and not kwargs.get(
-                "use_kernel", False
+            # For a kernel connection the kernel owns telemetry, so suppress the
+            # wrapper-side failure log to avoid wrapper-vs-kernel duplication.
+            # Read the backend from the session that actually failed rather than
+            # the caller's kwargs: on the Reyden auto-recovery path we retry on
+            # the kernel via a kwargs copy, so the original kwargs still says
+            # Thrift. If the kernel never got constructed (e.g. its wheel is
+            # missing), self.session is the Thrift session and we still log.
+            attempted_kernel = getattr(
+                getattr(self, "session", None), "use_kernel", False
+            )
+            enable_telemetry = (
+                kwargs.get("enable_telemetry", True) and not attempted_kernel
             )
             TelemetryClientFactory.connection_failure_log(
                 error_name="Exception",

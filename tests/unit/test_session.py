@@ -910,3 +910,23 @@ class TestReydenThriftFallback:
         # Kernel failure is surfaced as primary; the Thrift rejection is
         # preserved in the chain for diagnosis.
         assert isinstance(excinfo.value.__cause__, ReydenThriftUnsupportedError)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_recovered_kernel_failure_suppresses_wrapper_telemetry(self, mock_thrift):
+        # A connection that recovered onto the kernel and then failed there must
+        # NOT emit the wrapper's connection-failure log — the kernel owns
+        # telemetry for kernel connections. Guards against reading the original
+        # (Thrift) kwargs instead of the session that actually failed.
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel, patch(
+            "databricks.sql.client.TelemetryClientFactory.connection_failure_log"
+        ) as mock_fail_log:
+            mock_kernel.return_value.open_session.side_effect = OperationalError(
+                "kernel boom"
+            )
+            # enable_telemetry=True so only the kernel-suppression logic can flip
+            # it off — proving the fix rather than the user's opt-out.
+            with pytest.raises(OperationalError):
+                self._connect(enable_telemetry=True)
+        mock_fail_log.assert_called_once()
+        assert mock_fail_log.call_args.kwargs["enable_telemetry"] is False
