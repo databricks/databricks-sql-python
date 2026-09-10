@@ -930,3 +930,38 @@ class TestReydenThriftFallback:
                 self._connect(enable_telemetry=True)
         mock_fail_log.assert_called_once()
         assert mock_fail_log.call_args.kwargs["enable_telemetry"] is False
+
+    @patch("%s.session.get_python_sql_connector_auth_provider" % PACKAGE)
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_oauth_default_recovery_injects_databricks_oauth_auth_type(
+        self, mock_thrift, mock_provider
+    ):
+        # A bare connection (no access_token, no auth_type) defaults to OAuth
+        # U2M on the Thrift path. The kernel path has no such default and would
+        # reject auth_type=None, so recovery must inject databricks-oauth to
+        # mirror the Thrift default. (The provider builder is patched so the
+        # token-less Thrift attempt doesn't build a real OAuth provider, which
+        # would hit the network at construction.)
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect(access_token=None)
+            try:
+                _, kwargs = mock_kernel.call_args
+                assert kwargs["auth_options"]["auth_type"] == "databricks-oauth"
+            finally:
+                conn.close()
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_pat_recovery_does_not_inject_auth_type(self, mock_thrift):
+        # With a credential shape present (here a PAT) the kernel routes on it
+        # regardless of auth_type, so recovery must NOT inject databricks-oauth:
+        # forcing it alongside other credentials could change kernel routing or
+        # trip the auth bridge's ambiguity guards.
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect()  # access_token="tok"
+            try:
+                _, kwargs = mock_kernel.call_args
+                assert kwargs["auth_options"].get("auth_type") is None
+            finally:
+                conn.close()

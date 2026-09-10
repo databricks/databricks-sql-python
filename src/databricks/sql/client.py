@@ -72,7 +72,7 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
 
-from databricks.sql.auth.common import ClientContext
+from databricks.sql.auth.common import AuthType, ClientContext
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 
@@ -563,6 +563,27 @@ class Connection:
             self.session.open()
             return self.session
 
+        def kernel_recovery_kwargs() -> dict:
+            # Kwargs for re-opening on the kernel. The Thrift path treats an
+            # unset auth_type as databricks-oauth (see get_auth_provider); the
+            # kernel path has no such fallback and rejects auth_type=None unless
+            # a credential shape (PAT / OAuth M2M) is present. Mirror the Thrift
+            # default so a bare OAuth-U2M connection recovers instead of failing
+            # with NotSupportedError. Skip the injection when a credential shape
+            # is already present — the kernel routes on it regardless of
+            # auth_type, and forcing databricks-oauth alongside an M2M secret or
+            # a credentials_provider would change that routing.
+            recovery_kwargs = {**kwargs, "use_kernel": True}
+            has_credential_shape = (
+                recovery_kwargs.get("access_token")
+                or recovery_kwargs.get("oauth_client_secret")
+                or recovery_kwargs.get("oauth_jwt_key_file")
+                or recovery_kwargs.get("credentials_provider")
+            )
+            if recovery_kwargs.get("auth_type") is None and not has_credential_shape:
+                recovery_kwargs["auth_type"] = AuthType.DATABRICKS_OAUTH.value
+            return recovery_kwargs
+
         # An explicit backend choice is always honored — auto-recovery engages
         # only on the default (Thrift) path.
         explicit_backend = kwargs.get("use_kernel", False) or kwargs.get(
@@ -582,7 +603,7 @@ class Connection:
                 warehouse_id,
                 server_hostname,
             )
-            return build_session({**kwargs, "use_kernel": True})
+            return build_session(kernel_recovery_kwargs())
 
         try:
             return build_session(kwargs)
@@ -597,7 +618,7 @@ class Connection:
             if warehouse_id:
                 mark_reyden(server_hostname, warehouse_id)
             try:
-                return build_session({**kwargs, "use_kernel": True})
+                return build_session(kernel_recovery_kwargs())
             except Exception as kernel_ex:
                 # Surface the kernel failure (the actionable one) while keeping
                 # the original Thrift rejection in the chain for diagnosis.

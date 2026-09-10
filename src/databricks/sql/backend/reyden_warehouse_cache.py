@@ -6,10 +6,13 @@ auto-recovers by re-opening on the kernel backend, it records the warehouse
 here so later connections to the same warehouse skip the doomed Thrift attempt
 and open on the kernel directly.
 
-Keyed by ``(host, warehouse_id)`` — the host is part of the key so the same
-warehouse id observed on two different workspaces never collides. Entries
-expire after ``_TTL_SECONDS`` so a warehouse later reconfigured to accept Thrift
-is eventually retried.
+Keyed by ``(host, warehouse_id)``. Warehouse ids are globally unique, so the
+warehouse id alone identifies the warehouse — even on a SPOG host shared by many
+workspaces (where only the ``?o=<workspace-id>`` path param distinguishes them),
+there is no cross-workspace collision. The host is kept in the key only as a
+cheap optimization (scoping lookups) and defense-in-depth, not for correctness.
+Entries expire after ``_TTL_SECONDS`` so a warehouse later reconfigured to accept
+Thrift is eventually retried.
 """
 
 import re
