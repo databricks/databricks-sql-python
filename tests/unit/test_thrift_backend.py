@@ -594,6 +594,78 @@ class ThriftBackendTestSuite(unittest.TestCase):
             mock_response.status.statusCode = code
             thrift_backend.make_request(lambda _: mock_response, Mock())
 
+    def test_reyden_sqlstate_raises_distinct_marker(self):
+        reyden_resp = Mock()
+        reyden_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState=ReydenThriftUnsupportedError.SQL_STATE,
+            errorMessage="Lakehouse/RT is not supported for Thrift protocol",
+        )
+
+        # KP001 on an ERROR_STATUS → the recoverable Reyden marker, but ONLY when
+        # detection is enabled (i.e. the OpenSession path).
+        with self.assertRaises(ReydenThriftUnsupportedError):
+            ThriftDatabricksClient._check_response_for_error(
+                reyden_resp, detect_reyden=True
+            )
+
+        # The same KP001 on any other RPC (detect_reyden=False, the default) is a
+        # generic DatabaseError — the marker is scoped to OpenSession so recovery
+        # never has to handle it elsewhere.
+        with self.assertRaises(DatabaseError) as cm:
+            ThriftDatabricksClient._check_response_for_error(
+                reyden_resp, detect_reyden=False
+            )
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
+
+        # Any other sqlState on an ERROR_STATUS is never the marker, even on the
+        # OpenSession path.
+        other_resp = Mock()
+        other_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState="42000",
+            errorMessage="a syntax error",
+        )
+        with self.assertRaises(DatabaseError) as cm:
+            ThriftDatabricksClient._check_response_for_error(
+                other_resp, detect_reyden=True
+            )
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
+
+    def test_reyden_detection_wired_only_for_open_session(self):
+        # make_request enables Reyden detection based on the RPC method name, so
+        # a KP001 from OpenSession maps to the marker while the same status from
+        # any other RPC stays a generic DatabaseError.
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        reyden_resp = Mock()
+        reyden_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState=ReydenThriftUnsupportedError.SQL_STATE,
+            errorMessage="Lakehouse/RT is not supported for Thrift protocol",
+        )
+
+        # make_request keys detection off method.__name__.
+        def OpenSession(_):
+            return reyden_resp
+
+        def ExecuteStatement(_):
+            return reyden_resp
+
+        with self.assertRaises(ReydenThriftUnsupportedError):
+            thrift_backend.make_request(OpenSession, Mock())
+
+        with self.assertRaises(DatabaseError) as cm:
+            thrift_backend.make_request(ExecuteStatement, Mock())
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
+
     def test_handle_execute_response_checks_operation_state_in_direct_results(self):
         for resp_type in self.execute_response_types:
             with self.subTest(resp_type=resp_type):

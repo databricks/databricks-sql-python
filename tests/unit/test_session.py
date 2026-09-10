@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock, Mock, PropertyMock
+from contextlib import contextmanager
 import gc
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -9,6 +10,11 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.agent import KNOWN_AGENTS
+from databricks.sql.exc import (
+    ReydenThriftUnsupportedError,
+    DatabaseError,
+    OperationalError,
+)
 from databricks.sql.session import Session
 
 import databricks.sql
@@ -779,5 +785,183 @@ class TestUseKernelRoutesThroughRealWheel:
                     f"KernelDatabricksClient; got "
                     f"{type(conn.session.backend).__name__}"
                 )
+            finally:
+                conn.close()
+
+
+class TestReydenThriftFallback:
+    """Transparent auto-recovery from a Reyden / Real-Time warehouse rejecting
+    the legacy Thrift protocol (SQLSTATE KP001) onto the kernel backend."""
+
+    PACKAGE = "databricks.sql"
+    HOST = "reyden.example.com"
+    WAREHOUSE_PATH = "/sql/1.0/warehouses/wh-reyden"
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from databricks.sql.backend import reyden_warehouse_cache
+
+        reyden_warehouse_cache.clear_cache()
+        yield
+        reyden_warehouse_cache.clear_cache()
+
+    @contextmanager
+    def _fake_kernel(self):
+        """Fake the Rust wheel and patch KernelDatabricksClient so open_session
+        returns a valid SessionId; yields the mock for call assertions."""
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow", reason="kernel client module imports pyarrow at load"
+        )
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel:
+            mock_kernel.return_value.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+            yield mock_kernel
+
+    @staticmethod
+    def _reject():
+        return ReydenThriftUnsupportedError(
+            "Lakehouse/RT is not supported for Thrift protocol"
+        )
+
+    def _connect(self, **overrides):
+        args = dict(
+            server_hostname=self.HOST,
+            http_path=self.WAREHOUSE_PATH,
+            access_token="tok",
+            enable_telemetry=False,
+        )
+        args.update(overrides)
+        return databricks.sql.connect(**args)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_thrift_rejection_recovers_onto_kernel(self, mock_thrift):
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect()
+            try:
+                assert conn.session.use_kernel is True
+                mock_kernel.return_value.open_session.assert_called_once()
+            finally:
+                conn.close()
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_known_reyden_warehouse_skips_thrift(self, mock_thrift):
+        from databricks.sql.backend import reyden_warehouse_cache
+
+        # A previously observed rejection is remembered — casing of the host in
+        # the cache key must not matter.
+        reyden_warehouse_cache.mark_reyden(self.HOST.upper(), "wh-reyden")
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect()
+            try:
+                assert conn.session.use_kernel is True
+                mock_kernel.return_value.open_session.assert_called_once()
+                # Pre-check must short-circuit before any Thrift OpenSession.
+                mock_thrift.return_value.open_session.assert_not_called()
+            finally:
+                conn.close()
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_rejection_marks_cache_for_next_connect(self, mock_thrift):
+        from databricks.sql.backend import reyden_warehouse_cache
+
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel():
+            conn = self._connect()
+            conn.close()
+        assert reyden_warehouse_cache.is_known_reyden(self.HOST, "wh-reyden")
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_non_reyden_thrift_error_not_recovered(self, mock_thrift):
+        mock_thrift.return_value.open_session.side_effect = DatabaseError(
+            "some unrelated server error"
+        )
+        with pytest.raises(DatabaseError) as excinfo:
+            self._connect()
+        assert not isinstance(excinfo.value, ReydenThriftUnsupportedError)
+
+    @patch("%s.session.SeaDatabricksClient" % PACKAGE)
+    def test_explicit_use_sea_not_recovered(self, mock_sea):
+        # An explicit backend choice is always honored — even the (contrived)
+        # case of SEA surfacing the marker must not trigger Thrift→kernel
+        # recovery.
+        mock_sea.return_value.open_session.side_effect = self._reject()
+        with pytest.raises(ReydenThriftUnsupportedError):
+            self._connect(use_sea=True)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_kernel_retry_failure_chains_both_errors(self, mock_thrift):
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel:
+            mock_kernel.return_value.open_session.side_effect = OperationalError(
+                "kernel could not open session"
+            )
+            with pytest.raises(OperationalError) as excinfo:
+                self._connect()
+        # Kernel failure is surfaced as primary; the Thrift rejection is
+        # preserved in the chain for diagnosis.
+        assert isinstance(excinfo.value.__cause__, ReydenThriftUnsupportedError)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_recovered_kernel_failure_suppresses_wrapper_telemetry(self, mock_thrift):
+        # A connection that recovered onto the kernel and then failed there must
+        # NOT emit the wrapper's connection-failure log — the kernel owns
+        # telemetry for kernel connections. Guards against reading the original
+        # (Thrift) kwargs instead of the session that actually failed.
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel, patch(
+            "databricks.sql.client.TelemetryClientFactory.connection_failure_log"
+        ) as mock_fail_log:
+            mock_kernel.return_value.open_session.side_effect = OperationalError(
+                "kernel boom"
+            )
+            # enable_telemetry=True so only the kernel-suppression logic can flip
+            # it off — proving the fix rather than the user's opt-out.
+            with pytest.raises(OperationalError):
+                self._connect(enable_telemetry=True)
+        mock_fail_log.assert_called_once()
+        assert mock_fail_log.call_args.kwargs["enable_telemetry"] is False
+
+    @patch("%s.session.get_python_sql_connector_auth_provider" % PACKAGE)
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_oauth_default_recovery_injects_databricks_oauth_auth_type(
+        self, mock_thrift, mock_provider
+    ):
+        # A bare connection (no access_token, no auth_type) defaults to OAuth
+        # U2M on the Thrift path. The kernel path has no such default and would
+        # reject auth_type=None, so recovery must inject databricks-oauth to
+        # mirror the Thrift default. (The provider builder is patched so the
+        # token-less Thrift attempt doesn't build a real OAuth provider, which
+        # would hit the network at construction.)
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect(access_token=None)
+            try:
+                _, kwargs = mock_kernel.call_args
+                assert kwargs["auth_options"]["auth_type"] == "databricks-oauth"
+            finally:
+                conn.close()
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_pat_recovery_does_not_inject_auth_type(self, mock_thrift):
+        # With a credential shape present (here a PAT) the kernel routes on it
+        # regardless of auth_type, so recovery must NOT inject databricks-oauth:
+        # forcing it alongside other credentials could change kernel routing or
+        # trip the auth bridge's ambiguity guards.
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect()  # access_token="tok"
+            try:
+                _, kwargs = mock_kernel.call_args
+                assert kwargs["auth_options"].get("auth_type") is None
             finally:
                 conn.close()

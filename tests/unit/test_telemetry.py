@@ -482,6 +482,9 @@ class TestTelemetryFactory:
         # Set up the mock to create a session instance first, then make open() fail
         mock_session_instance = MagicMock()
         mock_session_instance.is_open = False  # Ensure cleanup is safe
+        # Default (Thrift) session: the failure-telemetry suppression reads
+        # session.use_kernel, so the mock must expose a real bool, not a truthy Mock.
+        mock_session_instance.use_kernel = False
         mock_session_instance.open.side_effect = Exception(error_message)
         mock_session.return_value = mock_session_instance
 
@@ -511,6 +514,8 @@ class TestTelemetryFactory:
         error_message = "Could not connect to host"
         mock_session_instance = MagicMock()
         mock_session_instance.is_open = False
+        # Kernel session: use_kernel is read to suppress the wrapper-side failure log.
+        mock_session_instance.use_kernel = True
         mock_session_instance.open.side_effect = Exception(error_message)
         mock_session.return_value = mock_session_instance
 
