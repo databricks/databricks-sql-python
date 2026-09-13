@@ -2,6 +2,7 @@ import itertools
 from contextlib import contextmanager
 from collections import OrderedDict
 import datetime
+import gc
 import io
 import logging
 import os
@@ -1155,6 +1156,45 @@ class TestPySQLCoreSuite(
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep
 # the 429/503 subsuites separate since they execute under different circumstances.
+class TestPySQLConnectionFailureSuite(PySQLPytestTestCase):
+    """Regression tests for connection construction failures (issue #746)."""
+
+    def test_del_does_not_raise_when_session_never_set(self):
+        """A constructor-stage connection failure must not leave __del__ raising
+        AttributeError when the half-constructed Connection is garbage-collected.
+
+        Username/password auth raises ValueError inside the Session constructor,
+        i.e. before ``self.session`` is assigned in Connection.__init__. The
+        original connection error must propagate, and __del__ on the
+        half-constructed Connection must not raise (which Python would report as
+        an 'Exception ignored in __del__' referencing the missing ``session``
+        attribute).
+        """
+        # Use the live-warehouse connection params, but inject username/password
+        # which triggers a client-side ValueError inside Session.__init__.
+        params = dict(self.connection_params(), username="user", password="pass")
+
+        unraisable = []
+        original_hook = sys.unraisablehook
+        sys.unraisablehook = lambda unraisable_hook_args: unraisable.append(
+            unraisable_hook_args
+        )
+        try:
+            with pytest.raises(ValueError):
+                sql.connect(**params)
+
+            # Force collection of the half-constructed Connection so __del__ runs.
+            gc.collect()
+        finally:
+            sys.unraisablehook = original_hook
+
+        messages = [
+            "{}: {}".format(type(u.exc_value).__name__, u.exc_value)
+            for u in unraisable
+        ]
+        assert not unraisable, "Exception(s) raised in __del__: {}".format(messages)
+
+
 class TestPySQLRetrySuite:
     class HTTP429Suite(Client429ResponseMixin, PySQLPytestTestCase):
         pass  # Mixin covers all
