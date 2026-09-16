@@ -93,6 +93,7 @@ class TestSession:
             **self.DUMMY_CONNECTION_ARGS,
             _tls_verify_hostname="hostname",
             _tls_trusted_ca_file="trusted ca file",
+            _tls_client_cert_file="trusted client cert",
             _tls_client_cert_key_file="trusted client cert",
             _tls_client_cert_key_password="key password",
         )
@@ -100,6 +101,7 @@ class TestSession:
         kwargs = mock_client_class.call_args[1]
         assert kwargs["_tls_verify_hostname"] == "hostname"
         assert kwargs["_tls_trusted_ca_file"] == "trusted ca file"
+        assert kwargs["_tls_client_cert_file"] == "trusted client cert"
         assert kwargs["_tls_client_cert_key_file"] == "trusted client cert"
         assert kwargs["_tls_client_cert_key_password"] == "key password"
 

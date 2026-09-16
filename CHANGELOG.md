@@ -2,6 +2,7 @@
 
 # Unreleased
 - Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.
+- Reject an mTLS private key without a client certificate, and identify missing or empty client certificate/key files in connection errors.
 
 # 4.5.0 (2026-09-01)
 - Upgrade Databricks SQL Kernel to 1.0.0.

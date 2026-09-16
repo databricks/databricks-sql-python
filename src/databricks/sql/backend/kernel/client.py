@@ -1102,6 +1102,11 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
     if ssl_options is None:
         return {}
 
+    # The kernel rejects an in-memory key without a certificate, but a lone key file
+    # used to be dropped here before it could reach that validation. Reject the
+    # incomplete connector configuration directly instead.
+    ssl_options.validate_client_identity()
+
     kwargs: Dict[str, Any] = {}
 
     # Inverted booleans. Emit only the insecure (skip) direction so the

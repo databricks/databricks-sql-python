@@ -21,6 +21,8 @@ import datetime
 import decimal
 from ssl import SSLContext, CERT_NONE, CERT_REQUIRED, create_default_context
 
+from databricks.sql.exc import ProgrammingError
+
 
 class SSLOptions:
     tls_verify: bool
@@ -46,6 +48,74 @@ class SSLOptions:
         self.tls_client_cert_key_file = tls_client_cert_key_file
         self.tls_client_cert_key_password = tls_client_cert_key_password
 
+    def validate_client_identity(self) -> None:
+        """Validate the shape of the mutual-TLS client identity.
+
+        ``SSLContext.load_cert_chain`` accepts a combined certificate + private-key
+        PEM when ``keyfile`` is omitted, so a certificate without a separate key file
+        is valid. The inverse is never useful: a key without a certificate would be
+        silently ignored by the stdlib and downgrade the connection to one-way TLS.
+        """
+        if self.tls_client_cert_key_file and not self.tls_client_cert_file:
+            raise ProgrammingError(
+                "tls_client_cert_key_file (client private key) requires "
+                "tls_client_cert_file (client certificate) for mutual TLS."
+            )
+
+    @staticmethod
+    def _validate_client_identity_file(
+        path: str, option_name: str, description: str
+    ) -> None:
+        """Reject an unreadable or zero-byte client-identity file clearly.
+
+        Read only one byte: the PEM parser remains responsible for validating
+        non-empty content, while this preflight can identify which of the two input
+        paths failed before ``load_cert_chain`` collapses both into an opaque error.
+        """
+        try:
+            with open(path, "rb") as file:
+                has_content = bool(file.read(1))
+        except OSError as exc:
+            raise ProgrammingError(
+                f"Failed to read {option_name} ({description}) '{path}' for mutual "
+                f"TLS: {exc}"
+            ) from exc
+
+        if not has_content:
+            raise ProgrammingError(
+                f"{option_name} ({description}) '{path}' is empty; expected "
+                "PEM-encoded content for mutual TLS."
+            )
+
+    def load_client_cert_chain(self, ssl_context: SSLContext) -> None:
+        """Load the configured mutual-TLS identity into ``ssl_context``.
+
+        Path validation intentionally precedes PEM parsing. Besides producing useful
+        diagnostics, this ensures a missing/empty key is reported as the failing input
+        even when the readable certificate file contains malformed non-empty bytes.
+        """
+        self.validate_client_identity()
+        if not self.tls_client_cert_file:
+            return
+
+        self._validate_client_identity_file(
+            self.tls_client_cert_file,
+            "tls_client_cert_file",
+            "client certificate",
+        )
+        if self.tls_client_cert_key_file:
+            self._validate_client_identity_file(
+                self.tls_client_cert_key_file,
+                "tls_client_cert_key_file",
+                "client private key",
+            )
+
+        ssl_context.load_cert_chain(
+            certfile=self.tls_client_cert_file,
+            keyfile=self.tls_client_cert_key_file,
+            password=self.tls_client_cert_key_password,
+        )
+
     def create_ssl_context(self) -> SSLContext:
         ssl_context = create_default_context(cafile=self.tls_trusted_ca_file)
 
@@ -59,12 +129,7 @@ class SSLOptions:
             ssl_context.check_hostname = True
             ssl_context.verify_mode = CERT_REQUIRED
 
-        if self.tls_client_cert_file:
-            ssl_context.load_cert_chain(
-                certfile=self.tls_client_cert_file,
-                keyfile=self.tls_client_cert_key_file,
-                password=self.tls_client_cert_key_password,
-            )
+        self.load_client_cert_chain(ssl_context)
 
         return ssl_context
 

@@ -116,16 +116,9 @@ class UnifiedHttpClient:
                     self.config.ssl_options.tls_trusted_ca_file
                 )
 
-            # Load client certificate if specified
-            if (
-                self.config.ssl_options.tls_client_cert_file
-                and self.config.ssl_options.tls_client_cert_key_file
-            ):
-                ssl_context.load_cert_chain(
-                    self.config.ssl_options.tls_client_cert_file,
-                    self.config.ssl_options.tls_client_cert_key_file,
-                    self.config.ssl_options.tls_client_cert_key_password,
-                )
+            # Load a separate cert/key pair or a combined cert+key PEM. The shared
+            # helper also reports missing/empty paths before opaque stdlib SSL errors.
+            self.config.ssl_options.load_client_cert_chain(ssl_context)
 
         # Create retry policy
         self._retry_policy = DatabricksRetryPolicy(
