@@ -49,8 +49,9 @@ class TestSession:
         assert close_session_call_args.guid == b"\x22"
         assert close_session_call_args.secret == b"\x33"
 
+    @patch("%s.client.UnifiedHttpClient" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_auth_args(self, mock_client_class):
+    def test_auth_args(self, mock_client_class, _mock_http_client):
         # Test that the following auth args work:
         # token = foo,
         # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
@@ -93,6 +94,7 @@ class TestSession:
             **self.DUMMY_CONNECTION_ARGS,
             _tls_verify_hostname="hostname",
             _tls_trusted_ca_file="trusted ca file",
+            _tls_client_cert_file="trusted client cert",
             _tls_client_cert_key_file="trusted client cert",
             _tls_client_cert_key_password="key password",
         )
@@ -100,6 +102,7 @@ class TestSession:
         kwargs = mock_client_class.call_args[1]
         assert kwargs["_tls_verify_hostname"] == "hostname"
         assert kwargs["_tls_trusted_ca_file"] == "trusted ca file"
+        assert kwargs["_tls_client_cert_file"] == "trusted client cert"
         assert kwargs["_tls_client_cert_key_file"] == "trusted client cert"
         assert kwargs["_tls_client_cert_key_password"] == "key password"
 

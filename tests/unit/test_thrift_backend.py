@@ -220,19 +220,23 @@ class ThriftBackendTestSuite(unittest.TestCase):
         assert isinstance(result, type(dict()))
         assert isinstance(result.get("proxy-authorization"), type(str()))
 
+    @patch.object(SSLOptions, "_validate_client_identity_file")
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch("databricks.sql.types.create_default_context")
     def test_tls_cert_args_are_propagated(
-        self, mock_create_default_context, t_http_client_class
+        self,
+        mock_create_default_context,
+        t_http_client_class,
+        _mock_validate_client_identity_file,
     ):
-        mock_cert_key_file = Mock()
+        cert_file = "client-cert.pem"
+        cert_key_file = "client-key.pem"
         mock_cert_key_password = Mock()
         mock_trusted_ca_file = Mock()
-        mock_cert_file = Mock()
 
         mock_ssl_options = SSLOptions(
-            tls_client_cert_file=mock_cert_file,
-            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_file=cert_file,
+            tls_client_cert_key_file=cert_key_file,
             tls_client_cert_key_password=mock_cert_key_password,
             tls_trusted_ca_file=mock_trusted_ca_file,
         )
@@ -250,8 +254,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
         mock_ssl_context.load_cert_chain.assert_called_once_with(
-            certfile=mock_cert_file,
-            keyfile=mock_cert_key_file,
+            certfile=cert_file,
+            keyfile=cert_key_file,
             password=mock_cert_key_password,
         )
         self.assertTrue(mock_ssl_context.check_hostname)
@@ -260,19 +264,22 @@ class ThriftBackendTestSuite(unittest.TestCase):
             t_http_client_class.call_args[1]["ssl_options"], mock_ssl_options
         )
 
+    @patch.object(SSLOptions, "_validate_client_identity_file")
     @patch("databricks.sql.types.create_default_context")
-    def test_tls_cert_args_are_used_by_http_client(self, mock_create_default_context):
+    def test_tls_cert_args_are_used_by_http_client(
+        self, mock_create_default_context, _mock_validate_client_identity_file
+    ):
         from databricks.sql.auth.thrift_http_client import THttpClient
 
-        mock_cert_key_file = Mock()
+        cert_file = "client-cert.pem"
+        cert_key_file = "client-key.pem"
         mock_cert_key_password = Mock()
         mock_trusted_ca_file = Mock()
-        mock_cert_file = Mock()
 
         mock_ssl_options = SSLOptions(
             tls_verify=True,
-            tls_client_cert_file=mock_cert_file,
-            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_file=cert_file,
+            tls_client_cert_key_file=cert_key_file,
             tls_client_cert_key_password=mock_cert_key_password,
             tls_trusted_ca_file=mock_trusted_ca_file,
         )

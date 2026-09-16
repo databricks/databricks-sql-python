@@ -147,3 +147,17 @@ class TestUnifiedHttpClientMaxRetryError:
 
             error = exc_info.value
             assert "HTTP request error" in str(error)
+
+    def test_ssl_options_load_client_identity(self, client_context):
+        with patch(
+            "databricks.sql.common.unified_http_client.DatabricksRetryPolicy"
+        ), patch(
+            "databricks.sql.common.unified_http_client.ssl.create_default_context"
+        ) as create_default_context, patch.object(
+            client_context.ssl_options, "load_client_cert_chain"
+        ) as load_client_cert_chain:
+            UnifiedHttpClient(client_context)
+
+        load_client_cert_chain.assert_called_once_with(
+            create_default_context.return_value
+        )

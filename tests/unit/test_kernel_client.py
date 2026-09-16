@@ -2093,6 +2093,60 @@ class TestKernelTlsKwargs:
         assert out["tls_client_cert"] == b"COMBINED"
         assert out["tls_client_key"] == b"COMBINED"
 
+    def test_mtls_key_without_cert_is_rejected_before_file_access(self):
+        with pytest.raises(
+            ProgrammingError,
+            match="tls_client_cert_key_file.*requires.*tls_client_cert_file",
+        ):
+            kernel_client._kernel_tls_kwargs(
+                self._ssl_options(
+                    tls_client_cert_key_file="/path/does/not/need/to/exist.pem"
+                )
+            )
+
+    @pytest.mark.parametrize(
+        "failing_input,empty,expected_option",
+        [
+            ("certificate", False, "tls_client_cert_file"),
+            ("private key", False, "tls_client_cert_key_file"),
+            ("certificate", True, "tls_client_cert_file"),
+            ("private key", True, "tls_client_cert_key_file"),
+        ],
+        ids=[
+            "missing-certificate",
+            "missing-private-key",
+            "empty-certificate",
+            "empty-private-key",
+        ],
+    )
+    def test_mtls_unreadable_or_empty_file_names_failing_input(
+        self, tmp_path, failing_input, empty, expected_option
+    ):
+        readable_nonempty = tmp_path / "readable-nonempty.pem"
+        readable_nonempty.write_bytes(b"NOT-NECESSARILY-VALID-PEM")
+        failing_path = tmp_path / ("empty.pem" if empty else "missing.pem")
+        if empty:
+            failing_path.write_bytes(b"")
+
+        cert_file, key_file = (
+            (failing_path, readable_nonempty)
+            if failing_input == "certificate"
+            else (readable_nonempty, failing_path)
+        )
+
+        with pytest.raises(ProgrammingError) as exc_info:
+            kernel_client._kernel_tls_kwargs(
+                self._ssl_options(
+                    tls_client_cert_file=str(cert_file),
+                    tls_client_cert_key_file=str(key_file),
+                )
+            )
+
+        message = str(exc_info.value)
+        assert expected_option in message
+        assert str(failing_path) in message
+        assert ("is empty" in message) is empty
+
     def test_encrypted_client_key_rejected(self, tmp_path):
         cert = tmp_path / "client.crt"
         cert.write_bytes(b"CERT")
