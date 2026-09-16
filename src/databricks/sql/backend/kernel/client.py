@@ -53,6 +53,7 @@ from databricks.sql.telemetry.telemetry_client import TelemetryHelper
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
+    from databricks.sql.types import SSLOptions
 
     # Type-annotation-only import (deferred by ``from __future__ import
     # annotations``). ``execute_command`` accepts the Thrift-shaped
@@ -1078,7 +1079,7 @@ _STATE_TO_COMMAND_STATE: Dict[str, CommandState] = {
 }
 
 
-def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
+def _kernel_tls_kwargs(ssl_options: Optional[SSLOptions]) -> Dict[str, Any]:
     """Translate the connector's ``SSLOptions`` into the kernel
     ``Session``'s ``tls_*`` kwargs.
 
@@ -1116,18 +1117,18 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
     # own semantics (``create_ssl_context`` sets ``check_hostname=False``
     # whenever ``tls_verify`` is False). Without this the kernel could
     # still attempt a hostname check the connector considers disabled.
-    if getattr(ssl_options, "tls_verify", True) is False:
+    if ssl_options.tls_verify is False:
         kwargs["tls_skip_verify"] = True
         kwargs["tls_skip_hostname_verify"] = True
-    elif getattr(ssl_options, "tls_verify_hostname", True) is False:
+    elif ssl_options.tls_verify_hostname is False:
         kwargs["tls_skip_hostname_verify"] = True
 
-    ca_file = getattr(ssl_options, "tls_trusted_ca_file", None)
+    ca_file = ssl_options.tls_trusted_ca_file
     if ca_file:
         kwargs["tls_ca_cert"] = _read_pem_bytes(ca_file, "tls_trusted_ca_file")
 
-    cert_file = getattr(ssl_options, "tls_client_cert_file", None)
-    key_file = getattr(ssl_options, "tls_client_cert_key_file", None)
+    cert_file = ssl_options.tls_client_cert_file
+    key_file = ssl_options.tls_client_cert_key_file
     if cert_file:
         # The kernel pairs cert + key for mutual TLS; a cert without a
         # key (or vice versa) is rejected kernel-side. The connector's
@@ -1140,7 +1141,7 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
         # The kernel has no surface for an encrypted client key today.
         # Reject loudly rather than hand the kernel a key it can't
         # decrypt (which would fail with an opaque TLS parse error).
-        if getattr(ssl_options, "tls_client_cert_key_password", None):
+        if ssl_options.tls_client_cert_key_password:
             raise NotSupportedError(
                 "use_kernel=True does not support a password-protected mTLS "
                 "client key (tls_client_cert_key_password). Provide an "
