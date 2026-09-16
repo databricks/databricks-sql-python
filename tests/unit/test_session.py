@@ -49,8 +49,9 @@ class TestSession:
         assert close_session_call_args.guid == b"\x22"
         assert close_session_call_args.secret == b"\x33"
 
+    @patch("%s.client.UnifiedHttpClient" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_auth_args(self, mock_client_class):
+    def test_auth_args(self, mock_client_class, _mock_http_client):
         # Test that the following auth args work:
         # token = foo,
         # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
