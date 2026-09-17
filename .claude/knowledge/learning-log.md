@@ -120,4 +120,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #948's `_WAREHOUSE_PATH_RE` used an unanchored `.*/(?:warehouses|endpoints)/([^?&/]+)`, which a reviewer contrasted with the sibling SPOG path extractor in `session.py` that is deliberately anchored (`^/?sql/...`) and guarded by a nested-prefix test.
   **Rule:** Anchor path-extraction regexes to the real path shape rather than a leading `.*`, matching existing sibling extractors — an unanchored prefix lets unexpected/malformed paths match and key caches on surprising ids.
 
+### 2026-09-17: learnings since 2026-09-16T17:28:35Z
+- **Context:** PR #951 hardened mTLS client-identity handling in `SSLOptions`: it added `validate_client_identity()` / `load_client_cert_chain()` and rejects a private key configured without a client certificate.
+  **Rule:** Python's `ssl.SSLContext.load_cert_chain` accepts a combined cert+key PEM (so certfile-without-keyfile is valid) but silently ignores a keyfile-without-certfile and downgrades to one-way TLS — explicitly reject key-without-cert, and preflight each identity file (readable, non-empty) separately before calling `load_cert_chain` so the failing input is named instead of an opaque stdlib SSL error.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
