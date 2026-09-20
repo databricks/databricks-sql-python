@@ -12,6 +12,8 @@ import time
 from databricks.sql.auth.auth import (
     get_python_sql_connector_auth_provider,
     PYSQL_OAUTH_CLIENT_ID,
+    PYSQL_OAUTH_REDIRECT_PORT_RANGE,
+    PYSQL_OAUTH_SCOPES,
 )
 from databricks.sql.auth.oauth import OAuthManager, Token, ClientCredentialsTokenSource
 from databricks.sql.auth.authenticators import (
@@ -206,6 +208,96 @@ class Auth(unittest.TestCase):
         self.assertEqual(type(auth_provider.external_provider).__name__, "DatabricksOAuthProvider")
 
         self.assertEqual(auth_provider.external_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_u2m_explicit_bundle_override(
+        self, mock__initial_get_token
+    ):
+        # AUTH-013 Case 1: a caller who supplies their OWN client_id owns the rest
+        # of the U2M bundle - the caller's client_id, scopes and redirect port are
+        # forwarded verbatim, with NO driver default substitution.
+        hostname = "foo.cloud.databricks.com"
+        kwargs = {
+            "oauth_client_id": "test-custom-u2m-app",
+            "oauth_scopes": ["all-apis"],
+            "oauth_redirect_port": 8099,
+        }
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        provider = auth_provider.external_provider
+        self.assertEqual(type(provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(provider._client_id, "test-custom-u2m-app")
+        self.assertEqual(provider.oauth_manager.port_range, [8099])
+        # Caller's scope set forwarded verbatim, NOT the driver default "sql offline_access".
+        self.assertEqual(provider._scopes_as_str, "all-apis")
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_u2m_foreign_client_id_no_port(
+        self, mock__initial_get_token
+    ):
+        # AUTH-013 Case 2: a foreign client_id with NO redirect port must NOT be
+        # pinned to the driver's own app-specific default port range (8020-8024).
+        # It falls through to the base kernel default [8030].
+        hostname = "foo.cloud.databricks.com"
+        kwargs = {"oauth_client_id": "test-custom-u2m-app"}
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        provider = auth_provider.external_provider
+        self.assertEqual(type(provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(provider._client_id, "test-custom-u2m-app")
+        self.assertEqual(provider.oauth_manager.port_range, [8030])
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_u2m_default_client_id_ignores_redirect_port(
+        self, mock__initial_get_token
+    ):
+        # AUTH-013 / PECOBLR-4039: a caller relying on the driver's DEFAULT
+        # client_id must stay pinned to the driver's registered redirect port
+        # range even if oauth_redirect_port is supplied - the driver's OAuth app
+        # only registers 8020-8024, so honoring an arbitrary port would produce a
+        # redirect_uri_mismatch. oauth_redirect_port only applies with a
+        # caller-supplied oauth_client_id.
+        hostname = "foo.cloud.databricks.com"
+        kwargs = {"oauth_redirect_port": 9000}
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        provider = auth_provider.external_provider
+        self.assertEqual(type(provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(provider._client_id, PYSQL_OAUTH_CLIENT_ID)
+        self.assertEqual(
+            provider.oauth_manager.port_range, PYSQL_OAUTH_REDIRECT_PORT_RANGE
+        )
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_u2m_default_client_id_ignores_scopes(
+        self, mock__initial_get_token
+    ):
+        # AUTH-013 / PECOBLR-4039: a caller relying on the driver's DEFAULT
+        # client_id must stay pinned to the driver's app-specific default scopes
+        # even if oauth_scopes is supplied - the driver's OAuth app only has its
+        # own default scopes registered, so honoring arbitrary scopes risks a
+        # scope error. oauth_scopes only applies with a caller-supplied
+        # oauth_client_id.
+        hostname = "foo.cloud.databricks.com"
+        kwargs = {"oauth_scopes": ["all-apis"]}
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        provider = auth_provider.external_provider
+        self.assertEqual(type(provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(provider._client_id, PYSQL_OAUTH_CLIENT_ID)
+        self.assertEqual(provider._scopes_as_str, " ".join(PYSQL_OAUTH_SCOPES))
 
 
 class TestClientCredentialsTokenSource:
