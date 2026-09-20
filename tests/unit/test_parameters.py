@@ -100,6 +100,12 @@ class TestSessionHandleChecks(object):
         (Decimal("123456789.123456789"), "DECIMAL(18,9)"),
         (Decimal("12345678912345678912345678912345678912"), "DECIMAL(38,0)"),
         (Decimal("1234.56"), "DECIMAL(6,2)"),
+        # Exponent notation (e.g. from Decimal.normalize()) and negative values
+        # must be sized from the numeric value, not str().
+        (Decimal("1500").normalize(), "DECIMAL(4,0)"),
+        (Decimal("1e5"), "DECIMAL(6,0)"),
+        (Decimal("-" + "9" * 38), "DECIMAL(38,0)"),
+        (Decimal("-12.34"), "DECIMAL(4,2)"),
     ),
 )
 def test_calculate_decimal_cast_string(value, expected):
