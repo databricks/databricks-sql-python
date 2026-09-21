@@ -220,19 +220,23 @@ class ThriftBackendTestSuite(unittest.TestCase):
         assert isinstance(result, type(dict()))
         assert isinstance(result.get("proxy-authorization"), type(str()))
 
+    @patch.object(SSLOptions, "_validate_client_identity_file")
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch("databricks.sql.types.create_default_context")
     def test_tls_cert_args_are_propagated(
-        self, mock_create_default_context, t_http_client_class
+        self,
+        mock_create_default_context,
+        t_http_client_class,
+        _mock_validate_client_identity_file,
     ):
-        mock_cert_key_file = Mock()
+        cert_file = "client-cert.pem"
+        cert_key_file = "client-key.pem"
         mock_cert_key_password = Mock()
         mock_trusted_ca_file = Mock()
-        mock_cert_file = Mock()
 
         mock_ssl_options = SSLOptions(
-            tls_client_cert_file=mock_cert_file,
-            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_file=cert_file,
+            tls_client_cert_key_file=cert_key_file,
             tls_client_cert_key_password=mock_cert_key_password,
             tls_trusted_ca_file=mock_trusted_ca_file,
         )
@@ -250,8 +254,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
         mock_ssl_context.load_cert_chain.assert_called_once_with(
-            certfile=mock_cert_file,
-            keyfile=mock_cert_key_file,
+            certfile=cert_file,
+            keyfile=cert_key_file,
             password=mock_cert_key_password,
         )
         self.assertTrue(mock_ssl_context.check_hostname)
@@ -260,19 +264,22 @@ class ThriftBackendTestSuite(unittest.TestCase):
             t_http_client_class.call_args[1]["ssl_options"], mock_ssl_options
         )
 
+    @patch.object(SSLOptions, "_validate_client_identity_file")
     @patch("databricks.sql.types.create_default_context")
-    def test_tls_cert_args_are_used_by_http_client(self, mock_create_default_context):
+    def test_tls_cert_args_are_used_by_http_client(
+        self, mock_create_default_context, _mock_validate_client_identity_file
+    ):
         from databricks.sql.auth.thrift_http_client import THttpClient
 
-        mock_cert_key_file = Mock()
+        cert_file = "client-cert.pem"
+        cert_key_file = "client-key.pem"
         mock_cert_key_password = Mock()
         mock_trusted_ca_file = Mock()
-        mock_cert_file = Mock()
 
         mock_ssl_options = SSLOptions(
             tls_verify=True,
-            tls_client_cert_file=mock_cert_file,
-            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_file=cert_file,
+            tls_client_cert_key_file=cert_key_file,
             tls_client_cert_key_password=mock_cert_key_password,
             tls_trusted_ca_file=mock_trusted_ca_file,
         )
@@ -593,6 +600,78 @@ class ThriftBackendTestSuite(unittest.TestCase):
             mock_response = Mock()
             mock_response.status.statusCode = code
             thrift_backend.make_request(lambda _: mock_response, Mock())
+
+    def test_reyden_sqlstate_raises_distinct_marker(self):
+        reyden_resp = Mock()
+        reyden_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState=ReydenThriftUnsupportedError.SQL_STATE,
+            errorMessage="Lakehouse/RT is not supported for Thrift protocol",
+        )
+
+        # KP001 on an ERROR_STATUS → the recoverable Reyden marker, but ONLY when
+        # detection is enabled (i.e. the OpenSession path).
+        with self.assertRaises(ReydenThriftUnsupportedError):
+            ThriftDatabricksClient._check_response_for_error(
+                reyden_resp, detect_reyden=True
+            )
+
+        # The same KP001 on any other RPC (detect_reyden=False, the default) is a
+        # generic DatabaseError — the marker is scoped to OpenSession so recovery
+        # never has to handle it elsewhere.
+        with self.assertRaises(DatabaseError) as cm:
+            ThriftDatabricksClient._check_response_for_error(
+                reyden_resp, detect_reyden=False
+            )
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
+
+        # Any other sqlState on an ERROR_STATUS is never the marker, even on the
+        # OpenSession path.
+        other_resp = Mock()
+        other_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState="42000",
+            errorMessage="a syntax error",
+        )
+        with self.assertRaises(DatabaseError) as cm:
+            ThriftDatabricksClient._check_response_for_error(
+                other_resp, detect_reyden=True
+            )
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
+
+    def test_reyden_detection_wired_only_for_open_session(self):
+        # make_request enables Reyden detection based on the RPC method name, so
+        # a KP001 from OpenSession maps to the marker while the same status from
+        # any other RPC stays a generic DatabaseError.
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        reyden_resp = Mock()
+        reyden_resp.status = ttypes.TStatus(
+            statusCode=ttypes.TStatusCode.ERROR_STATUS,
+            sqlState=ReydenThriftUnsupportedError.SQL_STATE,
+            errorMessage="Lakehouse/RT is not supported for Thrift protocol",
+        )
+
+        # make_request keys detection off method.__name__.
+        def OpenSession(_):
+            return reyden_resp
+
+        def ExecuteStatement(_):
+            return reyden_resp
+
+        with self.assertRaises(ReydenThriftUnsupportedError):
+            thrift_backend.make_request(OpenSession, Mock())
+
+        with self.assertRaises(DatabaseError) as cm:
+            thrift_backend.make_request(ExecuteStatement, Mock())
+        self.assertNotIsInstance(cm.exception, ReydenThriftUnsupportedError)
 
     def test_handle_execute_response_checks_operation_state_in_direct_results(self):
         for resp_type in self.execute_response_types:

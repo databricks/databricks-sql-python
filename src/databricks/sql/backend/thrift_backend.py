@@ -284,11 +284,23 @@ class ThriftDatabricksClient(DatabricksClient):
             )
 
     @staticmethod
-    def _check_response_for_error(response, host_url=None):
+    def _check_response_for_error(response, host_url=None, detect_reyden=False):
         if response.status and response.status.statusCode in [
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]:
+            # A Reyden / Real-Time warehouse rejects the legacy Thrift protocol
+            # with SQLSTATE KP001, but only at OpenSession. `detect_reyden` gates
+            # the marker to that call so a stray KP001 on any other RPC surfaces
+            # as a normal DatabaseError (the connection-layer recovery only wraps
+            # session open). host_url is deliberately omitted on the marker: it is
+            # a recoverable signal, not a terminal failure, so it must not emit a
+            # failure-telemetry event here.
+            if (
+                detect_reyden
+                and response.status.sqlState == ReydenThriftUnsupportedError.SQL_STATE
+            ):
+                raise ReydenThriftUnsupportedError(response.status.errorMessage)
             raise DatabaseError(
                 response.status.errorMessage,
                 host_url=host_url,
@@ -520,7 +532,14 @@ class ThriftDatabricksClient(DatabricksClient):
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftDatabricksClient._check_response_for_error(response, self._host)
+                # Only OpenSession opts into KP001→Reyden-marker detection (the
+                # rejection is stamped only there). Mirrors the method.__name__
+                # discrimination already used above for GetOperationStatus.
+                ThriftDatabricksClient._check_response_for_error(
+                    response,
+                    self._host,
+                    detect_reyden=getattr(method, "__name__", None) == "OpenSession",
+                )
                 return response
 
             error_info = response_or_error_info
