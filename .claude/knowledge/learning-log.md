@@ -124,4 +124,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #951 hardened mTLS client-identity handling in `SSLOptions`: it added `validate_client_identity()` / `load_client_cert_chain()` and rejects a private key configured without a client certificate.
   **Rule:** Python's `ssl.SSLContext.load_cert_chain` accepts a combined cert+key PEM (so certfile-without-keyfile is valid) but silently ignores a keyfile-without-certfile and downgrades to one-way TLS — explicitly reject key-without-cert, and preflight each identity file (readable, non-empty) separately before calling `load_cert_chain` so the failing input is named instead of an opaque stdlib SSL error.
 
+### 2026-09-24: learnings since 2026-09-18T17:27:19Z
+- **Context:** PR #947 fixed `RedactUrlQueryParamsFilter.filter` in `src/databricks/sql/__init__.py`, which crashed on log calls with no args (`record.args is None`) and carried a latent `record.arg[k]` NameError typo hidden in the never-exercised dict-args branch.
+  **Rule:** A `logging.Filter` that mutates `record.args` must handle all three shapes it can take — `None` (message logged with no args), a tuple, and a dict — and tests must exercise each shape (especially the dict path) since an untested branch masked a NameError.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
