@@ -651,23 +651,20 @@ class DecimalParameter(DbsqlParameterBase):
             Output:  DECIMAL(8,4)
         """
 
-        string_decimal = str(input)
-
-        if string_decimal.startswith("0."):
-            # This decimal is less than 1
-            overall = after = len(string_decimal) - 2
-        elif "." not in string_decimal:
-            # This decimal has no fractional component
-            overall = len(string_decimal)
-            after = 0
+        # Derive precision/scale from the exact numeric value rather than str(),
+        # whose sign and exponent notation (e.g. "1.5E+3", "-12.34") would be
+        # miscounted as extra digits.
+        _, digits, exponent = input.as_tuple()
+        if exponent >= 0:
+            # Integer value: `digits` followed by `exponent` trailing zeros.
+            scale = 0
+            precision = len(digits) + exponent
         else:
-            # This decimal has both whole and fractional parts
-            parts = string_decimal.split(".")
-            parts_lengths = [len(i) for i in parts]
-            before, after = parts_lengths[:2]
-            overall = before + after
+            scale = -exponent
+            # A value < 1 still needs `scale` digits of precision.
+            precision = max(len(digits), scale)
 
-        return self.CAST_EXPR.format(overall, after)
+        return self.CAST_EXPR.format(precision, scale)
 
 
 def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
