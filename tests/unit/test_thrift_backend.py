@@ -70,6 +70,28 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ttypes.TGetColumnsResp,
     ]
 
+    def test_server_hostname_https_scheme_is_case_insensitive(self):
+        for scheme in ("", "https://", "HTTPS://", "HtTpS://"):
+            with self.subTest(scheme=scheme):
+                backend = ThriftDatabricksClient(
+                    scheme + "httpbin.invalid/",
+                    8443,
+                    "/sql/1.0/warehouses/test",
+                    [],
+                    auth_provider=AuthProvider(),
+                    ssl_options=SSLOptions(),
+                    http_client=MagicMock(),
+                )
+                try:
+                    self.assertEqual(backend._transport.scheme, "https")
+                    self.assertEqual(backend._transport.host, "httpbin.invalid")
+                    self.assertEqual(backend._transport.port, 8443)
+                    self.assertEqual(
+                        backend._transport.path, "/sql/1.0/warehouses/test"
+                    )
+                finally:
+                    backend._transport.close()
+
     def test_make_request_checks_thrift_status_code(self):
         mock_response = Mock()
         mock_response.status.statusCode = ttypes.TStatusCode.ERROR_STATUS

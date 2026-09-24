@@ -158,7 +158,7 @@ class ThriftDatabricksClient(DatabricksClient):
             uri = "{host}:{port}/{path}".format(
                 host=server_hostname.rstrip("/"), port=port, path=http_path.lstrip("/")
             )
-            if not uri.startswith("https://"):
+            if not uri.lower().startswith("https://"):
                 uri = "https://" + uri
         else:
             raise ValueError("No valid connection settings.")
