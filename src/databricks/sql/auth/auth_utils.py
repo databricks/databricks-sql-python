@@ -36,12 +36,18 @@ def is_same_host(url1: str, url2: str) -> bool:
         True if hosts are the same, False otherwise
     """
     try:
-        host1 = urlparse(url1).netloc
-        host2 = urlparse(url2).netloc
-        # Handle port differences (e.g., example.com vs example.com:443)
-        host1_without_port = host1.split(":")[0]
-        host2_without_port = host2.split(":")[0]
-        return host1_without_port == host2_without_port
+        def _extract_host(url: str) -> str:
+            parsed = urlparse(url)
+            netloc = parsed.netloc
+            if not netloc:
+                # Bare hostname with no scheme: urlparse puts the host in the
+                # path component and leaves netloc empty.  Add a dummy scheme so
+                # the parser can identify the netloc correctly.
+                netloc = urlparse(f"https://{url}").netloc
+            # Strip port (e.g. example.com:443 -> example.com)
+            return netloc.split(":")[0].lower()
+
+        return _extract_host(url1) == _extract_host(url2)
     except Exception as e:
         logger.debug("Failed to parse URLs: %s", e)
         return False
