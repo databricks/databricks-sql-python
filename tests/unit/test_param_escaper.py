@@ -119,6 +119,14 @@ class TestIndividualFormatters(object):
         OUTPUT = "'1991-08-03'"
         assert pe.escape_datetime(INPUT, FORMAT) == OUTPUT
 
+    def test_escape_item_bytes_as_string(self):
+        """bytes are escaped like the equivalent str, not as an ARRAY of ints"""
+        assert pe.escape_item(b"golly bob howdy") == "'golly bob howdy'"
+        assert pe.escape_item("golly bob howdy".encode("utf-8")) == pe.escape_item(
+            "golly bob howdy"
+        )
+        assert pe.escape_item([b"his", b"name"]) == "ARRAY('his','name')"
+
     def test_escape_sequence_integer(self):
         assert pe.escape_sequence([1, 2, 3, 4]) == "ARRAY(1,2,3,4)"
 
