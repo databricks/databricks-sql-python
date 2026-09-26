@@ -459,7 +459,11 @@ class ThriftDatabricksClient(DatabricksClient):
                         f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}"
                     )
                 else:
-                    raise err
+                    # Not retried here (urllib3 already applied the retry policy),
+                    # but surfaced as a DB-API RequestError rather than a raw
+                    # urllib3 exception.
+                    error = err
+                    error_message = str(err)
             except OSError as err:
                 error = err
                 error_message = str(err)
