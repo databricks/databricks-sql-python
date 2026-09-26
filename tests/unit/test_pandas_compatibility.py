@@ -11,6 +11,7 @@ import unittest
 from decimal import Decimal
 from unittest.mock import Mock
 
+import numpy
 import pandas
 import pytest
 
@@ -308,9 +309,97 @@ class TestConvertArrowTablePandasCompat(unittest.TestCase):
 
         rows = _make_result_set(description)._convert_arrow_table(table)
 
+        # Still a numpy.ndarray (the documented ARRAY type), but object dtype
+        # holding exact ints and None rather than float64 with NaN.
+        self.assertIsInstance(rows[0].list_col, numpy.ndarray)
         values = list(rows[0].list_col)
         self.assertEqual(values, [big, -9223372036854775808, None])
         self.assertTrue(all(type(v) is int for v in values[:2]))
+
+    def test_list_without_null_keeps_native_dtype(self):
+        table = pa.table(
+            {
+                "ints": pa.array([[1, 2], []], type=pa.list_(pa.int64())),
+                "floats": pa.array([[1.5, None], [2.0]], type=pa.list_(pa.float64())),
+                "strings": pa.array([["a", "b"], ["c"]], type=pa.list_(pa.string())),
+            }
+        )
+        description = [
+            ("ints", "array", None, None, None, None, None),
+            ("floats", "array", None, None, None, None, None),
+            ("strings", "array", None, None, None, None, None),
+        ]
+
+        rows = _make_result_set(description)._convert_arrow_table(table)
+
+        self.assertIsInstance(rows[0].ints, numpy.ndarray)
+        self.assertEqual(rows[0].ints.dtype, numpy.int64)
+        self.assertEqual(rows[1].ints.tolist(), [])
+        self.assertEqual(rows[0].floats.dtype, numpy.float64)
+        self.assertTrue(numpy.isnan(rows[0].floats[1]))
+        self.assertIsInstance(rows[1].strings, numpy.ndarray)
+        self.assertEqual(rows[1].strings.dtype, object)
+        self.assertEqual(rows[0].strings.tolist(), ["a", "b"])
+
+    def test_nested_complex_values_are_exact(self):
+        big = 9007199254740993
+        table = pa.table(
+            {
+                "id": pa.array([1, 2], type=pa.int64()),
+                "array_array": pa.array(
+                    [[[big, None], [1]], None], type=pa.list_(pa.list_(pa.int64()))
+                ),
+                "map_array": pa.array(
+                    [[("a", [big, None])], [("b", None)]],
+                    type=pa.map_(pa.string(), pa.list_(pa.int64())),
+                ),
+                "struct_col": pa.array(
+                    [{"x": big, "y": [None, 2]}, {"x": None, "y": None}],
+                    type=pa.struct([("x", pa.int64()), ("y", pa.list_(pa.int64()))]),
+                ),
+                "name": pa.array(["a", None], type=pa.string()),
+            }
+        )
+        description = [
+            (name, "t", None, None, None, None, None) for name in table.column_names
+        ]
+
+        rows = _make_result_set(description)._convert_arrow_table(table)
+
+        self.assertEqual([r.id for r in rows], [1, 2])
+        self.assertEqual([r.name for r in rows], ["a", None])
+
+        outer = rows[0].array_array
+        self.assertIsInstance(outer, numpy.ndarray)
+        self.assertIsInstance(outer[0], numpy.ndarray)
+        self.assertEqual(outer[0].tolist(), [big, None])
+        self.assertEqual(outer[1].dtype, numpy.int64)
+        self.assertIsNone(rows[1].array_array)
+
+        ((key, value),) = rows[0].map_array
+        self.assertEqual(key, "a")
+        self.assertIsInstance(value, numpy.ndarray)
+        self.assertEqual(value.tolist(), [big, None])
+        self.assertEqual(rows[1].map_array, [("b", None)])
+
+        self.assertEqual(rows[0].struct_col["x"], big)
+        self.assertEqual(rows[0].struct_col["y"].tolist(), [None, 2])
+        self.assertEqual(rows[1].struct_col, {"x": None, "y": None})
+
+    def test_only_nested_columns_across_chunks(self):
+        list_type = pa.list_(pa.int64())
+        column = pa.chunked_array(
+            [pa.array([[1]], list_type), pa.array([None, [2, None]], list_type)]
+        )
+        table = pa.table({"list_col": column})
+        description = [("list_col", "array", None, None, None, None, None)]
+
+        rows = _make_result_set(description)._convert_arrow_table(table)
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0].list_col.tolist(), [1])
+        self.assertIsNone(rows[1].list_col)
+        self.assertEqual(rows[2].list_col.tolist(), [2, None])
 
     def test_struct_type(self):
         table = pa.table(
