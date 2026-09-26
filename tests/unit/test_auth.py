@@ -205,6 +205,24 @@ class Auth(unittest.TestCase):
                 oauth_client_secret="s",
             )
 
+    def test_get_python_sql_connector_auth_provider_oauth_m2m_ambiguous(self):
+        class MyProvider(CredentialsProvider):
+            def auth_type(self) -> str:
+                return "mine"
+
+            def __call__(self, *args, **kwargs) -> HeaderFactory:
+                return lambda: {"foo": "bar"}
+
+        for client_id in ("c", None):
+            with self.assertRaisesRegex(ValueError, "Ambiguous auth"):
+                get_python_sql_connector_auth_provider(
+                    "example.cloud.databricks.com",
+                    MagicMock(),
+                    credentials_provider=MyProvider(),
+                    oauth_client_id=client_id,
+                    oauth_client_secret="s",
+                )
+
     def test_get_python_sql_connector_auth_provider_unknown_auth_type(self):
         """An unsupported auth_type must not fall back to a browser login."""
         with patch(

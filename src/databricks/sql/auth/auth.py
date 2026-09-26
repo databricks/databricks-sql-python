@@ -24,9 +24,22 @@ def get_auth_provider(cfg: ClientContext, http_client):
             + ", ".join(t.value for t in AuthType)
         )
 
+    # azure-sp-m2m is explicit and uses the azure_* credentials; oauth_* values
+    # are ignored for it, as on the kernel path.
+    oauth_m2m = (
+        bool(cfg.oauth_client_secret) and cfg.auth_type != AuthType.AZURE_SP_M2M.value
+    )
+    if oauth_m2m and cfg.credentials_provider:
+        # Rejected on the kernel path too; neither should silently win.
+        raise ValueError(
+            "Ambiguous auth: both a custom credentials_provider and "
+            "oauth_client_secret were provided. Pass oauth_client_id + "
+            "oauth_client_secret for OAuth M2M, or credentials_provider alone."
+        )
+
     if cfg.credentials_provider:
         base_provider = ExternalAuthProvider(cfg.credentials_provider)
-    elif cfg.oauth_client_secret and cfg.auth_type != AuthType.AZURE_SP_M2M.value:
+    elif oauth_m2m:
         if cfg.auth_type in [
             AuthType.DATABRICKS_OAUTH.value,
             AuthType.AZURE_OAUTH.value,
@@ -161,6 +174,11 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),
         oauth_client_secret=kwargs.get("oauth_client_secret"),
     )
-    if cfg.oauth_client_secret and not kwargs.get("oauth_client_id"):
+    if (
+        cfg.oauth_client_secret
+        and cfg.auth_type != AuthType.AZURE_SP_M2M.value
+        and not cfg.credentials_provider
+        and not kwargs.get("oauth_client_id")
+    ):
         raise ValueError("OAuth M2M needs oauth_client_id with oauth_client_secret")
     return get_auth_provider(cfg, http_client)
