@@ -294,6 +294,24 @@ class TestConvertArrowTablePandasCompat(unittest.TestCase):
         self.assertIsNone(rows[1].list_col)
         self.assertEqual(list(rows[2].list_col), [4, 5])
 
+    def test_list_of_bigint_with_null_is_exact(self):
+        """Nested integers must not go through numpy float64."""
+        big = 9007199254740993  # 2**53 + 1: not representable as float64
+        table = pa.table(
+            {
+                "list_col": pa.array(
+                    [[big, -9223372036854775808, None]], type=pa.list_(pa.int64())
+                ),
+            }
+        )
+        description = [("list_col", "array", None, None, None, None, None)]
+
+        rows = _make_result_set(description)._convert_arrow_table(table)
+
+        values = list(rows[0].list_col)
+        self.assertEqual(values, [big, -9223372036854775808, None])
+        self.assertTrue(all(type(v) is int for v in values[:2]))
+
     def test_struct_type(self):
         table = pa.table(
             {
