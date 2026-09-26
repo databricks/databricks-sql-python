@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Fix: with pandas enabled (the default), complex-type values no longer lose precision: an ARRAY of integers containing a NULL (at any nesting level, including inside MAP and STRUCT values) is returned as an object `numpy.ndarray` of exact `int`/`None` instead of float64 with NaN, and nested columns are converted from Arrow directly instead of through pandas. Return types are unchanged: ARRAY is a `numpy.ndarray`, MAP a list of tuples, STRUCT a dict.
+
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
 - Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.
