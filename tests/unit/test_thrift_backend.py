@@ -1927,7 +1927,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         import thrift, errno
         from databricks.sql.thrift_api.TCLIService.TCLIService import Client
-        from databricks.sql.exc import RequestError, RequestError
+        from databricks.sql.exc import RequestError
         from databricks.sql.utils import NoRetryReason
 
         this_gos_name = "GetOperationStatus"

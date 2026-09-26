@@ -67,7 +67,10 @@ from databricks.sql.parameters.native import (
 
 from databricks.sql.result_set import ResultSet
 from databricks.sql.types import Row, SSLOptions
-from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.auth import (
+    EMPTY_ACCESS_TOKEN_MESSAGE,
+    get_python_sql_connector_auth_provider,
+)
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
@@ -581,6 +584,11 @@ class Connection:
                 or recovery_kwargs.get("credentials_provider")
             )
             if recovery_kwargs.get("auth_type") is None and not has_credential_shape:
+                if recovery_kwargs.get("access_token") is not None:
+                    # An explicitly empty token: the Thrift path rejects it
+                    # rather than defaulting to the interactive OAuth login
+                    # (see get_auth_provider), so do the same here.
+                    raise RuntimeError(EMPTY_ACCESS_TOKEN_MESSAGE)
                 recovery_kwargs["auth_type"] = AuthType.DATABRICKS_OAUTH.value
             return recovery_kwargs
 

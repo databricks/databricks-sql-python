@@ -159,6 +159,17 @@ class Auth(unittest.TestCase):
                 "moderakh-test.cloud.databricks.com", MagicMock(), access_token=""
             )
 
+    def test_get_python_sql_connector_auth_provider_empty_access_token_cert_auth(self):
+        """An empty token does not override certificate authentication."""
+        auth_provider = get_python_sql_connector_auth_provider(
+            "moderakh-test.cloud.databricks.com",
+            MagicMock(),
+            access_token="",
+            _tls_client_cert_file="fake.cert",
+            _use_cert_as_auth="abc",
+        )
+        self.assertIsNotNone(auth_provider)
+
     def test_get_python_sql_connector_auth_provider_external(self):
         class MyProvider(CredentialsProvider):
             def auth_type(self) -> str:

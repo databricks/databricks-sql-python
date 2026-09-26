@@ -10,6 +10,8 @@ from databricks.sql.auth.authenticators import (
 from databricks.sql.auth.common import AuthType, ClientContext
 from databricks.sql.auth.token_federation import TokenFederationProvider
 
+EMPTY_ACCESS_TOKEN_MESSAGE = "No valid authentication settings! access_token is empty"
+
 
 def get_auth_provider(cfg: ClientContext, http_client):
     # Determine the base auth provider
@@ -42,15 +44,15 @@ def get_auth_provider(cfg: ClientContext, http_client):
             http_client,
             cfg.auth_type,
         )
-    elif cfg.access_token is not None:
-        if not cfg.access_token:
-            # An explicitly empty token is a missing credential; never fall
-            # back to an interactive browser login for it.
-            raise RuntimeError("No valid authentication settings! access_token is empty")
+    elif cfg.access_token:
         base_provider = AccessTokenAuthProvider(cfg.access_token)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         # no op authenticator. authentication is performed using ssl certificate outside of headers
         base_provider = AuthProvider()
+    elif cfg.access_token is not None:
+        # An explicitly empty token is a missing credential; never fall back
+        # to the default interactive browser login for it.
+        raise RuntimeError(EMPTY_ACCESS_TOKEN_MESSAGE)
     else:
         if (
             cfg.oauth_redirect_port_range is not None

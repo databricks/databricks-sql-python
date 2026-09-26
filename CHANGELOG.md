@@ -1,5 +1,9 @@
 # Release History
 
+# Unreleased
+- Fix: transport failures (connection refused, proxy/tunnel errors) on the Thrift backend raise `RequestError` (`OperationalError`) instead of a raw `urllib3` exception.
+- Fix: an explicitly empty `access_token` raises `No valid authentication settings! access_token is empty` instead of silently starting the interactive browser OAuth login, including when a known Reyden warehouse skips Thrift. Explicit `auth_type`, `credentials_provider` and certificate authentication still take precedence.
+
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
 - Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.
