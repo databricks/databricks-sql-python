@@ -43,6 +43,10 @@ def get_auth_provider(cfg: ClientContext, http_client):
             cfg.auth_type,
         )
     elif cfg.access_token is not None:
+        if not cfg.access_token:
+            # An explicitly empty token is a missing credential; never fall
+            # back to an interactive browser login for it.
+            raise RuntimeError("No valid authentication settings! access_token is empty")
         base_provider = AccessTokenAuthProvider(cfg.access_token)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         # no op authenticator. authentication is performed using ssl certificate outside of headers

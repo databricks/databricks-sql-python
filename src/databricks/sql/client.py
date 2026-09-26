@@ -372,7 +372,7 @@ class Connection:
             http_path,
         )
 
-        if access_token:
+        if access_token is not None:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
 
