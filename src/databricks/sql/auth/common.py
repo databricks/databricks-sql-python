@@ -38,6 +38,7 @@ class ClientContext:
         oauth_persistence=None,
         credentials_provider=None,
         identity_federation_client_id: Optional[str] = None,
+        oauth_client_secret: Optional[str] = None,
         # HTTP client configuration parameters
         ssl_options=None,  # SSLOptions type
         socket_timeout: Optional[float] = None,
@@ -59,6 +60,7 @@ class ClientContext:
         self.auth_type = auth_type
         self.oauth_scopes = oauth_scopes
         self.oauth_client_id = oauth_client_id
+        self.oauth_client_secret = oauth_client_secret
         self.azure_client_id = azure_client_id
         self.azure_client_secret = azure_client_secret
         self.azure_tenant_id = azure_tenant_id

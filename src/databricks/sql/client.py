@@ -230,6 +230,12 @@ class Connection:
             oauth_client_id: `str`, optional
                 custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
 
+            oauth_client_secret: `str`, optional
+                OAuth secret of a service principal. Together with `oauth_client_id`
+                (the service principal's client ID) this selects OAuth
+                machine-to-machine authentication (client credentials, scope
+                `all-apis`), with tokens refreshed as they expire.
+
             oauth_redirect_port: `int`, optional
                 port of the oauth redirect uri (localhost). This is required when custom oauth client_id
                 `oauth_client_id` is set

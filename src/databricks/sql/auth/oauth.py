@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 import hashlib
 import json
 import logging
@@ -341,7 +342,12 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
             method=HttpMethod.POST, url=self.token_url, headers=headers, body=data
         )
         if response.status == 200:
-            oauth_response = OAuthResponse(**json.loads(response.data.decode("utf-8")))
+            payload = json.loads(response.data.decode("utf-8"))
+            # Token endpoints add fields such as ``scope``; keep the known ones.
+            known = {f.name for f in dataclasses.fields(OAuthResponse)}
+            oauth_response = OAuthResponse(
+                **{k: v for k, v in payload.items() if k in known}
+            )
             return Token(
                 oauth_response.access_token,
                 oauth_response.token_type,
