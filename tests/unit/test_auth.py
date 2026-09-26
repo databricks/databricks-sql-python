@@ -152,6 +152,13 @@ class Auth(unittest.TestCase):
         auth_provider.add_headers(headers)
         self.assertEqual(headers["Authorization"], "Bearer dpi123")
 
+    def test_get_python_sql_connector_auth_provider_empty_access_token(self):
+        """An explicitly empty token must not start an interactive OAuth login."""
+        with self.assertRaisesRegex(RuntimeError, "No valid authentication settings!"):
+            get_python_sql_connector_auth_provider(
+                "moderakh-test.cloud.databricks.com", MagicMock(), access_token=""
+            )
+
     def test_get_python_sql_connector_auth_provider_external(self):
         class MyProvider(CredentialsProvider):
             def auth_type(self) -> str:

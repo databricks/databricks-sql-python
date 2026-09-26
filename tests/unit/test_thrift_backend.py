@@ -1927,7 +1927,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         import thrift, errno
         from databricks.sql.thrift_api.TCLIService.TCLIService import Client
-        from databricks.sql.exc import RequestError
+        from databricks.sql.exc import RequestError, RequestError
         from databricks.sql.utils import NoRetryReason
 
         this_gos_name = "GetOperationStatus"
@@ -2046,6 +2046,36 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(
             f"{EXPECTED_RETRIES}/{EXPECTED_RETRIES}", cm.exception.context["attempt"]
         )
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_make_request_wraps_urllib3_http_error_as_request_error(
+        self, t_transport_class
+    ):
+        import urllib3
+
+        t_transport_instance = t_transport_class.return_value
+        t_transport_instance.code = None
+        t_transport_instance.headers = {}
+        mock_method = Mock()
+        mock_method.__name__ = "OpenSession"
+        mock_method.side_effect = urllib3.exceptions.MaxRetryError(
+            None, "/", "Tunnel connection failed: 503"
+        )
+
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+
+        with self.assertRaises(RequestError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+        self.assertIn("Tunnel connection failed", str(cm.exception.message_with_context()))
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_wont_retry_if_error_code_not_429_or_503(
