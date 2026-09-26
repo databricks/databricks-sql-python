@@ -130,7 +130,27 @@ class ResultSet(ABC):
         )
 
         res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
+
+        # pandas converts nested (list/map/struct) values through numpy, which
+        # turns e.g. ARRAY<BIGINT> with a NULL element into float64 (precision
+        # loss beyond 2**53, NULL as NaN). Take nested columns straight from
+        # Arrow, as the disable_pandas path does.
+        nested = {
+            index: table.column(index).to_pylist()
+            for index, field in enumerate(table.schema)
+            if pyarrow.types.is_nested(field.type)
+        }
+        if not nested:
+            return [ResultRow(*v) for v in res]
+        return [
+            ResultRow(
+                *[
+                    nested[index][position] if index in nested else value
+                    for index, value in enumerate(row)
+                ]
+            )
+            for position, row in enumerate(res)
+        ]
 
     @property
     def rownumber(self):
