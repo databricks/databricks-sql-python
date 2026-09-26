@@ -1,5 +1,10 @@
 # Release History
 
+# Unreleased
+- Support OAuth M2M (client credentials) for Databricks service principals on the default Thrift backend: `oauth_client_id` + `oauth_client_secret` now authenticate with tokens from the workspace `/oidc/v1/token` endpoint (scope `all-apis`), refreshed as they expire. Previously the secret was ignored and the connection started an interactive browser login.
+- Reject an unsupported `auth_type` with `ValueError` instead of falling back to the interactive browser login, and reject `oauth_client_secret` together with `credentials_provider` or a U2M `auth_type`, as the kernel backend does.
+- Fix: token responses with extra fields (such as `scope`) no longer fail in `ClientCredentialsTokenSource`.
+
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
 - Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.

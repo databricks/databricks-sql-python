@@ -229,10 +229,19 @@ class Connection:
 
             oauth_client_id: `str`, optional
                 custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
+                For OAuth M2M (with `oauth_client_secret`) this is the service principal's client ID and is required.
+
+            oauth_client_secret: `str`, optional
+                OAuth secret of a service principal. Together with `oauth_client_id`
+                (the service principal's client ID) this selects OAuth
+                machine-to-machine authentication (client credentials, scope
+                `all-apis`), with tokens refreshed as they expire. Cannot be
+                combined with `credentials_provider` or with `auth_type`
+                `databricks-oauth` / `azure-oauth`; ignored for `azure-sp-m2m`.
 
             oauth_redirect_port: `int`, optional
-                port of the oauth redirect uri (localhost). This is required when custom oauth client_id
-                `oauth_client_id` is set
+                port of the oauth redirect uri (localhost) for the interactive (U2M) flow. This is required when
+                a custom `oauth_client_id` is used for U2M. Not used for OAuth M2M (`oauth_client_secret`).
 
             identity_federation_client_id: `str`, optional
                 Service-principal client ID for mandatory SP-wide workload identity

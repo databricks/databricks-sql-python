@@ -236,3 +236,47 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
             return headers
 
         return header_factory
+
+
+class DatabricksServicePrincipalCredentialProvider(CredentialsProvider):
+    """
+    OAuth machine-to-machine (client credentials) authentication for a
+    Databricks service principal.
+
+    Tokens come from the workspace's ``/oidc/v1/token`` endpoint and are
+    refreshed by the token source when they expire, so a long-lived connection
+    keeps working past the token lifetime.
+
+    Attributes:
+        hostname (str): The normalized workspace URL (``https://<host>/``).
+        client_id (str): The service principal's OAuth client (application) ID.
+        client_secret (str): The service principal's OAuth secret.
+    """
+
+    DEFAULT_SCOPE = "all-apis"
+
+    def __init__(self, hostname, client_id, client_secret, http_client):
+        self.hostname = hostname
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self._http_client = http_client
+
+    def auth_type(self) -> str:
+        return "oauth-m2m"
+
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        source = ClientCredentialsTokenSource(
+            token_url=f"{self.hostname.rstrip('/')}/oidc/v1/token",
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            http_client=self._http_client,
+            extra_params={"scope": self.DEFAULT_SCOPE},
+        )
+
+        def header_factory() -> Dict[str, str]:
+            token = source.get_token()
+            return {
+                HttpHeader.AUTHORIZATION.value: f"{token.token_type} {token.access_token}"
+            }
+
+        return header_factory
