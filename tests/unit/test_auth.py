@@ -1,4 +1,5 @@
 import unittest
+from urllib.parse import parse_qs
 import pytest
 from unittest.mock import patch, MagicMock
 import jwt
@@ -151,6 +152,69 @@ class Auth(unittest.TestCase):
         headers = {}
         auth_provider.add_headers(headers)
         self.assertEqual(headers["Authorization"], "Bearer dpi123")
+
+    def test_get_python_sql_connector_auth_provider_oauth_m2m(self):
+        """oauth_client_id + oauth_client_secret authenticate with client
+        credentials instead of starting an interactive login."""
+        http_client = MagicMock()
+        http_client.request.return_value = MagicMock(
+            status=200,
+            data=json.dumps(
+                {
+                    "access_token": "m2m-token",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                    "scope": "all-apis",
+                }
+            ).encode(),
+        )
+        with patch(
+            "databricks.sql.auth.auth.DatabricksOAuthProvider",
+            side_effect=AssertionError("interactive login started"),
+        ), patch("databricks.sql.auth.oauth.Token.is_expired", return_value=False):
+            auth_provider = get_python_sql_connector_auth_provider(
+                "example.cloud.databricks.com",
+                http_client,
+                oauth_client_id="sp-client-id",
+                oauth_client_secret="sp-secret",
+            )
+            headers = {}
+            auth_provider.add_headers(headers)
+        self.assertEqual(headers["Authorization"], "Bearer m2m-token")
+        request = http_client.request.call_args.kwargs
+        self.assertEqual(
+            request["url"], "https://example.cloud.databricks.com/oidc/v1/token"
+        )
+        body = parse_qs(request["body"])
+        self.assertEqual(body["grant_type"], ["client_credentials"])
+        self.assertEqual(body["client_id"], ["sp-client-id"])
+        self.assertEqual(body["client_secret"], ["sp-secret"])
+        self.assertEqual(body["scope"], ["all-apis"])
+
+    def test_get_python_sql_connector_auth_provider_oauth_m2m_errors(self):
+        with self.assertRaisesRegex(ValueError, "needs oauth_client_id"):
+            get_python_sql_connector_auth_provider(
+                "example.cloud.databricks.com", MagicMock(), oauth_client_secret="s"
+            )
+        with self.assertRaisesRegex(ValueError, "interactive"):
+            get_python_sql_connector_auth_provider(
+                "example.cloud.databricks.com",
+                MagicMock(),
+                auth_type="databricks-oauth",
+                oauth_client_id="c",
+                oauth_client_secret="s",
+            )
+
+    def test_get_python_sql_connector_auth_provider_unknown_auth_type(self):
+        """An unsupported auth_type must not fall back to a browser login."""
+        with patch(
+            "databricks.sql.auth.auth.DatabricksOAuthProvider",
+            side_effect=AssertionError("interactive login started"),
+        ):
+            with self.assertRaisesRegex(ValueError, "Unsupported auth_type"):
+                get_python_sql_connector_auth_provider(
+                    "example.cloud.databricks.com", MagicMock(), auth_type="oauth-u2m"
+                )
 
     def test_get_python_sql_connector_auth_provider_external(self):
         class MyProvider(CredentialsProvider):
