@@ -1,4 +1,5 @@
 import base64
+import errno
 import hashlib
 import json
 import logging
@@ -62,18 +63,43 @@ class RefreshableTokenSource(ABC):
 
 
 class OAuthManager:
+    # Default maximum time (in seconds) to wait for the browser OAuth redirect
+    # callback before giving up. Without a bound, the local callback server
+    # would block forever in a headless environment (e.g. a notebook/job with
+    # no browser), making the connection appear to hang indefinitely. See issue
+    # #458. This is generous for interactive logins (slow MFA, IdP re-auth, SSO
+    # redirects) and is a fixed ceiling for connector end users: there is no
+    # public ``connect()``/``Connection`` parameter to change it. The
+    # ``redirect_callback_timeout_seconds`` argument below is an internal-only
+    # override for callers constructing ``OAuthManager`` directly (private API);
+    # it is not plumbed through ``DatabricksOAuthProvider`` or the public
+    # connection kwargs. It accepts a ``float`` so callers (and tests) may pass
+    # fractional-second timeouts; this class default is a whole number of
+    # seconds.
+    REDIRECT_CALLBACK_TIMEOUT_SECONDS = 60 * 5
+
     def __init__(
         self,
         port_range: List[int],
         client_id: str,
         idp_endpoint: OAuthEndpointCollection,
         http_client,
+        redirect_callback_timeout_seconds: Optional[float] = None,
     ):
         self.port_range = port_range
         self.client_id = client_id
         self.redirect_port = None
         self.idp_endpoint = idp_endpoint
         self.http_client = http_client
+        # Fall back to the class default when not overridden. Kept as a
+        # lowercase instance attribute (distinct from the ALL_CAPS class
+        # constant that provides the default) so the rest of the flow reads a
+        # single, clearly per-instance source of truth.
+        self._redirect_callback_timeout_seconds = (
+            redirect_callback_timeout_seconds
+            if redirect_callback_timeout_seconds is not None
+            else self.REDIRECT_CALLBACK_TIMEOUT_SECONDS
+        )
 
     @staticmethod
     def __token_urlsafe(nbytes=32):
@@ -128,11 +154,40 @@ class OAuthManager:
 
     def __get_authorization_code(self, client, auth_url, scope, state, challenge):
         handler = OAuthHttpSingleRequestHandler("Databricks Sql Connector")
+        # Bound the read of the accepted connection too (not just the accept
+        # wait below). StreamRequestHandler.setup() applies this to the accepted
+        # socket via settimeout(), so a client that connects but never completes
+        # the request line can no longer block indefinitely.
+        handler.timeout = self._redirect_callback_timeout_seconds
 
         last_error = None
+        callback_timed_out = False
         for port in self.port_range:
             try:
                 with HTTPServer(("", port), handler) as httpd:
+                    # Bound how long we wait for the browser redirect callback so
+                    # that a headless environment (no browser to complete the
+                    # flow) fails with a clear error instead of hanging forever.
+                    # NOTE: httpd.timeout bounds only the wait to ACCEPT an
+                    # incoming connection (it is the select() timeout used by
+                    # handle_request). The subsequent read of the HTTP request
+                    # line is bounded separately by the handler.timeout set
+                    # above (applied to the accepted socket by
+                    # StreamRequestHandler.setup()), so a client that connects
+                    # but never completes the request can no longer block. The
+                    # headless "no connection ever arrives" case (issue #458) is
+                    # covered by this accept-wait timeout.
+                    httpd.timeout = self._redirect_callback_timeout_seconds
+
+                    # HTTPServer.handle_request() returns normally (via
+                    # handle_timeout()) when the wait elapses without a
+                    # connection, so record that case to distinguish it from a
+                    # received-but-empty callback below.
+                    def _on_timeout():
+                        nonlocal callback_timed_out
+                        callback_timed_out = True
+
+                    httpd.handle_timeout = _on_timeout
                     redirect_url = OAuthManager.__get_redirect_url(port)
                     auth_req_uri, _, _ = client.prepare_authorization_request(
                         authorization_url=auth_url,
@@ -152,11 +207,61 @@ class OAuthManager:
                 self.redirect_port = port
                 break
             except OSError as e:
-                if e.errno == 48:
+                # Record every bind-time OSError so the fall-through
+                # `raise last_error` below always re-raises a real exception.
+                # If we only recorded the port-in-use case, an unexpected error
+                # on every port (e.g. EACCES, EADDRNOTAVAIL) would leave
+                # last_error == None and turn `raise last_error` into
+                # `raise None`, masking the real failure with a confusing
+                # TypeError.
+                last_error = e
+                # errno.EADDRINUSE resolves to the platform's value (48 on
+                # macOS, 98 on Linux), so a port-in-use bind failure is
+                # recognized cross-platform and downgraded to an info log while
+                # we try the next port.
+                if e.errno == errno.EADDRINUSE:
                     logger.info(f"Port {port} is in use")
-                    last_error = e
+                else:
+                    logger.warning(f"Unexpected error binding port {port}: {e}")
+            except webbrowser.Error as e:
+                # No browser could be launched at all (webbrowser.get() found no
+                # runnable browser). This is a strong, reliable headless signal
+                # (e.g. a notebook/job with no display), so fail fast with a
+                # clear error instead of waiting out the full redirect-callback
+                # timeout. We do NOT fail fast merely on a falsy open_new return
+                # value: that is unreliable across platforms (it can be falsy
+                # even when a browser did open) and would break working
+                # interactive logins. Note this fast-fail only covers the case
+                # where webbrowser.get() raises; the more common headless case
+                # (no browser registered, so open_new() returns False without
+                # raising) is NOT caught here and instead falls through to the
+                # bounded redirect-callback timeout below, which is the real
+                # safeguard against blocking forever. See issue #458. Placed
+                # before the generic
+                # ``except Exception`` so this RuntimeError propagates instead of
+                # being swallowed and retried against the remaining ports.
+                msg = (
+                    "Could not launch a web browser to complete the U2M OAuth "
+                    f"login flow ({e}). This looks like a headless environment "
+                    "(e.g. a notebook or job with no browser), where browser-"
+                    "based OAuth cannot complete. See issue #458."
+                )
+                logger.error(msg)
+                raise RuntimeError(msg) from e
             except Exception as e:
+                # A non-OSError/non-webbrowser.Error raised here is not
+                # port-related (e.g. an OAuth2Error from
+                # prepare_authorization_request, or an unexpected programming
+                # bug). Binding the same call to a different local port cannot
+                # help, so retrying it against every remaining port would only
+                # multiply latency and log noise and then re-raise the *last*
+                # attempt's error, obscuring the original failure. Fail fast
+                # instead, preserving the original exception and traceback via a
+                # bare `raise`. This also sidesteps the `raise None` hazard that
+                # the OSError branch guards against, since we never fall through
+                # to `raise last_error` for this case.
                 logger.error("unexpected error: %s", e)
+                raise
         if self.redirect_port is None:
             logger.error(
                 f"Tried all the ports {self.port_range} for oauth redirect, but can't find free port"
@@ -164,7 +269,18 @@ class OAuthManager:
             raise last_error
 
         if not handler.request_path:
-            msg = f"No path parameters were returned to the callback at {redirect_url}"
+            if callback_timed_out:
+                msg = (
+                    f"Timed out after {self._redirect_callback_timeout_seconds} "
+                    f"seconds waiting for the OAuth redirect callback at "
+                    f"{redirect_url}. The login flow was not completed in time — "
+                    "either the interactive login was not finished within the "
+                    "timeout, or this is a headless environment (e.g. a notebook "
+                    "or job with no browser) where no browser can complete the "
+                    "flow. See issue #458."
+                )
+            else:
+                msg = f"No path parameters were returned to the callback at {redirect_url}"
             logger.error(msg)
             raise RuntimeError(msg)
         # This is a kludge because the parsing library expects https callbacks

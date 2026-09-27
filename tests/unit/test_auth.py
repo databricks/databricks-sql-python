@@ -207,6 +207,243 @@ class Auth(unittest.TestCase):
 
         self.assertEqual(auth_provider.external_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
+    @patch("databricks.sql.auth.oauth.webbrowser.open_new")
+    @patch.object(OAuthManager, "_OAuthManager__fetch_well_known_config")
+    def test_get_tokens_does_not_hang_when_no_callback_received(
+        self, mock_fetch_config, mock_open_new
+    ):
+        """When the U2M browser OAuth callback never arrives (e.g. a headless
+        notebook/job with a null token), the local redirect server must not
+        block forever. It should time out and surface a clear error rather than
+        hang. See issue #458."""
+        mock_fetch_config.return_value = {
+            "authorization_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/authorize",
+            "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
+        }
+        # Do not actually launch a browser during the test.
+        mock_open_new.return_value = True
+
+        # Bind to an OS-assigned ephemeral port (0) rather than a fixed port so
+        # the test does not depend on a specific port being free. A fixed port
+        # that happens to be occupied would fail to bind and take the
+        # can't-find-free-port branch instead of the timeout path we exercise.
+        # Keep the test fast: shorten the callback wait via the constructor
+        # keyword (the actual new surface this PR introduces) rather than
+        # mutating the private attribute after the fact. This also exercises the
+        # Optional[int] fall-back logic. The production default is minutes; the
+        # bug is that WITHOUT any bound the wait is infinite.
+        oauth_manager = OAuthManager(
+            port_range=[0],
+            client_id="mock-id",
+            idp_endpoint=InHouseOAuthEndpointCollection(),
+            http_client=MagicMock(),
+            # Sub-second so this real-wallclock wait stays negligible in the
+            # fast/mocked unit suite. The wait IS the timeout, so there is no
+            # setup racing against it that a shorter bound could make flaky.
+            redirect_callback_timeout_seconds=0.5,
+        )
+
+        # No callback is ever delivered to the redirect server. Run the flow in
+        # a daemon thread and join with a wall-clock bound so a regression to
+        # the infinite-block behaviour fails this test loudly instead of hanging
+        # the whole suite.
+        import threading
+
+        result = {}
+
+        def run():
+            try:
+                oauth_manager.get_tokens(
+                    hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                )
+                result["outcome"] = "returned"
+            except BaseException as e:  # noqa: BLE001
+                result["outcome"] = "raised"
+                result["error"] = e
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=30)
+
+        self.assertFalse(
+            worker.is_alive(),
+            "OAuth callback server blocked indefinitely waiting for a callback "
+            "that never arrives (issue #458)",
+        )
+        self.assertEqual(result.get("outcome"), "raised")
+        self.assertIsInstance(result.get("error"), RuntimeError)
+        # The headless timeout path must surface a clear, timeout-specific error
+        # (not the generic received-but-empty callback message). See issue #458.
+        error_message = str(result.get("error"))
+        self.assertIn("Timed out", error_message)
+        self.assertIn(
+            str(oauth_manager._redirect_callback_timeout_seconds), error_message
+        )
+
+    @patch("databricks.sql.auth.oauth.webbrowser.open_new")
+    @patch.object(OAuthManager, "_OAuthManager__fetch_well_known_config")
+    def test_get_tokens_does_not_hang_when_callback_connects_but_never_completes(
+        self, mock_fetch_config, mock_open_new
+    ):
+        """A client that connects to the local redirect server but never sends a
+        complete HTTP request line must not block forever either. This is the
+        separate defense the PR adds via ``handler.timeout``: setup() applies it
+        to the accepted socket, so the stalled request-line read raises
+        socket.timeout, which socketserver swallows via handle_error. Because no
+        callback path is ever recorded (request_path stays None) and this is not
+        the accept-wait timeout (callback_timed_out stays False), the flow raises
+        the generic "No path parameters" error rather than the "Timed out" one.
+        See oauth.py __get_authorization_code."""
+        import socket
+        import threading
+        from urllib.parse import urlparse, parse_qs
+
+        mock_fetch_config.return_value = {
+            "authorization_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/authorize",
+            "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
+        }
+
+        stalled_sockets = []
+
+        def connect_but_stall(auth_req_uri):
+            # Instead of launching a browser, open a bare TCP connection to the
+            # local redirect server (parsed out of the authorization request's
+            # redirect_uri) and never send a request line, so the accepted
+            # socket's read stalls until handler.timeout fires.
+            redirect_uri = parse_qs(urlparse(auth_req_uri).query)["redirect_uri"][0]
+            port = urlparse(redirect_uri).port
+            stalled_sockets.append(socket.create_connection(("localhost", port)))
+            return True
+
+        mock_open_new.side_effect = connect_but_stall
+
+        def run_flow(port):
+            # Target a specific free port so the connecting client above knows
+            # where to reach the redirect server; unlike the accept-wait test,
+            # port_range=[0] can't be used here because the source builds the
+            # redirect URL from the requested port, so it would point the client
+            # at localhost:0.
+            oauth_manager = OAuthManager(
+                port_range=[port],
+                client_id="mock-id",
+                idp_endpoint=InHouseOAuthEndpointCollection(),
+                http_client=MagicMock(),
+                # Sub-second: bounds the stalled request-line read. Keeps the
+                # per-attempt wait negligible so even the rare TOCTOU retry loop
+                # stays fast in the mocked unit suite.
+                redirect_callback_timeout_seconds=0.5,
+            )
+
+            result = {}
+
+            def run():
+                try:
+                    oauth_manager.get_tokens(
+                        hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                    )
+                    result["outcome"] = "returned"
+                except BaseException as e:  # noqa: BLE001
+                    result["outcome"] = "raised"
+                    result["error"] = e
+
+            worker = threading.Thread(target=run, daemon=True)
+            worker.start()
+            worker.join(timeout=30)
+            return worker, result
+
+        try:
+            # Pre-selecting a fixed port has a small TOCTOU window: between
+            # closing the probe socket and the HTTPServer bind inside
+            # __get_authorization_code, another process can claim the port. That
+            # would take the can't-bind branch instead of the stalled-request-
+            # line path this test exercises, surfacing a bind error rather than
+            # the RuntimeError asserted below. Re-probe a fresh port and retry
+            # on that rare race so the test stays deterministic in CI.
+            worker, result = None, {}
+            for _ in range(5):
+                probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                probe.bind(("localhost", 0))
+                free_port = probe.getsockname()[1]
+                probe.close()
+
+                worker, result = run_flow(free_port)
+                if isinstance(result.get("error"), RuntimeError):
+                    break
+
+            self.assertFalse(
+                worker.is_alive(),
+                "OAuth callback server blocked indefinitely on a client that "
+                "connected but never completed the request line",
+            )
+            self.assertEqual(result.get("outcome"), "raised")
+            self.assertIsInstance(result.get("error"), RuntimeError)
+            # A stalled request-line read is NOT the accept-wait timeout:
+            # request_path stays None and callback_timed_out stays False, so the
+            # generic message is raised, not the "Timed out" one.
+            error_message = str(result.get("error"))
+            self.assertIn("No path parameters", error_message)
+            self.assertNotIn("Timed out", error_message)
+        finally:
+            for sock in stalled_sockets:
+                sock.close()
+
+    @patch("databricks.sql.auth.oauth.webbrowser.open_new")
+    @patch.object(OAuthManager, "_OAuthManager__fetch_well_known_config")
+    def test_get_tokens_fails_fast_when_no_browser_available(
+        self, mock_fetch_config, mock_open_new
+    ):
+        """When no browser can be launched at all (webbrowser.open_new raises
+        webbrowser.Error), the flow must fail fast with a clear headless error
+        rather than waiting out the full redirect-callback timeout. See issue
+        #458."""
+        import webbrowser
+
+        mock_fetch_config.return_value = {
+            "authorization_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/authorize",
+            "token_endpoint": "https://foo.cloud.databricks.com/oidc/oauth2/v2.0/token",
+        }
+        mock_open_new.side_effect = webbrowser.Error("no browser available")
+
+        # A large timeout: if the fail-fast path regressed, joining below would
+        # hit the wall-clock bound and the test would fail loudly instead of
+        # silently waiting minutes.
+        oauth_manager = OAuthManager(
+            port_range=[0],
+            client_id="mock-id",
+            idp_endpoint=InHouseOAuthEndpointCollection(),
+            http_client=MagicMock(),
+            redirect_callback_timeout_seconds=600,
+        )
+
+        import threading
+
+        result = {}
+
+        def run():
+            try:
+                oauth_manager.get_tokens(
+                    hostname="foo.cloud.databricks.com", scope="offline_access sql"
+                )
+                result["outcome"] = "returned"
+            except BaseException as e:  # noqa: BLE001
+                result["outcome"] = "raised"
+                result["error"] = e
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(timeout=30)
+
+        self.assertFalse(
+            worker.is_alive(),
+            "OAuth flow did not fail fast when no browser was available",
+        )
+        self.assertEqual(result.get("outcome"), "raised")
+        self.assertIsInstance(result.get("error"), RuntimeError)
+        error_message = str(result.get("error"))
+        self.assertIn("browser", error_message.lower())
+        # The fail-fast path must not surface the accept-wait timeout message.
+        self.assertNotIn("Timed out", error_message)
+
 
 class TestClientCredentialsTokenSource:
     @pytest.fixture
