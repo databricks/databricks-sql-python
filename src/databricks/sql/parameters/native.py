@@ -656,9 +656,10 @@ class DecimalParameter(DbsqlParameterBase):
         # miscounted as extra digits.
         _, digits, exponent = input.as_tuple()
         if exponent >= 0:
-            # Integer value: `digits` followed by `exponent` trailing zeros.
+            # Integer value: `digits` followed by `exponent` trailing zeros. A
+            # zero such as 0E+38 is still a single digit.
             scale = 0
-            precision = len(digits) + exponent
+            precision = 1 if input.is_zero() else len(digits) + exponent
         else:
             scale = -exponent
             # A value < 1 still needs `scale` digits of precision.

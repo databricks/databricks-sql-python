@@ -106,6 +106,9 @@ class TestSessionHandleChecks(object):
         (Decimal("1e5"), "DECIMAL(6,0)"),
         (Decimal("-" + "9" * 38), "DECIMAL(38,0)"),
         (Decimal("-12.34"), "DECIMAL(4,2)"),
+        (Decimal("0E+38"), "DECIMAL(1,0)"),
+        (Decimal("-0E+5"), "DECIMAL(1,0)"),
+        (Decimal("0E-5"), "DECIMAL(5,5)"),
     ),
 )
 def test_calculate_decimal_cast_string(value, expected):
