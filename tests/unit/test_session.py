@@ -476,6 +476,7 @@ class TestKernelTransportOptionsThreading:
                 _retry_stop_after_attempts_duration=600.0,
                 _socket_timeout=12.5,
                 _pool_maxsize=41,
+                geospatial_as_string=False,
             )
             try:
                 _, kwargs = mock_kernel_client.call_args
@@ -486,6 +487,7 @@ class TestKernelTransportOptionsThreading:
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
                 assert kwargs["request_timeout_secs"] == 12.5
                 assert kwargs["max_connections"] == 41
+                assert kwargs["geospatial_as_string"] is False
             finally:
                 conn.close()
 

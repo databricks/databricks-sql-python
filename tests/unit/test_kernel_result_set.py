@@ -43,11 +43,12 @@ class _FakeKernelHandle:
         self.closed = True
 
 
-def _make_rs(handle) -> KernelResultSet:
+def _make_rs(handle, *, disable_pandas=False) -> KernelResultSet:
     # The base ResultSet __init__ takes a `connection` ref it never
     # actually dereferences during these buffer tests, so a Mock is
     # fine.
     connection = MagicMock()
+    connection.disable_pandas = disable_pandas
     backend = MagicMock()
     return KernelResultSet(
         connection=connection,
@@ -92,6 +93,43 @@ def test_fetchall_arrow_drains_all_batches(int_schema):
     assert table.column(0).to_pylist() == [1, 2, 3, 4, 5]
     assert rs.status == CommandState.SUCCEEDED
     assert rs.has_more_rows is False
+
+
+def test_geospatial_string_and_binary_values_keep_logical_type():
+    wkb = bytes.fromhex("0101000000000000000000F03F0000000000000040")
+    geo_metadata = {
+        b"databricks.type_name": b"GEOMETRY",
+        b"databricks.type_text": b"GEOMETRY(ANY)",
+    }
+
+    string_schema = pa.schema([pa.field("g", pa.string(), metadata=geo_metadata)])
+    string_batch = pa.RecordBatch.from_arrays(
+        [pa.array(["SRID=4326;POINT(1 2)", None], type=pa.string())],
+        schema=string_schema,
+    )
+    string_rows = _make_rs(
+        _FakeKernelHandle(string_schema, [string_batch]), disable_pandas=True
+    ).fetchall()
+    assert [row[0] for row in string_rows] == ["SRID=4326;POINT(1 2)", None]
+
+    binary_type = pa.struct(
+        [
+            pa.field("srid", pa.int32(), nullable=False),
+            pa.field("wkb", pa.binary(), nullable=False),
+        ]
+    )
+    binary_schema = pa.schema([pa.field("g", binary_type, metadata=geo_metadata)])
+    binary_batch = pa.RecordBatch.from_arrays(
+        [pa.array([{"srid": 4326, "wkb": wkb}, None], type=binary_type)],
+        schema=binary_schema,
+    )
+    binary_rs = _make_rs(
+        _FakeKernelHandle(binary_schema, [binary_batch]), disable_pandas=True
+    )
+    assert binary_rs.description[0][1] == "geometry"
+    binary_rows = binary_rs.fetchall()
+    assert binary_rows[0][0] == {"srid": 4326, "wkb": wkb}
+    assert binary_rows[1][0] is None
 
 
 def test_fetchmany_arrow_slices_within_batch(int_schema):

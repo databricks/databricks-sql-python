@@ -194,6 +194,14 @@ class Connection:
                 decision. This is an intentional divergence from the
                 Thrift/SEA paths, where an explicit ``True`` can still
                 be suppressed by the feature flag.
+            :param geospatial_as_string: `bool | None`, optional (default is None)
+                Kernel backend only. Controls the public representation of
+                ``GEOMETRY`` and ``GEOGRAPHY`` result values. ``True`` returns
+                EWKT strings (for example ``"SRID=4326;POINT(1 2)"``);
+                ``False`` returns ``{"srid": int, "wkb": bytes}``; and
+                ``None`` uses the kernel default (currently EWKT strings).
+                The conversion is local to the kernel/driver and this option is
+                never sent to the SQL Execution API.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
