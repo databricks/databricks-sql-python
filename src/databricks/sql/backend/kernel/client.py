@@ -179,8 +179,7 @@ def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
     """
     if not isinstance(value, bool):
         raise ValueError(
-            "enable_geospatial_support must be a bool; "
-            f"got {type(value).__name__}"
+            "enable_geospatial_support must be a bool; " f"got {type(value).__name__}"
         )
     if not _kernel_session_accepts_kwarg("enable_geospatial_support"):
         raise NotSupportedError(
@@ -288,9 +287,7 @@ class KernelDatabricksClient(DatabricksClient):
         # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
         # intentionally separate from ``session_configuration``: it is never
         # forwarded to SEA.
-        self._enable_geospatial_support = kwargs.get(
-            "enable_geospatial_support", True
-        )
+        self._enable_geospatial_support = kwargs.get("enable_geospatial_support", True)
         # Kernel telemetry phase 7 adds binding/runtime identity and
         # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
         self._telemetry_options = kwargs.get("telemetry_options") or {}

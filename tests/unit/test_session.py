@@ -796,14 +796,23 @@ class TestUseKernelRoutesThroughRealWheel:
     def test_enable_geospatial_support_matches_real_kernel_signature(self):
         self._real_kernel_or_skip()
 
-        from databricks.sql.backend.kernel.client import _kernel_geospatial_kwargs
+        from databricks.sql.backend.kernel.client import (
+            _kernel_geospatial_kwargs,
+            _kernel_session_accepts_kwarg,
+        )
 
-        assert _kernel_geospatial_kwargs(True) == {
-            "enable_geospatial_support": True
-        }
-        assert _kernel_geospatial_kwargs(False) == {
-            "enable_geospatial_support": False
-        }
+        # The ordinary kernel unit-test tier installs the latest published
+        # wheel, which may lag the KERNEL_REV source pin while the matching
+        # kernel change is still in flight. Validate the compatibility error
+        # in that case; once the wheel includes the typed option, validate
+        # both values against its real PyO3 signature.
+        if not _kernel_session_accepts_kwarg("enable_geospatial_support"):
+            with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
+                _kernel_geospatial_kwargs(True)
+            return
+
+        assert _kernel_geospatial_kwargs(True) == {"enable_geospatial_support": True}
+        assert _kernel_geospatial_kwargs(False) == {"enable_geospatial_support": False}
 
 
 class TestReydenThriftFallback:
