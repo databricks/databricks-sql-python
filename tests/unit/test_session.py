@@ -800,6 +800,7 @@ class TestUseKernelRoutesThroughRealWheel:
             _kernel_geospatial_kwargs,
             _kernel_session_accepts_kwarg,
         )
+        from databricks.sql.exc import NotSupportedError
 
         # The ordinary kernel unit-test tier installs the latest published
         # wheel, which may lag the KERNEL_REV source pin while the matching
