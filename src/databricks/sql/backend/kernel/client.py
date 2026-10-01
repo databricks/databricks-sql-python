@@ -169,6 +169,26 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     return name in params
 
 
+def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
+    """Build the default-enabled native geospatial-support kwarg.
+
+    The value is always passed explicitly so the driver and kernel contracts
+    cannot drift. Older kernel wheels do not declare
+    ``enable_geospatial_support`` and must fail clearly rather than silently
+    return a different public value shape.
+    """
+    if not isinstance(value, bool):
+        raise ValueError(
+            "enable_geospatial_support must be a bool; " f"got {type(value).__name__}"
+        )
+    if not _kernel_session_accepts_kwarg("enable_geospatial_support"):
+        raise NotSupportedError(
+            "enable_geospatial_support requires a newer databricks-sql-kernel "
+            "wheel that exposes geospatial result representation support."
+        )
+    return {"enable_geospatial_support": value}
+
+
 def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
     """Build phase-7 telemetry/system kwargs for ``databricks_sql_kernel.Session``.
 
@@ -262,6 +282,12 @@ class KernelDatabricksClient(DatabricksClient):
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
+        # Default-enabled native GEOMETRY / GEOGRAPHY support. True requests
+        # the canonical Arrow struct and surfaces as ``{"srid": int, "wkb":
+        # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
+        # intentionally separate from ``session_configuration``: it is never
+        # forwarded to SEA.
+        self._enable_geospatial_support = kwargs.get("enable_geospatial_support", True)
         # Kernel telemetry phase 7 adds binding/runtime identity and
         # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
         self._telemetry_options = kwargs.get("telemetry_options") or {}
@@ -379,6 +405,9 @@ class KernelDatabricksClient(DatabricksClient):
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
             telemetry_kwargs = _kernel_telemetry_kwargs(self._telemetry_options)
+            geospatial_kwargs = _kernel_geospatial_kwargs(
+                self._enable_geospatial_support
+            )
             max_connections_kwargs: Dict[str, Any] = {}
             if _kernel_session_accepts_kwarg("max_connections"):
                 max_connections_kwargs["max_connections"] = self._max_connections
@@ -426,6 +455,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **tls_kwargs,
                 **retry_kwargs,
                 **telemetry_kwargs,
+                **geospatial_kwargs,
                 **max_connections_kwargs,
                 **http_headers_kwargs,
             )
