@@ -1,7 +1,7 @@
 # Release History
 
 # Unreleased
-- Add the kernel-only `geospatial_as_string` connection option. GEOMETRY / GEOGRAPHY results are exposed as EWKT strings when true or `{"srid": int, "wkb": bytes}` values when false.
+- Add the default-enabled, kernel-only `enable_geospatial_support` connection option. GEOMETRY / GEOGRAPHY results are exposed as `{"srid": int, "wkb": bytes}` values when true or WKT / EWKT strings when false.
 
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.

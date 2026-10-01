@@ -476,7 +476,7 @@ class TestKernelTransportOptionsThreading:
                 _retry_stop_after_attempts_duration=600.0,
                 _socket_timeout=12.5,
                 _pool_maxsize=41,
-                geospatial_as_string=False,
+                enable_geospatial_support=False,
             )
             try:
                 _, kwargs = mock_kernel_client.call_args
@@ -487,7 +487,7 @@ class TestKernelTransportOptionsThreading:
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
                 assert kwargs["request_timeout_secs"] == 12.5
                 assert kwargs["max_connections"] == 41
-                assert kwargs["geospatial_as_string"] is False
+                assert kwargs["enable_geospatial_support"] is False
             finally:
                 conn.close()
 
@@ -792,6 +792,18 @@ class TestUseKernelRoutesThroughRealWheel:
                 )
             finally:
                 conn.close()
+
+    def test_enable_geospatial_support_matches_real_kernel_signature(self):
+        self._real_kernel_or_skip()
+
+        from databricks.sql.backend.kernel.client import _kernel_geospatial_kwargs
+
+        assert _kernel_geospatial_kwargs(True) == {
+            "enable_geospatial_support": True
+        }
+        assert _kernel_geospatial_kwargs(False) == {
+            "enable_geospatial_support": False
+        }
 
 
 class TestReydenThriftFallback:

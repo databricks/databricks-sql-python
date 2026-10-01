@@ -392,14 +392,14 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
     assert captured["max_connections"] == max_connections
 
 
-@pytest.mark.parametrize("as_string", [True, False])
+@pytest.mark.parametrize("enabled", [True, False])
 def test_open_session_passes_geospatial_representation_to_kernel(
-    monkeypatch, as_string
+    monkeypatch, enabled
 ):
     captured = {}
 
-    def fake_session(*, geospatial_as_string=None, **kw):
-        captured["geospatial_as_string"] = geospatial_as_string
+    def fake_session(*, enable_geospatial_support=True, **kw):
+        captured["enable_geospatial_support"] = enable_geospatial_support
         sess = MagicMock()
         sess.session_id = "sess-id"
         return sess
@@ -410,15 +410,15 @@ def test_open_session_passes_geospatial_representation_to_kernel(
         http_path="/sql/1.0/warehouses/abc",
         auth_provider=AccessTokenAuthProvider("dapi-test"),
         ssl_options=None,
-        geospatial_as_string=as_string,
+        enable_geospatial_support=enabled,
     )
 
     c.open_session(session_configuration=None, catalog=None, schema=None)
 
-    assert captured["geospatial_as_string"] is as_string
+    assert captured["enable_geospatial_support"] is enabled
 
 
-def test_open_session_omits_unset_geospatial_representation(monkeypatch):
+def test_open_session_enables_geospatial_support_by_default(monkeypatch):
     captured = {}
 
     def fake_session(**kw):
@@ -437,7 +437,7 @@ def test_open_session_omits_unset_geospatial_representation(monkeypatch):
 
     c.open_session(session_configuration=None, catalog=None, schema=None)
 
-    assert "geospatial_as_string" not in captured
+    assert captured["enable_geospatial_support"] is True
 
 
 def test_open_session_rejects_explicit_geospatial_option_with_old_kernel(
@@ -468,7 +468,7 @@ def test_open_session_rejects_explicit_geospatial_option_with_old_kernel(
         http_path="/sql/1.0/warehouses/abc",
         auth_provider=AccessTokenAuthProvider("dapi-test"),
         ssl_options=None,
-        geospatial_as_string=False,
+        enable_geospatial_support=False,
     )
 
     with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
@@ -476,7 +476,7 @@ def test_open_session_rejects_explicit_geospatial_option_with_old_kernel(
 
 
 def test_geospatial_option_rejects_non_bool():
-    with pytest.raises(ValueError, match="must be a bool or None"):
+    with pytest.raises(ValueError, match="must be a bool"):
         kernel_client._kernel_geospatial_kwargs("false")
 
 
@@ -578,6 +578,7 @@ def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
         catalog=None,
         schema=None,
         session_conf=None,
+        enable_geospatial_support=True,
         complex_types_as_json=False,
         intervals_as_string=False,
         request_timeout_secs=None,
