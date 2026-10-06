@@ -204,6 +204,67 @@ class ThriftBackendTestSuite(unittest.TestCase):
             {"header": "value"}
         )
 
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
+    def test_binary_protocol_preserves_unbounded_string_and_container_limits(
+        self, t_http_client_class
+    ):
+        """thrift>=0.25.0 changed TBinaryProtocol's default string_length_limit
+        from unbounded (None) to ~15.6 MiB (DEFAULT_STRING_LENGTH_LIMIT) as part
+        of its CVE-2026-85494 fix. The connector must pass these limits through
+        explicitly so a thrift upgrade cannot silently cap -- or regress -- the
+        size of result data (e.g. inline Arrow batches) it can read, since the
+        connector already governs its own result size via buffer_size_bytes.
+        """
+        import thrift.protocol.TBinaryProtocol
+
+        with patch(
+            "thrift.protocol.TBinaryProtocol.TBinaryProtocol"
+        ) as mock_protocol_class:
+            ThriftDatabricksClient(
+                "foo",
+                123,
+                "bar",
+                [],
+                auth_provider=AuthProvider(),
+                ssl_options=SSLOptions(),
+                http_client=MagicMock(),
+            )
+
+        _, kwargs = mock_protocol_class.call_args
+        self.assertIsNone(kwargs.get("string_length_limit"))
+        self.assertIsNone(kwargs.get("container_length_limit"))
+
+    def test_binary_protocol_reads_result_larger_than_thrift_default_limit(self):
+        """Guard against relying on thrift's new (>=0.25.0) default
+        string_length_limit of ~15.6 MiB, which is smaller than the
+        connector's own DEFAULT_RESULT_BUFFER_SIZE_BYTES (100 MiB). A field
+        larger than thrift's default limit, but within the connector's own
+        result-size bound, must still read successfully.
+        """
+        from thrift.transport import TTransport
+        from thrift.protocol import TBinaryProtocol
+
+        from databricks.sql.backend.thrift_backend import (
+            THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
+            THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
+        )
+
+        oversized_payload = b"x" * (
+            20 * 1024 * 1024
+        )  # 20 MiB > thrift's ~15.6 MiB default
+
+        write_buffer = TTransport.TMemoryBuffer()
+        TBinaryProtocol.TBinaryProtocol(write_buffer).writeBinary(oversized_payload)
+
+        read_buffer = TTransport.TMemoryBuffer(write_buffer.getvalue())
+        protocol = TBinaryProtocol.TBinaryProtocol(
+            read_buffer,
+            string_length_limit=THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
+            container_length_limit=THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
+        )
+
+        self.assertEqual(protocol.readBinary(), oversized_payload)
+
     def test_proxy_headers_are_set(self):
 
         from databricks.sql.common.http_utils import create_basic_proxy_auth_headers

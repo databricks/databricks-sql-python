@@ -76,6 +76,19 @@ DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 DEFAULT_SOCKET_TIMEOUT = float(900)
 
+# thrift>=0.25.0 changed TBinaryProtocol's default string_length_limit from
+# unbounded (None) to DEFAULT_STRING_LENGTH_LIMIT (DEFAULT_MAX_FRAME_SIZE,
+# ~15.6 MiB) as part of its CVE-2026-85494 fix (peer-declared length with no
+# effective maximum). That default is sized for untrusted/unbounded peers;
+# this connector already bounds its own result stream via the TLS-verified,
+# server-negotiated `buffer_size_bytes` (default 100 MiB, see client.py's
+# DEFAULT_RESULT_BUFFER_SIZE_BYTES) and the inline Arrow batches in
+# TFetchResultsResp routinely exceed thrift's new ~15.6 MiB cap. Pass these
+# explicitly so upgrading thrift does not silently cap -- or regress -- the
+# connector's own, already-bounded result size behavior.
+THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT = None
+THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT = None
+
 # see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
@@ -237,7 +250,11 @@ class ThriftDatabricksClient(DatabricksClient):
         self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
         self._transport.setCustomHeaders(dict(http_headers))
-        protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(self._transport)
+        protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(
+            self._transport,
+            string_length_limit=THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
+            container_length_limit=THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
+        )
         self._client = TCLIService.Client(protocol)
 
         try:
