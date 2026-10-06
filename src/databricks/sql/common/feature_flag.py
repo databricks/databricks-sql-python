@@ -2,6 +2,7 @@ import json
 import math
 import threading
 import time
+from ctypes import c_int32, c_int64
 from dataclasses import dataclass, field
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Dict, Optional, List, Any
@@ -124,26 +125,26 @@ class FeatureFlagsContext:
         value = self._get_value(name)
         return value if type(value) is bool else default_value
 
-    def _get_int(self, name, bits, default_value):
+    def _get_int(self, name, integer_type, default_value):
         value = self._get_value(name)
-        if type(value) is int and -(2 ** (bits - 1)) <= value < 2 ** (bits - 1):
+        if type(value) is int and integer_type(value).value == value:
             return value
         return default_value
 
     def get_int32(self, name: str, default_value=None) -> Optional[int]:
-        return self._get_int(name, 32, default_value)
+        return self._get_int(name, c_int32, default_value)
 
     def get_int64(self, name: str, default_value=None) -> Optional[int]:
-        return self._get_int(name, 64, default_value)
+        return self._get_int(name, c_int64, default_value)
 
     def get_double(self, name: str, default_value=None) -> Optional[float]:
         value = self._get_value(name)
-        try:
-            if type(value) in (int, float) and math.isfinite(value):
-                return float(value)
-        except OverflowError:
-            pass
-        return default_value
+        if type(value) is int:
+            try:
+                value = float(value)
+            except OverflowError:
+                return default_value
+        return value if type(value) is float and math.isfinite(value) else default_value
 
     def get_string(self, name: str, default_value=None) -> Optional[str]:
         value = self._get_value(name)
