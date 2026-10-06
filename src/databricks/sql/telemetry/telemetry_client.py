@@ -134,11 +134,17 @@ class TelemetryHelper:
             return False
 
         # Only fetch feature flags when enable_telemetry=True and not forced
-        context = FeatureFlagsContextFactory.get_instance(connection)
-        flag_value = context.get_flag_value(
+        session = connection.session
+        context = FeatureFlagsContextFactory.get_instance(
+            session.host,
+            session.http_client,
+            session.auth_provider,
+            session.useragent_header,
+            session.get_spog_headers(),
+        )
+        return context.get_bool(
             TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
         )
-        return str(flag_value).lower() == "true"
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
