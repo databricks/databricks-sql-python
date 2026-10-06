@@ -10,21 +10,24 @@ include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-# Floor is 0.24.0 -- the first release that both clears the open Apache Thrift
-# CVEs (CVE-2025-48431 + the CVE-2026-41602..41636 set, all fixed in 0.23.0)
-# AND is safe to install on DBR LTS. History: 0.23.0 fixed the CVEs but ships
-# sdist-only and its setup.py calls sys.exit(0) on the build-success path,
-# killing the PEP 517 backend on the OLD setuptools bundled by DBR LTS -- the
-# SEV0 ES-1960554 (4.2.7 widened to <0.24.0 and was yanked; PR #840), which is
-# why we held at ~=0.22.0. thrift 0.24.0 (THRIFT-6067) resolves this: it ships
-# prebuilt manylinux2014 wheels (cp310-cp314) + macOS/musl/Windows, so pip uses
-# a wheel and never runs setup.py on DBR LTS -- the build-time break cannot
-# trigger. The `DBR LTS Install` CI check (.github/workflows/dbr-lts-install.yml)
-# installs the built artifact on real DBR LTS clusters and is the authoritative
-# gate for this. Cap at <0.25.0: thrift is pre-1.0, each 0.x minor can carry
-# breaking changes or packaging regressions (see 0.23.0), so bump this
-# deliberately once a new minor ships and the DBR-LTS gate proves it safe.
-thrift = "~=0.24.0"
+# Floor is 0.25.0 -- required to clear the Apache Thrift CVEs fixed in that
+# release, incl. CVE-2026-66055 (unbounded allocation, Python bindings) and
+# CVE-2026-66858 (no recursion limit in protocol skip). Earlier floors already
+# covered CVE-2025-48431 + the CVE-2026-41602..41636 set (fixed in 0.23.0).
+# DBR LTS install safety: 0.23.0 shipped sdist-only and its setup.py calls
+# sys.exit(0) on the build-success path, killing the PEP 517 backend on the OLD
+# setuptools bundled by DBR LTS -- the SEV0 ES-1960554 (4.2.7 widened to
+# <0.24.0 and was yanked; PR #840), which is why we held at ~=0.22.0.
+# thrift 0.24.0 (THRIFT-6067) resolved this by shipping prebuilt manylinux2014
+# wheels (cp310-cp314) + macOS/musl/Windows, and 0.25.0 keeps the same wheel
+# matrix, so pip uses a wheel and never runs setup.py on DBR LTS -- the
+# build-time break cannot trigger. The `DBR LTS Install` CI check
+# (.github/workflows/dbr-lts-install.yml) installs the built artifact on real
+# DBR LTS clusters and is the authoritative gate for this. Cap at <0.26.0:
+# thrift is pre-1.0, each 0.x minor can carry breaking changes or packaging
+# regressions (see 0.23.0), so bump this deliberately once a new minor ships
+# and the DBR-LTS gate proves it safe.
+thrift = "~=0.25.0"
 pandas = [
     { version = ">=1.2.5,<4.0.0", python = ">=3.10,<3.13" },
     { version = ">=2.2.3,<4.0.0", python = ">=3.13" }
