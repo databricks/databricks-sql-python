@@ -27,6 +27,7 @@ def test_flags_available_with_telemetry_disabled(session_feature_flags, use_sea,
 
     def create_backend(**kwargs):
         http.request.assert_not_called()
+        session_feature_flags.get_instance.assert_not_called()
         assert kwargs["auth_provider"] is auth
         return backend
 
@@ -52,6 +53,7 @@ def test_flags_available_with_telemetry_disabled(session_feature_flags, use_sea,
             try:
                 assert conn.telemetry_enabled is False
                 http.request.assert_not_called()
+                session_feature_flags.get_instance.assert_not_called()
                 assert conn.session.feature_flags.get_int32("sampleLimit") == 42
                 assert (
                     http.request.call_args.kwargs["headers"]["Authorization"]
@@ -65,6 +67,7 @@ def test_flags_available_with_telemetry_disabled(session_feature_flags, use_sea,
                 assert TelemetryHelper.is_telemetry_enabled(conn) is False
                 http.request.assert_called_once()
                 auth_factory.assert_called_once()
+                session_feature_flags.get_instance.assert_called_once()
             finally:
                 conn.close()
     finally:
