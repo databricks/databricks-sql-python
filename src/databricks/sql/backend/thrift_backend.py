@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.telemetry.models.event import StatementType
 
@@ -156,10 +157,10 @@ class ThriftDatabricksClient(DatabricksClient):
             uri = kwargs.get("_connection_uri")
         elif server_hostname and http_path:
             uri = "{host}:{port}/{path}".format(
-                host=server_hostname.rstrip("/"), port=port, path=http_path.lstrip("/")
+                host=normalize_host_with_protocol(server_hostname),
+                port=port,
+                path=http_path.lstrip("/"),
             )
-            if not uri.startswith("https://"):
-                uri = "https://" + uri
         else:
             raise ValueError("No valid connection settings.")
 
