@@ -603,7 +603,8 @@ class ParamEscaper:
             return "NULL"
         elif isinstance(item, (int, float)):
             return self.escape_number(item)
-        elif isinstance(item, str):
+        elif isinstance(item, (str, bytes)):
+            # bytes are a Sequence too, but escape_string decodes them as a string
             return self.escape_string(item)
         elif isinstance(item, datetime.datetime):
             return self.escape_datetime(item, self._DATETIME_FORMAT)
