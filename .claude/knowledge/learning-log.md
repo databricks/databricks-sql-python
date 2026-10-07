@@ -132,4 +132,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #947 fixed `RedactUrlQueryParamsFilter.filter` in `src/databricks/sql/__init__.py`: the non-dict branch assumed `record.args` was always iterable and crashed when it was `None` (log calls with no interpolation args), and a `record.arg[k]` typo in the dict branch had gone unnoticed because that path was never exercised by a test.
   **Rule:** A `logging.Filter`/`Formatter` that mutates `record.args` must guard for `record.args is None` (log calls with no args) and handle BOTH the dict form and the tuple/sequence form separately — and add tests for each branch, since typos in rarely-hit branches survive silently otherwise.
 
+### 2026-10-07: learnings since 2026-09-18T17:27:19Z
+- **Context:** PR #947 fixed `RedactUrlQueryParamsFilter.filter` in `src/databricks/sql/__init__.py`: it crashed on log calls with no args (the `else` branch iterated `record.args` when it was `None`), and a `record.arg[k]` typo revealed the dict-args branch was never exercised by tests.
+  **Rule:** A `logging.Filter` that mutates `record.args` must handle all three forms it can take — `None` (no interpolation args), a `tuple` (positional `%` args), and a `dict` (mapping `%` args) — guarding `None` before iterating, and each branch needs its own test since untested branches hide typos like `record.arg` vs `record.args`.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
