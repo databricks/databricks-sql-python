@@ -40,7 +40,6 @@ import platform
 import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
-from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.exc import RequestError
@@ -133,15 +132,9 @@ class TelemetryHelper:
         if not connection.enable_telemetry:
             return False
 
-        # Only fetch feature flags when enable_telemetry=True and not forced
-        session = connection.session
-        context = FeatureFlagsContextFactory.get_instance(
-            session.host,
-            session.http_client,
-            session.auth_provider,
-            session.useragent_header,
-            session.get_spog_headers(),
-        )
+        context = connection.session.feature_flags
+        if context is None:
+            return False
         return context.get_bool(
             TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
         )

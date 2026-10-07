@@ -542,6 +542,11 @@ class TestTelemetryFeatureFlag:
         TelemetryClientFactory._clients.clear()
         FeatureFlagsContextFactory._context_map.clear()
 
+    def _set_session_flags(self, session):
+        session.feature_flags = FeatureFlagsContextFactory.get_instance(
+            session.host, session.http_client, session.auth_provider, "test-agent"
+        )
+
     def _mock_ff_response(self, mock_http_request, enabled: bool):
         """Helper method to mock feature flag response for unified HTTP client."""
         mock_response = MagicMock()
@@ -577,6 +582,7 @@ class TestTelemetryFeatureFlag:
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
         mock_session_instance.http_client = mock_http_client
+        self._set_session_flags(mock_session_instance)
 
         conn = sql.client.Connection(
             server_hostname="test",
@@ -609,6 +615,7 @@ class TestTelemetryFeatureFlag:
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
         mock_session_instance.http_client = mock_http_client
+        self._set_session_flags(mock_session_instance)
 
         conn = sql.client.Connection(
             server_hostname="test",
@@ -641,6 +648,7 @@ class TestTelemetryFeatureFlag:
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
         mock_session_instance.http_client = mock_http_client
+        self._set_session_flags(mock_session_instance)
 
         conn = sql.client.Connection(
             server_hostname="test",

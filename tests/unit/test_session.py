@@ -398,7 +398,9 @@ class TestKernelAuthProviderBypass:
             )
             return sess, mock_get_provider
 
-    def test_use_kernel_m2m_does_not_build_connector_provider(self):
+    def test_use_kernel_m2m_does_not_build_connector_provider(
+        self, session_feature_flags
+    ):
         sess, mock_get_provider = self._build_session(
             oauth_client_id="sp-uuid", oauth_client_secret="shh"
         )
@@ -408,8 +410,12 @@ class TestKernelAuthProviderBypass:
         # ...and with no access_token, auth_provider is None (M2M
         # resolves in-kernel from the raw kwargs).
         assert sess.auth_provider is None
+        assert sess.feature_flags is None
+        session_feature_flags.get_instance.assert_not_called()
 
-    def test_use_kernel_pat_builds_minimal_access_token_provider(self):
+    def test_use_kernel_pat_builds_minimal_access_token_provider(
+        self, session_feature_flags
+    ):
         from databricks.sql.auth.authenticators import AccessTokenAuthProvider
 
         sess, mock_get_provider = self._build_session(access_token="dapi-xyz")
@@ -417,6 +423,8 @@ class TestKernelAuthProviderBypass:
         # PAT path: a minimal AccessTokenAuthProvider, not the
         # federation-wrapped connector provider.
         assert isinstance(sess.auth_provider, AccessTokenAuthProvider)
+        assert sess.feature_flags is None
+        session_feature_flags.get_instance.assert_not_called()
 
 
 class TestKernelTransportOptionsThreading:

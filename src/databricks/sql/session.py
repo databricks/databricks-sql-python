@@ -13,6 +13,10 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
+from databricks.sql.common.feature_flag import (
+    FeatureFlagsContext,
+    FeatureFlagsContextFactory,
+)
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 if TYPE_CHECKING:
@@ -134,6 +138,7 @@ class Session:
         # provider when an ``access_token`` is present, and ``None``
         # otherwise (OAuth M2M/U2M resolve purely from the raw kwargs
         # the bridge reads). The Thrift / SEA backends are unchanged.
+        self.feature_flags: Optional[FeatureFlagsContext] = None
         if kwargs.get("use_kernel", False):
             access_token = kwargs.get("access_token")
             self.auth_provider = (
@@ -142,6 +147,13 @@ class Session:
         else:
             self.auth_provider = get_python_sql_connector_auth_provider(
                 server_hostname, http_client=self.http_client, **kwargs
+            )
+            self.feature_flags = FeatureFlagsContextFactory.get_instance(
+                self.host,
+                self.http_client,
+                self.auth_provider,
+                self.useragent_header,
+                self.get_spog_headers(),
             )
 
         self.backend = self._create_backend(
