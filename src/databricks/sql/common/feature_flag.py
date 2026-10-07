@@ -193,8 +193,10 @@ class FeatureFlagsContext:
 
 class FeatureFlagsContextFactory:
     """
-    Shares flag values per workspace, independent of telemetry/session lifetime.
-    Also manages a shared ThreadPoolExecutor for all background refresh operations.
+    Process-wide flag values per workspace and a shared refresh executor.
+
+    Both are created lazily and retained until process exit. Session close does
+    not evict values or shut down the executor, which other readers may still use.
     """
 
     _context_map: Dict[tuple, _CacheState] = {}
@@ -234,14 +236,17 @@ class FeatureFlagsContextFactory:
 
     @classmethod
     def remove_instance(cls, host, headers=None):
-        """Evicts a workspace's values and shuts down the executor if the cache is empty."""
+        """Explicitly evict workspace values and stop the executor if the cache is empty.
+
+        Used for test/reset cleanup, not individual session teardown.
+        """
         with cls._lock:
             headers = {name.lower(): value for name, value in (headers or {}).items()}
             key = _cache_key(host, headers)
             if key in cls._context_map:
                 cls._context_map.pop(key, None)
 
-            # If this was the last active context, clean up the thread pool.
+            # If no cached workspaces remain, clean up the thread pool.
             if not cls._context_map and cls._executor is not None:
                 cls._executor.shutdown(wait=False)
                 cls._executor = None
