@@ -30,7 +30,7 @@ class TestUtils:
             ("decimal_column", "decimal", None, None, 10, 2, None),
             ("date_column", "date", None, None, None, None, None),
             ("timestamp_column", "timestamp", None, None, None, None, None),
-            ("timestamp_ntz_column", "timestamp", None, None, None, None, None),
+            ("timestamp_ntz_column", "timestamp_ntz", None, None, None, None, None),
             ("timestamp_column_2", "timestamp", None, None, None, None, None),
             ("timestamp_column_3", "timestamp", None, None, None, None, None),
             ("timestamp_column_4", "timestamp", None, None, None, None, None),
