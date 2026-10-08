@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Fix: a CloudFetch download that finished faster than the clock resolution (common on Windows) no longer fails the fetch with `ZeroDivisionError` while logging its download speed. Download time is now measured with `time.perf_counter()`.
+
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
 - Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.
