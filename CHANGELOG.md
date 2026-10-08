@@ -2,6 +2,7 @@
 
 # Unreleased
 - Add the `escape_catalog_name` connection parameter (default `False`) to opt in to escaping unescaped `_` in metadata catalog names on Thrift and kernel connections. Existing escapes and `%` wildcards are preserved.
+- Fix: with pandas enabled (the default), a floating-point NaN in a FLOAT or DOUBLE column is now returned as `float('nan')` instead of `None`, so it can be told apart from SQL NULL. This matches what `_disable_pandas=True` already returned.
 
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
