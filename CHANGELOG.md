@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Fix: a CloudFetch download that finished faster than the clock resolution (common on Windows) no longer fails the fetch with `ZeroDivisionError` while logging its download speed. Download time is now measured with `time.perf_counter()`.
 
 # 4.7.0 (2026-10-20)
 - Upgrade Databricks SQL Kernel to 1.2.0.
