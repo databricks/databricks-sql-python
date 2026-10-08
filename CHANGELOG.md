@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Fix: with pandas enabled (the default), a floating-point NaN in a FLOAT or DOUBLE column is now returned as `float('nan')` instead of `None`, so it can be told apart from SQL NULL. This matches what `_disable_pandas=True` already returned.
 - Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
 
 # 4.8.0 (2026-10-24)
