@@ -5,7 +5,7 @@ import time
 from ctypes import c_int32, c_int64
 from dataclasses import dataclass, field
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Type, Union
 
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.common.url_utils import normalize_host_with_protocol
@@ -125,19 +125,30 @@ class FeatureFlagsContext:
         value = self._get_value(name)
         return value if type(value) is bool else default_value
 
-    def _get_int(self, name, integer_type, default_value):
+    def _get_int(
+        self,
+        name: str,
+        integer_type: Type[Union[c_int32, c_int64]],
+        default_value: Optional[int],
+    ) -> Optional[int]:
         value = self._get_value(name)
         if type(value) is int and integer_type(value).value == value:
             return value
         return default_value
 
-    def get_int32(self, name: str, default_value=None) -> Optional[int]:
+    def get_int32(
+        self, name: str, default_value: Optional[int] = None
+    ) -> Optional[int]:
         return self._get_int(name, c_int32, default_value)
 
-    def get_int64(self, name: str, default_value=None) -> Optional[int]:
+    def get_int64(
+        self, name: str, default_value: Optional[int] = None
+    ) -> Optional[int]:
         return self._get_int(name, c_int64, default_value)
 
-    def get_double(self, name: str, default_value=None) -> Optional[float]:
+    def get_double(
+        self, name: str, default_value: Optional[float] = None
+    ) -> Optional[float]:
         value = self._get_value(name)
         if type(value) is int:
             try:
@@ -146,11 +157,15 @@ class FeatureFlagsContext:
                 return default_value
         return value if type(value) is float and math.isfinite(value) else default_value
 
-    def get_string(self, name: str, default_value=None) -> Optional[str]:
+    def get_string(
+        self, name: str, default_value: Optional[str] = None
+    ) -> Optional[str]:
         value = self._get_value(name)
         return value if isinstance(value, str) else default_value
 
-    def get_string_list(self, name: str, default_value=None) -> Optional[List[str]]:
+    def get_string_list(
+        self, name: str, default_value: Optional[List[str]] = None
+    ) -> Optional[List[str]]:
         value = self._get_value(name)
         if isinstance(value, list) and all(isinstance(item, str) for item in value):
             return value
