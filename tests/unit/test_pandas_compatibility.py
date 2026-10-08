@@ -7,6 +7,7 @@ timestamps, binary, and nested types.
 """
 
 import datetime
+import math
 import unittest
 from decimal import Decimal
 from unittest.mock import Mock
@@ -121,6 +122,50 @@ class TestConvertArrowTablePandasCompat(unittest.TestCase):
         self.assertIsNone(rows[0].float64_col)
         self.assertIsNone(rows[1].float32_col)
         self.assertAlmostEqual(rows[2].float64_col, 4.5)
+
+    def _nan_and_null_table(self):
+        values = [[float("nan"), None], [float("inf"), float("-inf"), 1.5]]
+        table = pa.table(
+            {
+                "id": pa.chunked_array([[1, 2], [3, 4, 5]], type=pa.int64()),
+                "float32_col": pa.chunked_array(values, type=pa.float32()),
+                "float64_col": pa.chunked_array(values, type=pa.float64()),
+            }
+        )
+        description = [
+            ("id", "bigint", None, None, None, None, None),
+            ("float32_col", "float", None, None, None, None, None),
+            ("float64_col", "double", None, None, None, None, None),
+        ]
+        return table, description
+
+    def test_float_nan_is_not_converted_to_null(self):
+        table, description = self._nan_and_null_table()
+
+        rows = _make_result_set(description)._convert_arrow_table(table)
+
+        self.assertEqual([row.id for row in rows], [1, 2, 3, 4, 5])
+        for column in ("float32_col", "float64_col"):
+            values = [getattr(row, column) for row in rows]
+            self.assertIsInstance(values[0], float)
+            self.assertTrue(math.isnan(values[0]))
+            self.assertEqual(values[1:], [None, float("inf"), float("-inf"), 1.5])
+
+    def test_float_nan_and_null_match_disable_pandas_path(self):
+        table, description = self._nan_and_null_table()
+
+        def normalized(rows):
+            return [
+                ["NaN" if isinstance(v, float) and math.isnan(v) else v for v in row]
+                for row in rows
+            ]
+
+        with_pandas = _make_result_set(description)._convert_arrow_table(table)
+        without_pandas = _make_result_set(
+            description, disable_pandas=True
+        )._convert_arrow_table(table)
+
+        self.assertEqual(normalized(with_pandas), normalized(without_pandas))
 
     def test_boolean_type(self):
         table = pa.table(
