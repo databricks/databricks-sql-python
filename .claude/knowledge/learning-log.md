@@ -136,4 +136,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #947 fixed `RedactUrlQueryParamsFilter.filter` in `src/databricks/sql/__init__.py`: it crashed on log calls with no args (the `else` branch iterated `record.args` when it was `None`), and a `record.arg[k]` typo revealed the dict-args branch was never exercised by tests.
   **Rule:** A `logging.Filter` that mutates `record.args` must handle all three forms it can take — `None` (no interpolation args), a `tuple` (positional `%` args), and a `dict` (mapping `%` args) — guarding `None` before iterating, and each branch needs its own test since untested branches hide typos like `record.arg` vs `record.args`.
 
+### 2026-10-08: learnings since 2026-10-07T17:34:58Z
+- **Context:** PR #975 bumped thrift from 0.24.x to 0.25.0 to clear CVEs; 0.25.0's CVE-2026-85494 fix changed `TBinaryProtocol`'s default `string_length_limit`/`container_length_limit` from unbounded (None) to ~15.6 MiB. The connector reads inline Arrow result batches that routinely exceed that, so it had to pass `string_length_limit=None, container_length_limit=None` explicitly (with a regression test asserting the kwargs) to preserve its pre-upgrade, already-`buffer_size_bytes`-bounded behavior.
+  **Rule:** When bumping a dependency — especially a security release — check whether it introduces or tightens a default limit/bound (max size, recursion depth, buffer cap); if your code relies on the prior behavior, set that parameter explicitly rather than inheriting the new default, and add a test asserting the explicit value so a future bump can't silently cap or regress it.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
