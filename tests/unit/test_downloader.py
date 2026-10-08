@@ -179,6 +179,39 @@ class DownloaderTests(unittest.TestCase):
             self.assertEqual(file.start_row_offset, result_link.startRowOffset)
             self.assertEqual(file.row_count, result_link.rowCount)
 
+    @patch("time.perf_counter", return_value=50.0)
+    @patch("time.time", return_value=1000)
+    def test_run_successful_when_clock_does_not_advance(
+        self, mock_time, mock_perf_counter
+    ):
+        # A download that finishes within one clock tick has a measured duration of 0
+        mock_http_client = MagicMock()
+        file_bytes = b"1234567890" * 10
+        settings = Mock(link_expiry_buffer_secs=0, download_timeout=0, use_proxy=False)
+        settings.is_lz4_compressed = False
+        settings.min_cloudfetch_download_speed = 0.1
+        result_link = Mock(expiryTime=1001, bytesNum=len(file_bytes))
+        result_link.fileLink = "https://s3.amazonaws.com/bucket/file.arrow?token=xyz789"
+        self._setup_mock_http_response(mock_http_client, status=200, data=file_bytes)
+
+        d = downloader.ResultSetDownloadHandler(
+            settings,
+            result_link,
+            ssl_options=SSLOptions(),
+            chunk_id=0,
+            session_id_hex=Mock(),
+            statement_id=Mock(),
+            http_client=mock_http_client,
+        )
+        with self.assertLogs(downloader.logger, level="INFO") as logs:
+            file = d.run()
+
+        self.assertEqual(file.file_bytes, file_bytes)
+        self.assertEqual(file.start_row_offset, result_link.startRowOffset)
+        self.assertEqual(file.row_count, result_link.rowCount)
+        self.assertEqual([r.levelname for r in logs.records], ["INFO"])
+        self.assertIn("CloudFetch download completed", logs.records[0].getMessage())
+
     @patch("time.time", return_value=1000)
     def test_download_connection_error(self, mock_time):
         mock_http_client = MagicMock()
