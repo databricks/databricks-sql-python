@@ -2534,10 +2534,35 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_col_to_description(self):
         test_cases = [
             ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}, "variant"),
+            (
+                "geometry_col",
+                {b"Spark:DataType:SqlName": b"GEOMETRY(0)"},
+                "geometry",
+            ),
+            (
+                "geography_col",
+                {b"Spark:DataType:SqlName": b"GEOGRAPHY(4326)"},
+                "geography",
+            ),
+            (
+                "geometry_any_col",
+                {b"Spark:DataType:SqlName": b"geometry(ANY)"},
+                "geometry",
+            ),
+            (
+                "unqualified_geography_col",
+                {b"Spark:DataType:SqlName": b"GEOGRAPHY"},
+                "geography",
+            ),
             ("normal_col", {}, "string"),
             (
                 "weird_field",
                 {b"Spark:DataType:SqlName": b"Some unexpected value"},
+                "string",
+            ),
+            (
+                "malformed_geometry_col",
+                {b"Spark:DataType:SqlName": b"GEOMETRY("},
                 "string",
             ),
             ("missing_field", None, "string"),  # None field case
@@ -2575,12 +2600,27 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [
                     ("regular_col", ttypes.TTypeId.STRING_TYPE),
                     ("variant_col", ttypes.TTypeId.STRING_TYPE),
+                    ("geometry_col", ttypes.TTypeId.STRING_TYPE),
+                    ("geography_col", ttypes.TTypeId.STRING_TYPE),
                 ],
                 [
                     ("regular_col", {}),
                     ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}),
+                    (
+                        "geometry_col",
+                        {b"Spark:DataType:SqlName": b"GEOMETRY(0)"},
+                    ),
+                    (
+                        "geography_col",
+                        {b"Spark:DataType:SqlName": b"GEOGRAPHY(4326)"},
+                    ),
                 ],
-                [("regular_col", "string"), ("variant_col", "variant")],
+                [
+                    ("regular_col", "string"),
+                    ("variant_col", "variant"),
+                    ("geometry_col", "geometry"),
+                    ("geography_col", "geography"),
+                ],
             ),
             (
                 [("regular_col", ttypes.TTypeId.STRING_TYPE)],
