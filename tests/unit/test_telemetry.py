@@ -1126,6 +1126,13 @@ class TestFeatureFlagsContextFactory:
         "getter,raw,expected",
         [
             ("bool", "true", True),
+            ("bool", "True", True),
+            ("bool", "TRUE", True),
+            ("bool", "tRuE", True),
+            ("bool", "false", False),
+            ("bool", "False", False),
+            ("bool", "FALSE", False),
+            ("bool", "fAlSe", False),
             ("bool", '"true"', False),
             ("int32", "2147483647", 2147483647),
             ("int32", "2147483648", None),

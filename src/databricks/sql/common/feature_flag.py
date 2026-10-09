@@ -119,7 +119,7 @@ class FeatureFlagsContext:
         try:
             return json.loads(raw) if raw is not None else None
         except (TypeError, ValueError):
-            return None
+            return {"true": True, "false": False}.get(str(raw).lower())
 
     def get_bool(self, name: str, default_value: bool = False) -> bool:
         value = self._get_value(name)
