@@ -1,5 +1,6 @@
 import logging
 import re
+from functools import cached_property
 from typing import Dict, Tuple, List, Optional, Any, Type, TYPE_CHECKING
 
 from databricks.sql.types import SSLOptions
@@ -13,6 +14,10 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
+from databricks.sql.common.feature_flag import (
+    FeatureFlagsContext,
+    FeatureFlagsContextFactory,
+)
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 if TYPE_CHECKING:
@@ -134,7 +139,8 @@ class Session:
         # provider when an ``access_token`` is present, and ``None``
         # otherwise (OAuth M2M/U2M resolve purely from the raw kwargs
         # the bridge reads). The Thrift / SEA backends are unchanged.
-        if kwargs.get("use_kernel", False):
+        self.use_kernel = kwargs.get("use_kernel", False)
+        if self.use_kernel:
             access_token = kwargs.get("access_token")
             self.auth_provider = (
                 AccessTokenAuthProvider(access_token) if access_token else None
@@ -155,6 +161,19 @@ class Session:
 
         self.protocol_version = None
 
+    @cached_property
+    def feature_flags(self) -> Optional[FeatureFlagsContext]:
+        """Attach this session's transport to the shared cache only when needed."""
+        if self.use_kernel:
+            return None
+        return FeatureFlagsContextFactory.get_instance(
+            self.host,
+            self.http_client,
+            self.auth_provider,
+            self.useragent_header,
+            self.get_spog_headers(),
+        )
+
     def _create_backend(
         self,
         server_hostname: str,
@@ -166,7 +185,6 @@ class Session:
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
         self.use_sea = kwargs.get("use_sea", False)
-        self.use_kernel = kwargs.get("use_kernel", False)
 
         if self.use_kernel and self.use_sea:
             raise ValueError(
