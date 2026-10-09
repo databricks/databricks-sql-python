@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING, Union
 
 import logging
 
@@ -19,6 +19,7 @@ from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.result_set import ResultSet
+from databricks.sql.utils import concat_table_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -160,10 +161,11 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
+        buffered = self._take_buffered_table(size) or []
+        results = self.results.next_n_rows(size - len(buffered))
         self._next_row_index += len(results)
 
-        return results
+        return buffered + results
 
     def fetchall_json(self) -> List[List[str]]:
         """
@@ -173,10 +175,11 @@ class SeaResultSet(ResultSet):
             Columnar table containing all remaining rows
         """
 
+        buffered = self._take_buffered_table() or []
         results = self.results.remaining_rows()
         self._next_row_index += len(results)
 
-        return results
+        return buffered + results
 
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
@@ -196,71 +199,53 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
         if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+            return self._convert_json_to_arrow_table(self.fetchmany_json(size))
 
+        buffered = self._take_buffered_table(size)
+        n_buffered = 0 if buffered is None else buffered.num_rows
+        results = self.results.next_n_rows(size - n_buffered)
         self._next_row_index += results.num_rows
 
-        return results
+        return self._prepend_buffered(buffered, results)
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """
         Fetch all remaining rows as an Arrow table.
         """
 
-        results = self.results.remaining_rows()
         if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+            return self._convert_json_to_arrow_table(self.fetchall_json())
 
+        buffered = self._take_buffered_table()
+        results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        return results
+        return self._prepend_buffered(buffered, results)
 
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
+    @staticmethod
+    def _prepend_buffered(
+        buffered: Optional["pyarrow.Table"], results: "pyarrow.Table"
+    ) -> "pyarrow.Table":
+        if buffered is None:
+            return results
+        if results.num_rows == 0:
+            return buffered
+        return concat_table_chunks([buffered, results])
 
-        Returns:
-            A single Row object or None if no more rows are available
-        """
-
+    def _fetchmany_table(self, size: int) -> Union[List[List[str]], "pyarrow.Table"]:
         if isinstance(self.results, JsonQueue):
-            res = self._create_json_table(self.fetchmany_json(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
+            return self.fetchmany_json(size)
+        return self.fetchmany_arrow(size)
 
-        return res[0] if res else None
-
-    def fetchmany(self, size: int) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        Args:
-            size: Number of rows to fetch (defaults to arraysize if None)
-
-        Returns:
-            List of Row objects
-
-        Raises:
-            ValueError: If size is negative
-        """
-
+    def _fetchall_table(self) -> Union[List[List[str]], "pyarrow.Table"]:
         if isinstance(self.results, JsonQueue):
-            return self._create_json_table(self.fetchmany_json(size))
-        else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            return self.fetchall_json()
+        return self.fetchall_arrow()
 
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all remaining rows of a query result, returning them as a list of rows.
-
-        Returns:
-            List of Row objects containing all remaining rows
-        """
-
+    def _convert_table(
+        self, table: Union[List[List[str]], "pyarrow.Table"]
+    ) -> List[Row]:
         if isinstance(self.results, JsonQueue):
-            return self._create_json_table(self.fetchall_json())
-        else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            return self._create_json_table(table)
+        return self._convert_arrow_table(table)

@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Fix: iterating a cursor (`for row in cursor`) and calling `fetchone()` in a loop are now about as fast as `fetchall()`. They previously converted each row through pandas on its own, costing around 1 ms per row, which made SQLAlchemy result iteration very slow. Rows are now converted `arraysize` at a time and served from an internal buffer.
+
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
 - Transparently auto-recover Thrift connections to Reyden / Real-Time warehouses: when a warehouse rejects the default Thrift protocol (SQLSTATE `KP001`), the session is re-opened on the kernel backend and the warehouse is remembered so later connections skip Thrift. Applies only when no backend was chosen explicitly.

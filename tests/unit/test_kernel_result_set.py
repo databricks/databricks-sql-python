@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import deque
 from typing import Deque
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -128,6 +128,43 @@ def test_fetchone_returns_row_then_none(int_schema):
     row = rs.fetchone()
     assert row is not None
     assert row[0] == 42
+    assert rs.fetchone() is None
+
+
+def test_fetchone_converts_once_per_batch_not_once_per_row(int_schema):
+    handle = _FakeKernelHandle(
+        int_schema,
+        [_batch(int_schema, [1, 2, 3, 4]), _batch(int_schema, [5, 6, 7, 8, 9, 10])],
+    )
+    rs = _make_rs(handle)
+    with patch.object(
+        rs, "_convert_arrow_table", wraps=rs._convert_arrow_table
+    ) as convert:
+        rows = list(rs)
+
+    assert [r[0] for r in rows] == list(range(1, 11))
+    # One batch of up to arraysize rows plus the final empty fetch.
+    assert convert.call_count == 2
+
+
+def test_fetchone_then_fetchmany_arrow_then_fetchall(int_schema):
+    handle = _FakeKernelHandle(
+        int_schema,
+        [
+            _batch(int_schema, [1, 2]),
+            _batch(int_schema, [3, 4, 5]),
+            _batch(int_schema, [6]),
+        ],
+    )
+    rs = _make_rs(handle)
+    rs.arraysize = 3
+
+    assert rs.fetchone()[0] == 1
+    assert rs.rownumber == 1
+    assert rs.fetchmany_arrow(3).column(0).to_pylist() == [2, 3, 4]
+    assert rs.rownumber == 4
+    assert [r[0] for r in rs.fetchall()] == [5, 6]
+    assert rs.rownumber == 6
     assert rs.fetchone() is None
 
 

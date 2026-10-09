@@ -421,14 +421,14 @@ class TestSeaResultSet:
         assert row1.col1 == "value1"
         assert row1.col2 == 1
         assert row1.col3 is True
-        assert result_set_with_data._next_row_index == 1
+        assert result_set_with_data.rownumber == 1
 
         row2 = result_set_with_data.fetchone()
         assert isinstance(row2, Row)
         assert row2.col1 == "value2"
         assert row2.col2 == 2
         assert row2.col3 is False
-        assert result_set_with_data._next_row_index == 2
+        assert result_set_with_data.rownumber == 2
 
         # Fetch the rest
         result_set_with_data.fetchall()
@@ -436,6 +436,68 @@ class TestSeaResultSet:
         # Test fetching when no more rows
         row_none = result_set_with_data.fetchone()
         assert row_none is None
+
+    def test_fetchone_converts_once_per_batch_not_once_per_row(
+        self, result_set_with_data, sample_data
+    ):
+        with patch.object(
+            result_set_with_data,
+            "_create_json_table",
+            wraps=result_set_with_data._create_json_table,
+        ) as convert:
+            rows = list(result_set_with_data)
+
+        assert [row.col1 for row in rows] == [row[0] for row in sample_data]
+        # One batch of up to arraysize rows plus the final empty fetch.
+        assert convert.call_count == 2
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_fetchone_then_arrow_and_json_fetches(self, result_set_with_data):
+        assert result_set_with_data.fetchone().col1 == "value1"
+
+        table = result_set_with_data.fetchmany_arrow(2)
+        assert table.column("col1").to_pylist() == ["value2", "value3"]
+        assert result_set_with_data.rownumber == 3
+
+        assert result_set_with_data.fetchall_json() == [
+            ["value4", "4", "false"],
+            ["value5", "5", "true"],
+        ]
+        assert result_set_with_data.rownumber == 5
+        assert result_set_with_data.fetchone() is None
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_fetchone_then_fetchmany_arrow_on_arrow_queue(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        from databricks.sql.utils import ArrowQueue
+
+        table = pyarrow.table(
+            {
+                "col1": [f"value{i}" for i in range(1, 6)],
+                "col2": list(range(1, 6)),
+                "col3": [True, False, True, False, True],
+            }
+        )
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=ArrowQueue(table, table.num_rows),
+        ):
+            result_set = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=ResultData(data=None, external_links=[], row_count=5),
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
+                buffer_size_bytes=1000,
+                arraysize=2,
+            )
+
+        assert result_set.fetchone().col2 == 1
+        assert result_set.fetchmany_arrow(3).column("col2").to_pylist() == [2, 3, 4]
+        assert result_set.rownumber == 4
+        assert [row.col2 for row in result_set.fetchall()] == [5]
+        assert result_set.rownumber == 5
 
     def test_fetchmany(self, result_set_with_data):
         """Test the fetchmany method."""
