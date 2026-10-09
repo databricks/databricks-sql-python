@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
+from typing import Any, Deque, List, TYPE_CHECKING, cast
 
 import pyarrow
 
@@ -190,37 +190,35 @@ class KernelResultSet(ResultSet):
     # ----- Arrow fetches -----
 
     def fetchall_arrow(self) -> pyarrow.Table:
-        return self._drain()
+        buffered = self._take_buffered_table()
+        table = self._drain()
+        if buffered is None:
+            return table
+        return pyarrow.concat_tables([buffered, table])
 
     def fetchmany_arrow(self, size: int) -> pyarrow.Table:
         if size < 0:
             raise ValueError(f"fetchmany_arrow size must be >= 0, got {size}")
         if size == 0:
             return pyarrow.Table.from_batches([], schema=self._schema)
-        self._ensure_buffered(size)
-        return self._take_buffered(size)
+        buffered = self._take_buffered_table(size)
+        n_remaining = size if buffered is None else size - buffered.num_rows
+        self._ensure_buffered(n_remaining)
+        table = self._take_buffered(n_remaining)
+        if buffered is None:
+            return table
+        return pyarrow.concat_tables([buffered, table])
 
     # ----- Row fetches -----
 
-    def fetchone(self) -> Optional[Row]:
-        self._ensure_buffered(1)
-        if self._buffered_rows() == 0:
-            return None
-        table = self._take_buffered(1)
-        rows = self._convert_arrow_table(table)
-        return rows[0] if rows else None
+    def _fetchmany_table(self, size: int) -> pyarrow.Table:
+        return self.fetchmany_arrow(size)
 
-    def fetchmany(self, size: int) -> List[Row]:
-        if size < 0:
-            raise ValueError(f"fetchmany size must be >= 0, got {size}")
-        if size == 0:
-            return []
-        self._ensure_buffered(size)
-        table = self._take_buffered(size)
+    def _fetchall_table(self) -> pyarrow.Table:
+        return self.fetchall_arrow()
+
+    def _convert_table(self, table: pyarrow.Table) -> List[Row]:
         return self._convert_arrow_table(table)
-
-    def fetchall(self) -> List[Row]:
-        return self._convert_arrow_table(self._drain())
 
     def close(self) -> None:
         """Close the underlying kernel handle and notify the backend.
