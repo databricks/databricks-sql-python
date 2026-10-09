@@ -2,6 +2,7 @@
 
 # Unreleased
 - Add the `escape_catalog_name` connection parameter (default `False`) to opt in to escaping unescaped `_` in metadata catalog names on Thrift and kernel connections. Existing escapes and `%` wildcards are preserved.
+- Fix: iterating a cursor (`for row in cursor`) and calling `fetchone()` in a loop are now about as fast as `fetchall()`. They previously converted each row through pandas on its own, costing around 1 ms per row, which made SQLAlchemy result iteration very slow. Rows are now converted `arraysize` at a time and served from an internal buffer.
 
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.
