@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
+import numpy
 import pandas
 
 try:
@@ -121,16 +122,46 @@ class ResultSet(ABC):
             pyarrow.string(): pandas.StringDtype(),
         }
 
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
+        # Nested (ARRAY/MAP/STRUCT) columns are converted from Arrow directly
+        # and never pass through pandas: pandas turns an integer array
+        # containing a NULL into float64 (precision loss beyond 2**53, NULL as
+        # NaN). See _nested_column_to_python for the returned shapes.
+        nested = {
+            index: _nested_column_to_python(table.column(index))
+            for index, field in enumerate(table.schema)
+            if pyarrow.types.is_nested(field.type)
+        }
+        scalar_indices = [i for i in range(table.num_columns) if i not in nested]
 
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
+        res = None
+        if scalar_indices:
+            scalar_table = table.select(scalar_indices) if nested else table
+            # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+            scalar_table = scalar_table.rename_columns(
+                [str(c) for c in range(scalar_table.num_columns)]
+            )
+            df = scalar_table.to_pandas(
+                types_mapper=dtype_mapping.get,
+                date_as_object=True,
+                timestamp_as_object=True,
+            )
+            res = df.to_numpy(na_value=None, dtype="object")
+
+        if not nested:
+            return [ResultRow(*v) for v in res]
+
+        rows = []
+        for position in range(table.num_rows):
+            scalars = iter(res[position]) if res is not None else iter(())
+            rows.append(
+                ResultRow(
+                    *[
+                        nested[index][position] if index in nested else next(scalars)
+                        for index in range(table.num_columns)
+                    ]
+                )
+            )
+        return rows
 
     @property
     def rownumber(self):
@@ -471,3 +502,73 @@ class ThriftResultSet(ResultSet):
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
+
+
+def _object_array(values: list) -> "numpy.ndarray":
+    """A 1-D object ndarray holding ``values`` as-is (no numpy broadcasting)."""
+    out = numpy.empty(len(values), dtype=object)
+    for i, value in enumerate(values):
+        out[i] = value
+    return out
+
+
+def _arrow_array_to_python(array) -> list:
+    """Convert one Arrow array to a list of Python values, one per slot.
+
+    Shapes match what the pandas conversion has always returned for complex
+    types (see ``_use_arrow_native_complex_types``): ARRAY is a
+    ``numpy.ndarray``, MAP is a list of ``(key, value)`` tuples, STRUCT is a
+    dict, NULL is None. The difference is that integer/boolean array elements
+    are exact: an ARRAY<BIGINT> without NULLs is an int64 ndarray as before,
+    and one with NULLs is an object ndarray of ``int``/``None`` instead of a
+    float64 ndarray with NaN.
+    """
+    t = array.type
+    if pyarrow.types.is_map(t):
+        result: list = []
+        for scalar in array:
+            if not scalar.is_valid:
+                result.append(None)
+                continue
+            keys, items = scalar.values.flatten()
+            result.append(
+                list(zip(_arrow_array_to_python(keys), _arrow_array_to_python(items)))
+            )
+        return result
+    if (
+        pyarrow.types.is_list(t)
+        or pyarrow.types.is_large_list(t)
+        or pyarrow.types.is_fixed_size_list(t)
+    ):
+        return [
+            _arrow_list_values_to_ndarray(scalar.values) if scalar.is_valid else None
+            for scalar in array
+        ]
+    if pyarrow.types.is_struct(t):
+        names = [t.field(i).name for i in range(t.num_fields)]
+        children = [_arrow_array_to_python(child) for child in array.flatten()]
+        return [
+            dict(zip(names, (child[i] for child in children))) if valid else None
+            for i, valid in enumerate(array.is_valid().to_pylist())
+        ]
+    return array.to_pylist()
+
+
+def _arrow_list_values_to_ndarray(values) -> "numpy.ndarray":
+    """The elements of one ARRAY value as a numpy.ndarray."""
+    t = values.type
+    if pyarrow.types.is_floating(t) or (
+        (pyarrow.types.is_integer(t) or pyarrow.types.is_boolean(t))
+        and values.null_count == 0
+    ):
+        # Native dtype, as pandas produced; floats keep NaN for NULL.
+        return values.to_numpy(zero_copy_only=False, writable=True)
+    return _object_array(_arrow_array_to_python(values))
+
+
+def _nested_column_to_python(column) -> list:
+    """Convert a (chunked) nested Arrow column to one Python value per row."""
+    result: list = []
+    for chunk in column.chunks:
+        result.extend(_arrow_array_to_python(chunk))
+    return result
