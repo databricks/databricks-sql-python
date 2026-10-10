@@ -6,6 +6,7 @@ from databricks.sql.auth.authenticators import (
     ExternalAuthProvider,
     DatabricksOAuthProvider,
     AzureServicePrincipalCredentialProvider,
+    DatabricksServicePrincipalCredentialProvider,
 )
 from databricks.sql.auth.common import AuthType, ClientContext
 from databricks.sql.auth.token_federation import TokenFederationProvider
@@ -15,8 +16,47 @@ def get_auth_provider(cfg: ClientContext, http_client):
     # Determine the base auth provider
     base_provider: Optional[AuthProvider] = None
 
+    if cfg.auth_type and cfg.auth_type not in [t.value for t in AuthType]:
+        # Never fall through to the interactive browser login below for an
+        # auth_type this connector does not implement (e.g. a typo).
+        raise ValueError(
+            f"Unsupported auth_type {cfg.auth_type!r}; supported: "
+            + ", ".join(t.value for t in AuthType)
+        )
+
+    # azure-sp-m2m is explicit and uses the azure_* credentials; oauth_* values
+    # are ignored for it, as on the kernel path.
+    oauth_m2m = (
+        bool(cfg.oauth_client_secret) and cfg.auth_type != AuthType.AZURE_SP_M2M.value
+    )
+    if oauth_m2m and cfg.credentials_provider:
+        # Rejected on the kernel path too; neither should silently win.
+        raise ValueError(
+            "Ambiguous auth: both a custom credentials_provider and "
+            "oauth_client_secret were provided. Pass oauth_client_id + "
+            "oauth_client_secret for OAuth M2M, or credentials_provider alone."
+        )
+
     if cfg.credentials_provider:
         base_provider = ExternalAuthProvider(cfg.credentials_provider)
+    elif oauth_m2m:
+        if cfg.auth_type in [
+            AuthType.DATABRICKS_OAUTH.value,
+            AuthType.AZURE_OAUTH.value,
+        ]:
+            raise ValueError(
+                f"auth_type={cfg.auth_type!r} selects the interactive (U2M) flow, "
+                "but oauth_client_secret was also provided (M2M). Drop "
+                "oauth_client_secret for U2M, or drop auth_type for M2M."
+            )
+        base_provider = ExternalAuthProvider(
+            DatabricksServicePrincipalCredentialProvider(
+                cfg.hostname,
+                cfg.oauth_client_id,
+                cfg.oauth_client_secret,
+                http_client,
+            )
+        )
     elif cfg.auth_type == AuthType.AZURE_SP_M2M.value:
         base_provider = ExternalAuthProvider(
             AzureServicePrincipalCredentialProvider(
@@ -132,5 +172,13 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),
+        oauth_client_secret=kwargs.get("oauth_client_secret"),
     )
+    if (
+        cfg.oauth_client_secret
+        and cfg.auth_type != AuthType.AZURE_SP_M2M.value
+        and not cfg.credentials_provider
+        and not kwargs.get("oauth_client_id")
+    ):
+        raise ValueError("OAuth M2M needs oauth_client_id with oauth_client_secret")
     return get_auth_provider(cfg, http_client)
