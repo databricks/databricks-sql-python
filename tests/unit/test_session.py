@@ -955,6 +955,20 @@ class TestReydenThriftFallback:
                 conn.close()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_known_reyden_empty_access_token_is_rejected(self, mock_thrift):
+        # The Thrift path rejects an explicitly empty token instead of starting
+        # the interactive OAuth login; skipping Thrift for a known Reyden
+        # warehouse must not turn it into a databricks-oauth login either.
+        from databricks.sql.backend import reyden_warehouse_cache
+
+        reyden_warehouse_cache.mark_reyden(self.HOST, "wh-reyden")
+        with self._fake_kernel() as mock_kernel:
+            with pytest.raises(RuntimeError, match="access_token is empty"):
+                self._connect(access_token="")
+            mock_kernel.assert_not_called()
+        mock_thrift.return_value.open_session.assert_not_called()
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
     def test_pat_recovery_does_not_inject_auth_type(self, mock_thrift):
         # With a credential shape present (here a PAT) the kernel routes on it
         # regardless of auth_type, so recovery must NOT inject databricks-oauth:
