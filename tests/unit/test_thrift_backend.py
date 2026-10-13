@@ -2627,6 +2627,17 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 None,  # No arrow schema
                 [("regular_col", "string")],
             ),
+            (
+                [
+                    ("g", ttypes.TTypeId.STRING_TYPE),
+                    ("g", ttypes.TTypeId.STRING_TYPE),
+                ],
+                [
+                    ("g", {}),
+                    ("g", {b"Spark:DataType:SqlName": b"GEOMETRY(0)"}),
+                ],
+                [("g", "string"), ("g", "geometry")],
+            ),
         ]
 
         for columns, arrow_fields, expected_types in test_cases:

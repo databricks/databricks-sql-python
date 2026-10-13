@@ -808,12 +808,16 @@ class ThriftDatabricksClient(DatabricksClient):
 
     @staticmethod
     def _hive_schema_to_description(t_table_schema, schema_bytes=None, host_url=None):
+        arrow_fields = []
         field_dict = {}
         if pyarrow and schema_bytes:
             try:
                 arrow_schema = pyarrow.ipc.read_schema(pyarrow.py_buffer(schema_bytes))
-                # Build a dictionary mapping column names to fields
-                for field in arrow_schema:
+                arrow_fields = list(arrow_schema)
+                # Retain a name fallback for malformed/partial schemas, but use
+                # result-column position whenever it is available. SQL permits
+                # duplicate aliases, for which a name lookup is ambiguous.
+                for field in arrow_fields:
                     field_dict[field.name] = field
             except Exception as e:
                 logger.debug(f"Could not parse arrow schema: {e}")
@@ -821,10 +825,14 @@ class ThriftDatabricksClient(DatabricksClient):
         return [
             ThriftDatabricksClient._col_to_description(
                 col,
-                field_dict.get(col.columnName) if field_dict else None,
+                (
+                    arrow_fields[index]
+                    if index < len(arrow_fields)
+                    else field_dict.get(col.columnName)
+                ),
                 host_url,
             )
-            for col in t_table_schema.columns
+            for index, col in enumerate(t_table_schema.columns)
         ]
 
     def _results_message_to_execute_response(

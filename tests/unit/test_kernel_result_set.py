@@ -95,7 +95,8 @@ def test_fetchall_arrow_drains_all_batches(int_schema):
     assert rs.has_more_rows is False
 
 
-def test_geospatial_string_and_binary_values_keep_logical_type():
+@pytest.mark.parametrize("disable_pandas", [False, True])
+def test_geospatial_string_and_binary_values_keep_logical_type(disable_pandas):
     wkb = bytes.fromhex("0101000000000000000000F03F0000000000000040")
     geo_metadata = {
         b"databricks.type_name": b"GEOMETRY",
@@ -108,7 +109,8 @@ def test_geospatial_string_and_binary_values_keep_logical_type():
         schema=string_schema,
     )
     string_rows = _make_rs(
-        _FakeKernelHandle(string_schema, [string_batch]), disable_pandas=True
+        _FakeKernelHandle(string_schema, [string_batch]),
+        disable_pandas=disable_pandas,
     ).fetchall()
     assert [row[0] for row in string_rows] == ["SRID=4326;POINT(1 2)", None]
 
@@ -124,10 +126,14 @@ def test_geospatial_string_and_binary_values_keep_logical_type():
         schema=binary_schema,
     )
     binary_rs = _make_rs(
-        _FakeKernelHandle(binary_schema, [binary_batch]), disable_pandas=True
+        _FakeKernelHandle(binary_schema, [binary_batch]),
+        disable_pandas=disable_pandas,
     )
     assert binary_rs.description[0][1] == "geometry"
     binary_rows = binary_rs.fetchall()
+    assert isinstance(binary_rows[0][0], dict)
+    assert isinstance(binary_rows[0][0]["srid"], int)
+    assert isinstance(binary_rows[0][0]["wkb"], bytes)
     assert binary_rows[0][0] == {"srid": 4326, "wkb": wkb}
     assert binary_rows[1][0] is None
 
