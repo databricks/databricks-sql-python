@@ -52,6 +52,7 @@ from databricks.sql.utils import (
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
+    escape_metadata_catalog_name,
     serialize_query_tags,
 )
 from databricks.sql.types import SSLOptions
@@ -177,6 +178,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise ValueError("No valid connection settings.")
 
         self._host = server_hostname
+        self._escape_catalog_name = kwargs.get("escape_catalog_name", False)
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -1193,7 +1195,9 @@ class ThriftDatabricksClient(DatabricksClient):
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            catalogName=catalog_name,
+            catalogName=escape_metadata_catalog_name(
+                catalog_name, self._escape_catalog_name
+            ),
             schemaName=schema_name,
         )
         resp = self.make_request(self._client.GetSchemas, req)
@@ -1239,7 +1243,9 @@ class ThriftDatabricksClient(DatabricksClient):
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            catalogName=catalog_name,
+            catalogName=escape_metadata_catalog_name(
+                catalog_name, self._escape_catalog_name
+            ),
             schemaName=schema_name,
             tableName=table_name,
             tableTypes=table_types,
@@ -1287,7 +1293,9 @@ class ThriftDatabricksClient(DatabricksClient):
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            catalogName=catalog_name,
+            catalogName=escape_metadata_catalog_name(
+                catalog_name, self._escape_catalog_name
+            ),
             schemaName=schema_name,
             tableName=table_name,
             columnName=column_name,

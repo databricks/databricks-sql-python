@@ -333,6 +333,7 @@ class Session:
                 request_timeout_secs=kwargs.get("_socket_timeout"),
                 max_connections=kwargs.get("_pool_maxsize") or None,
                 telemetry_options=kernel_telemetry_options,
+                escape_catalog_name=kwargs.get("escape_catalog_name", False),
             )
 
         # These reference the lazily-resolved module attributes defined via

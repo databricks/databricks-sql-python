@@ -32,6 +32,97 @@ def retry_policy_factory():
     }
 
 
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"escape_catalog_name": False}, {"escape_catalog_name": True}],
+    ids=["default", "disabled", "enabled"],
+)
+@pytest.mark.parametrize(
+    "method, rpc_name, filters",
+    [
+        ("schemas", "GetSchemas", {"schema_name": "schema_%"}),
+        (
+            "tables",
+            "GetTables",
+            {
+                "schema_name": "schema_%",
+                "table_name": "table_%",
+                "table_types": ["TABLE"],
+            },
+        ),
+        (
+            "columns",
+            "GetColumns",
+            {
+                "schema_name": "schema_%",
+                "table_name": "table_%",
+                "column_name": "column_%",
+            },
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "catalog_name, escaped",
+    [
+        (None, None),
+        ("", ""),
+        ("%", "%"),
+        ("*", "*"),
+        ("simple", "simple"),
+        ("my_catalog", r"my\_catalog"),
+        ("a_b_c", r"a\_b\_c"),
+        (r"my\_catalog", r"my\_catalog"),
+        (r"a\_b_c%", r"a\_b\_c%"),
+    ],
+)
+def test_metadata_catalog_escaping(
+    options, method, rpc_name, filters, catalog_name, escaped
+):
+    with (
+        patch(
+            "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
+        ) as client_class,
+        patch("databricks.sql.result_set.ThriftResultSet"),
+        patch.object(
+            ThriftDatabricksClient,
+            "_handle_execute_response",
+            return_value=(Mock(), False),
+        ),
+    ):
+        rpc_client = client_class.return_value
+        rpc_client.OpenSession.return_value = ThriftBackendTestSuite.open_session_resp
+        rpc = getattr(rpc_client, rpc_name)
+        rpc.return_value = Mock(
+            status=ThriftBackendTestSuite.okay_status, directResults=None
+        )
+
+        with databricks.sql.connect(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            access_token="test-token",
+            enable_telemetry=False,
+            **options,
+        ) as connection:
+            cursor = connection.cursor()
+            assert (
+                getattr(cursor, method)(catalog_name=catalog_name, **filters) is cursor
+            )
+
+        request = rpc.call_args.args[0]
+        expected = (
+            escaped if options.get("escape_catalog_name", False) else catalog_name
+        )
+        assert request.catalogName == expected
+        for arg, value in filters.items():
+            thrift_field = {
+                "schema_name": "schemaName",
+                "table_name": "tableName",
+                "column_name": "columnName",
+                "table_types": "tableTypes",
+            }[arg]
+            assert getattr(request, thrift_field) == value
+
+
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
