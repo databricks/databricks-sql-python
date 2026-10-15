@@ -73,6 +73,17 @@ def retry_policy_factory():
         ("a_b_c", r"a\_b\_c"),
         (r"my\_catalog", r"my\_catalog"),
         (r"a\_b_c%", r"a\_b\_c%"),
+        # Match JDBC: preserve the final \_ pair regardless of backslash parity.
+        pytest.param(
+            r"my\\_cat_tail",
+            r"my\\_cat\_tail",
+            id="jdbc-even-backslash-run",
+        ),
+        pytest.param(
+            r"my\\\_cat_tail",
+            r"my\\\_cat\_tail",
+            id="jdbc-odd-backslash-run",
+        ),
     ],
 )
 def test_metadata_catalog_escaping(

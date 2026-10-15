@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 def escape_metadata_catalog_name(
     catalog_name: Optional[str], enabled: bool
 ) -> Optional[str]:
-    """Escape unescaped underscores, preserving existing escapes and % wildcards."""
+    r"""Match JDBC: escape _ unless immediately preceded by \; preserve %."""
     if not enabled or catalog_name is None:
         return catalog_name
     return re.sub(r"(?<!\\)_", r"\\_", catalog_name)
