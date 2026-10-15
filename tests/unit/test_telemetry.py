@@ -542,6 +542,11 @@ class TestTelemetryFeatureFlag:
         TelemetryClientFactory._clients.clear()
         FeatureFlagsContextFactory._context_map.clear()
 
+    def _set_session_flags(self, session):
+        session.feature_flags = FeatureFlagsContextFactory.get_instance(
+            session.host, session.http_client, session.auth_provider, "test-agent"
+        )
+
     def _mock_ff_response(self, mock_http_request, enabled: bool):
         """Helper method to mock feature flag response for unified HTTP client."""
         mock_response = MagicMock()
@@ -577,6 +582,7 @@ class TestTelemetryFeatureFlag:
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
         mock_session_instance.http_client = mock_http_client
+        self._set_session_flags(mock_session_instance)
 
         conn = sql.client.Connection(
             server_hostname="test",
@@ -609,6 +615,7 @@ class TestTelemetryFeatureFlag:
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
         mock_session_instance.http_client = mock_http_client
+        self._set_session_flags(mock_session_instance)
 
         conn = sql.client.Connection(
             server_hostname="test",
@@ -641,6 +648,7 @@ class TestTelemetryFeatureFlag:
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
         mock_session_instance.http_client = mock_http_client
+        self._set_session_flags(mock_session_instance)
 
         conn = sql.client.Connection(
             server_hostname="test",
@@ -1073,16 +1081,24 @@ class TestFeatureFlagsContextFactory:
     )
     def test_host_level_caching(self, hosts, expected_contexts):
         """Test that contexts are cached by host correctly."""
+
         contexts = []
         for host in hosts:
             conn = MagicMock()
             conn.session.host = host
             conn.session.http_client = MagicMock()
-            contexts.append(FeatureFlagsContextFactory.get_instance(conn))
+            contexts.append(
+                FeatureFlagsContextFactory.get_instance(
+                    host,
+                    conn.session.http_client,
+                    conn.session.auth_provider,
+                    "test-agent",
+                )
+            )
 
         assert len(FeatureFlagsContextFactory._context_map) == expected_contexts
         if expected_contexts == 1:
-            assert all(ctx is contexts[0] for ctx in contexts)
+            assert all(ctx._state is contexts[0]._state for ctx in contexts)
 
     def test_remove_instance_and_executor_cleanup(self):
         """Test removal uses host key and cleans up executor when empty."""
@@ -1094,14 +1110,103 @@ class TestFeatureFlagsContextFactory:
         conn2.session.host = "host2.com"
         conn2.session.http_client = MagicMock()
 
-        FeatureFlagsContextFactory.get_instance(conn1)
-        FeatureFlagsContextFactory.get_instance(conn2)
+        FeatureFlagsContextFactory.get_instance("host1.com", conn1, conn1, "test-agent")
+        FeatureFlagsContextFactory.get_instance("host2.com", conn2, conn2, "test-agent")
         assert FeatureFlagsContextFactory._executor is not None
 
-        FeatureFlagsContextFactory.remove_instance(conn1)
+        FeatureFlagsContextFactory.remove_instance("host1.com")
         assert len(FeatureFlagsContextFactory._context_map) == 1
         assert FeatureFlagsContextFactory._executor is not None
 
-        FeatureFlagsContextFactory.remove_instance(conn2)
+        FeatureFlagsContextFactory.remove_instance("host2.com")
         assert len(FeatureFlagsContextFactory._context_map) == 0
         assert FeatureFlagsContextFactory._executor is None
+
+    @pytest.mark.parametrize(
+        "getter,raw,expected",
+        [
+            ("bool", "true", True),
+            ("bool", "True", True),
+            ("bool", "TRUE", True),
+            ("bool", "tRuE", True),
+            ("bool", "false", False),
+            ("bool", "False", False),
+            ("bool", "FALSE", False),
+            ("bool", "fAlSe", False),
+            ("bool", '"true"', False),
+            ("int32", "2147483647", 2147483647),
+            ("int32", "2147483648", None),
+            ("int64", "9223372036854775807", 9223372036854775807),
+            ("int64", "-9223372036854775808", -9223372036854775808),
+            ("int64", "9223372036854775808", None),
+            ("int64", "true", None),
+            ("double", "1.25", 1.25),
+            ("double", "1e400", None),
+            ("string", '"hello"', "hello"),
+            ("string", "null", None),
+            ("string_list", '["a", "b"]', ["a", "b"]),
+            ("string_list", '["a", null]', None),
+            ("string", "invalid", None),
+        ],
+    )
+    def test_typed_reads_without_session(self, getter, raw, expected):
+        http = MagicMock()
+        http.request.return_value = MagicMock(
+            status=200,
+            data=json.dumps(
+                {
+                    "flags": [{"name": "flag", "value": raw}],
+                    "ttl_seconds": 60,
+                }
+            ).encode(),
+        )
+        reader = FeatureFlagsContextFactory.get_instance(
+            "test-host", http, AccessTokenAuthProvider("token"), "agent"
+        )
+        assert getattr(reader, "get_" + getter)("flag") == expected
+        assert reader.get_string("missing", "fallback") == "fallback"
+        http.request.assert_called_once()
+        assert (
+            http.request.call_args.kwargs["headers"]["Authorization"] == "Bearer token"
+        )
+
+    def test_workspace_cache_and_refresh_use_current_caller(self):
+        from concurrent.futures import Future
+        from databricks.sql.common.feature_flag import (
+            FeatureFlagsResponse,
+            FeatureFlagEntry,
+        )
+
+        def reader(host, workspace):
+            return FeatureFlagsContextFactory.get_instance(
+                host,
+                MagicMock(),
+                AccessTokenAuthProvider("token"),
+                "agent",
+                {"X-Databricks-Org-Id": workspace},
+            )
+
+        first = reader("test-host", "1")
+        current = reader("alias-host", "1")
+        other = reader("test-host", "2")
+        assert current._state is first._state
+        assert other._state is not first._state
+        first._update_cache_from_response(
+            FeatureFlagsResponse([FeatureFlagEntry("flag", "true")], ttl_seconds=60)
+        )
+        assert current.get_bool("flag") is True
+        current._http_client.request.assert_not_called()
+        pending = Future()
+        with patch.object(current._executor, "submit", return_value=pending) as submit:
+            with patch(
+                "databricks.sql.common.feature_flag.time.monotonic",
+                return_value=first._state.last_refresh_time + 61,
+            ):
+                assert current.get_bool("flag") is True
+                assert first.get_bool("flag") is True
+            submit.assert_called_once_with(current._refresh_flags)
+        current._http_client.request.side_effect = RuntimeError("unavailable")
+        current._refresh_flags()
+        assert current.get_bool("flag") is True
+        current._http_client.request.assert_called_once()
+        first._http_client.request.assert_not_called()
