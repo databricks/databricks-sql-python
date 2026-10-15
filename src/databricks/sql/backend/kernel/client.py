@@ -49,6 +49,7 @@ from databricks.sql.exc import (
     ProgrammingError,
 )
 from databricks.sql.telemetry.telemetry_client import TelemetryHelper
+from databricks.sql.utils import escape_metadata_catalog_name
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -267,6 +268,7 @@ class KernelDatabricksClient(DatabricksClient):
         self._telemetry_options = kwargs.get("telemetry_options") or {}
         self._catalog = catalog
         self._schema = schema
+        self._escape_catalog_name = kwargs.get("escape_catalog_name", False)
         # ``_use_arrow_native_complex_types`` is the connector-side
         # toggle for whether complex columns (ARRAY / MAP / STRUCT)
         # are surfaced as native Arrow shapes or as compact JSON
@@ -1019,7 +1021,9 @@ class KernelDatabricksClient(DatabricksClient):
             # do the work — no connector-side drain + refilter. Passing it
             # through preserves streaming for large schemas.
             stream = self._kernel_session.metadata().list_tables(
-                catalog=_catalog_or_none(catalog_name),
+                catalog=escape_metadata_catalog_name(
+                    _catalog_or_none(catalog_name), self._escape_catalog_name
+                ),
                 schema_pattern=schema_name,
                 table_pattern=table_name,
                 table_types=table_types if table_types else None,
