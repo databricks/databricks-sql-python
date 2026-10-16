@@ -332,6 +332,7 @@ class Session:
                 retry_options=kernel_retry_options,
                 request_timeout_secs=kwargs.get("_socket_timeout"),
                 max_connections=kwargs.get("_pool_maxsize") or None,
+                enable_geospatial_support=kwargs.get("enable_geospatial_support", True),
                 telemetry_options=kernel_telemetry_options,
                 escape_catalog_name=kwargs.get("escape_catalog_name", False),
             )

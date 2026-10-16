@@ -392,6 +392,94 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
     assert captured["max_connections"] == max_connections
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+def test_open_session_passes_geospatial_representation_to_kernel(
+    monkeypatch, enabled
+):
+    captured = {}
+
+    def fake_session(*, enable_geospatial_support=True, **kw):
+        captured["enable_geospatial_support"] = enable_geospatial_support
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        enable_geospatial_support=enabled,
+    )
+
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["enable_geospatial_support"] is enabled
+
+
+def test_open_session_enables_geospatial_support_by_default(monkeypatch):
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+    )
+
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["enable_geospatial_support"] is True
+
+
+def test_open_session_rejects_explicit_geospatial_option_with_old_kernel(
+    monkeypatch,
+):
+    def fake_session_without_geospatial(
+        host,
+        http_path,
+        *,
+        catalog=None,
+        schema=None,
+        session_conf=None,
+        complex_types_as_json=False,
+        intervals_as_string=False,
+        request_timeout_secs=None,
+        auth_type=None,
+        access_token=None,
+    ):
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(
+        kernel_client._kernel, "Session", fake_session_without_geospatial
+    )
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        enable_geospatial_support=False,
+    )
+
+    with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
+        c.open_session(session_configuration=None, catalog=None, schema=None)
+
+
+def test_geospatial_option_rejects_non_bool():
+    with pytest.raises(ValueError, match="must be a bool"):
+        kernel_client._kernel_geospatial_kwargs("false")
+
+
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     """Kernel telemetry phase 7 added binding/runtime identity and
     telemetry config kwargs to ``databricks_sql_kernel.Session``."""
@@ -490,6 +578,7 @@ def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
         catalog=None,
         schema=None,
         session_conf=None,
+        enable_geospatial_support=True,
         complex_types_as_json=False,
         intervals_as_string=False,
         request_timeout_secs=None,
@@ -589,7 +678,9 @@ def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monke
     kwargs = kernel_client._kernel_telemetry_kwargs(
         {"enable_telemetry": True, "telemetry_batch_size": 17}
     )
-    assert kwargs == {}, f"expected no phase-7 kwargs when signature unreadable, got {kwargs}"
+    assert (
+        kwargs == {}
+    ), f"expected no phase-7 kwargs when signature unreadable, got {kwargs}"
 
 
 def test_execute_command_forwards_parameters_to_bind_param():
