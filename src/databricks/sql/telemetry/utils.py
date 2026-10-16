@@ -19,7 +19,9 @@ class BaseTelemetryClient(ABC):
         pass
 
     @abstractmethod
-    def export_failure_log(self, error_name, error_message):
+    def export_failure_log(
+        self, error_name, error_message, session_id=None, sql_statement_id=None
+    ):
         logger.debug("subclass must implement export_failure_log")
         pass
 

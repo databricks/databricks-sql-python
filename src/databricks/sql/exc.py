@@ -19,6 +19,7 @@ class Error(Exception):
         host_url=None,
         *args,
         session_id_hex=None,
+        sql_statement_id=None,
         **kwargs,
     ):
         super().__init__(message, *args, **kwargs)
@@ -33,7 +34,10 @@ class Error(Exception):
                 host_url=host_url
             )
             telemetry_client.export_failure_log(
-                error_name, self.message, session_id=session_id_hex
+                error_name,
+                self.message,
+                session_id=session_id_hex,
+                sql_statement_id=sql_statement_id,
             )
 
     def __str__(self):
