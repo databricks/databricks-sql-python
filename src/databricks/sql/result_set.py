@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING, Tuple
+from typing import Any, List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 import pandas
@@ -85,6 +85,12 @@ class ResultSet(ABC):
         self._arrow_schema_bytes = arrow_schema_bytes
         # Affected-row count for DML; None for SELECT / unreported.
         self.num_modified_rows = num_modified_rows
+        # fetchone() converts a whole batch at a time and serves rows from here.
+        # _row_buffer_table holds the same rows in the backend's raw format so the
+        # Arrow/columnar/JSON fetches can return them if they are called next.
+        self._row_buffer: List[Row] = []
+        self._row_buffer_table: Any = None
+        self._row_buffer_pos = 0
 
     def __iter__(self):
         while True:
@@ -134,7 +140,40 @@ class ResultSet(ABC):
 
     @property
     def rownumber(self):
-        return self._next_row_index
+        return self._next_row_index - self._num_buffered_rows()
+
+    def _num_buffered_rows(self) -> int:
+        return len(self._row_buffer) - self._row_buffer_pos
+
+    def _take_buffered_rows(self, size: Optional[int] = None) -> List[Row]:
+        """Pop up to ``size`` (default: all) rows buffered by fetchone()."""
+        start = self._row_buffer_pos
+        end = (
+            len(self._row_buffer)
+            if size is None
+            else min(start + size, len(self._row_buffer))
+        )
+        rows = self._row_buffer[start:end]
+        self._row_buffer_pos = end
+        if end == len(self._row_buffer):
+            self._row_buffer = []
+            self._row_buffer_table = None
+            self._row_buffer_pos = 0
+        return rows
+
+    def _take_buffered_table(self, size: Optional[int] = None) -> Any:
+        """
+        Pop up to ``size`` (default: all) rows buffered by fetchone() in the raw format
+        returned by ``_fetchmany_table``, or None when nothing is buffered.
+        """
+        table = self._row_buffer_table
+        start = self._row_buffer_pos
+        taken = len(self._take_buffered_rows(size))
+        if taken == 0:
+            return None
+        if isinstance(table, list):
+            return table[start : start + taken]
+        return table.slice(start, taken)
 
     @property
     def is_staging_operation(self) -> bool:
@@ -142,19 +181,53 @@ class ResultSet(ABC):
         return self._is_staging_operation
 
     @abstractmethod
+    def _fetchmany_table(self, size: int) -> Any:
+        """Fetch up to ``size`` rows in the backend's raw format (Arrow, columnar or JSON)."""
+        pass
+
+    @abstractmethod
+    def _fetchall_table(self) -> Any:
+        """Fetch all remaining rows in the backend's raw format (Arrow, columnar or JSON)."""
+        pass
+
+    @abstractmethod
+    def _convert_table(self, table: Any) -> List[Row]:
+        """Convert a table returned by ``_fetchmany_table``/``_fetchall_table`` to rows."""
+        pass
+
     def fetchone(self) -> Optional[Row]:
-        """Fetch the next row of a query result set."""
-        pass
+        """
+        Fetch the next row of a query result set, returning a single sequence,
+        or None when no more data is available.
 
-    @abstractmethod
+        Rows are fetched and converted ``arraysize`` at a time, because converting
+        a batch costs about the same as converting a single row.
+        """
+        if self._num_buffered_rows() == 0:
+            table = self._fetchmany_table(max(self.arraysize, 1))
+            self._row_buffer = self._convert_table(table)
+            self._row_buffer_table = table
+            self._row_buffer_pos = 0
+        rows = self._take_buffered_rows(1)
+        return rows[0] if rows else None
+
     def fetchmany(self, size: int) -> List[Row]:
-        """Fetch the next set of rows of a query result."""
-        pass
+        """
+        Fetch the next set of rows of a query result, returning a list of rows.
 
-    @abstractmethod
+        An empty sequence is returned when no more rows are available.
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+        rows = self._take_buffered_rows(size)
+        if len(rows) == size:
+            return rows
+        return rows + self._convert_table(self._fetchmany_table(size - len(rows)))
+
     def fetchall(self) -> List[Row]:
-        """Fetch all remaining rows of a query result."""
-        pass
+        """Fetch all (remaining) rows of a query result, returning them as a list of rows."""
+        rows = self._take_buffered_rows()
+        return rows + self._convert_table(self._fetchall_table())
 
     @abstractmethod
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
@@ -318,7 +391,12 @@ class ThriftResultSet(ResultSet):
         zero_row_table: Optional["pyarrow.Table"] = None
         n_remaining_rows = size
 
-        results = self.results.next_n_rows(size)
+        buffered = self._take_buffered_table(size)
+        if buffered is not None:
+            partial_result_chunks.append(buffered)
+            n_remaining_rows -= buffered.num_rows
+
+        results = self.results.next_n_rows(n_remaining_rows)
         if results.num_rows == 0:
             zero_row_table = results
         else:
@@ -351,10 +429,18 @@ class ThriftResultSet(ResultSet):
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
-        results = self.results.next_n_rows(size)
-        n_remaining_rows = size - results.num_rows
+        partial_result_chunks = []
+        n_remaining_rows = size
+
+        buffered = self._take_buffered_table(size)
+        if buffered is not None:
+            partial_result_chunks.append(buffered)
+            n_remaining_rows -= buffered.num_rows
+
+        results = self.results.next_n_rows(n_remaining_rows)
+        n_remaining_rows -= results.num_rows
         self._next_row_index += results.num_rows
-        partial_result_chunks = [results]
+        partial_result_chunks.append(results)
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
@@ -373,7 +459,8 @@ class ThriftResultSet(ResultSet):
         # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
         # CloudFetchQueue may return a placeholder empty table whose schema does not
         # match the real downloaded chunks; concatenating it would corrupt the result.
-        partial_result_chunks: List = []
+        buffered = self._take_buffered_table()
+        partial_result_chunks: List = [] if buffered is None else [buffered]
         zero_row_table: Optional["pyarrow.Table"] = None
 
         results = self.results.remaining_rows()
@@ -409,9 +496,10 @@ class ThriftResultSet(ResultSet):
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
+        buffered = self._take_buffered_table()
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-        partial_result_chunks = [results]
+        partial_result_chunks = [results] if buffered is None else [buffered, results]
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
@@ -420,40 +508,20 @@ class ThriftResultSet(ResultSet):
 
         return concat_table_chunks(partial_result_chunks)
 
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
-        """
+    def _fetchmany_table(self, size: int):
         if isinstance(self.results, ColumnQueue):
-            res = self._convert_columnar_table(self.fetchmany_columnar(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
+            return self.fetchmany_columnar(size)
+        return self.fetchmany_arrow(size)
 
-        if len(res) > 0:
-            return res[0]
-        else:
-            return None
-
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
+    def _fetchall_table(self):
         if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchall_columnar())
-        else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            return self.fetchall_columnar()
+        return self.fetchall_arrow()
 
-    def fetchmany(self, size: int) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        An empty sequence is returned when no more rows are available.
-        """
+    def _convert_table(self, table) -> List[Row]:
         if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchmany_columnar(size))
-        else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            return self._convert_columnar_table(table)
+        return self._convert_arrow_table(table)
 
     @staticmethod
     def _get_schema_description(table_schema_message):
