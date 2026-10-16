@@ -148,4 +148,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #974 had each `FeatureFlagsContext` capture `self._executor` at construction while `FeatureFlagsContextFactory.remove_instance` can `shutdown()` and null out that executor; a context outliving a remove→get cycle would `submit()` onto the dead executor, raising `RuntimeError: cannot schedule new futures after shutdown` outside the guarding try/except.
   **Rule:** Don't cache a reference to a shared singleton resource (executor, client, pool) that another code path can tear down and recreate — re-read it from the factory at use time, or guard the use against the post-shutdown error.
 
+### 2026-10-16: learnings since 2026-10-15T17:30:02Z
+- **Context:** PR #985 added `escape_metadata_catalog_name` using `re.sub(r"(?<!\\)_", r"\\_", name)` to escape underscores in metadata catalog names; reviewers flagged that the single-char lookbehind mis-handles backslash runs and that the "Match JDBC regardless of backslash parity" claim inverts real JDBC/`LIKE` semantics (an even-length `\\` run leaves the following `_` unescaped, so it should still be escaped).
+  **Rule:** A single-character negative lookbehind like `(?<!\\)_` cannot decide whether an underscore is truly escaped — only backslash-run *parity* can — so don't claim SQL `LIKE`/JDBC equivalence for such a regex; if inputs may contain backslashes, count the preceding backslash run, otherwise document the backslash-free assumption as a deliberate simplification rather than as JDBC parity.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
