@@ -334,6 +334,7 @@ class Session:
                 max_connections=kwargs.get("_pool_maxsize") or None,
                 enable_geospatial_support=kwargs.get("enable_geospatial_support", True),
                 telemetry_options=kernel_telemetry_options,
+                escape_catalog_name=kwargs.get("escape_catalog_name", False),
             )
 
         # These reference the lazily-resolved module attributes defined via

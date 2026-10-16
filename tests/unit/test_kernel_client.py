@@ -1903,6 +1903,102 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"escape_catalog_name": False}, {"escape_catalog_name": True}],
+    ids=["default", "disabled", "enabled"],
+)
+@pytest.mark.parametrize(
+    "method, filters, kernel_filters",
+    [
+        ("schemas", {"schema_name": "schema_%"}, {"schema_pattern": "schema_%"}),
+        (
+            "tables",
+            {
+                "schema_name": "schema_%",
+                "table_name": "table_%",
+                "table_types": ["TABLE"],
+            },
+            {
+                "schema_pattern": "schema_%",
+                "table_pattern": "table_%",
+                "table_types": ["TABLE"],
+            },
+        ),
+        (
+            "columns",
+            {
+                "schema_name": "schema_%",
+                "table_name": "table_%",
+                "column_name": "column_%",
+            },
+            {
+                "schema_pattern": "schema_%",
+                "table_pattern": "table_%",
+                "column_pattern": "column_%",
+            },
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "catalog_name, escaped",
+    [
+        (None, None),
+        ("", ""),
+        ("%", "%"),
+        ("*", "*"),
+        ("simple", "simple"),
+        ("my_catalog", r"my\_catalog"),
+        ("a_b_c", r"a\_b\_c"),
+        (r"my\_catalog", r"my\_catalog"),
+        (r"a\_b_c%", r"a\_b\_c%"),
+        # Match JDBC: preserve the final \_ pair regardless of backslash parity.
+        pytest.param(
+            r"my\\_cat_tail",
+            r"my\\_cat\_tail",
+            id="jdbc-even-backslash-run",
+        ),
+        pytest.param(
+            r"my\\\_cat_tail",
+            r"my\\\_cat\_tail",
+            id="jdbc-odd-backslash-run",
+        ),
+    ],
+)
+def test_metadata_catalog_escaping(
+    monkeypatch, options, method, filters, kernel_filters, catalog_name, escaped
+):
+    from databricks import sql
+
+    kernel_session = MagicMock()
+    kernel_session.session_id = "session-id"
+    rpc = getattr(kernel_session.metadata.return_value, f"list_{method}")
+    rpc.return_value = _stream_with_schema()
+    monkeypatch.setattr(
+        kernel_client._kernel, "Session", lambda **kwargs: kernel_session
+    )
+
+    with sql.connect(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        access_token="test-token",
+        use_kernel=True,
+        enable_telemetry=False,
+        **options,
+    ) as connection:
+        cursor = connection.cursor()
+        assert getattr(cursor, method)(catalog_name=catalog_name, **filters) is cursor
+
+    expected = (
+        escaped
+        if method == "tables" and options.get("escape_catalog_name", False)
+        else catalog_name
+    )
+    if expected in ("%", "*"):
+        expected = None
+    rpc.assert_called_once_with(catalog=expected, **kernel_filters)
+
+
 @pytest.mark.parametrize("catalog_wildcard", ["%", "*"])
 def test_get_columns_normalizes_all_catalog_wildcard(catalog_wildcard):
     c = _make_client()

@@ -322,6 +322,11 @@ class Connection:
                 This allows
                 1. cursor.tables() to return METRIC_VIEW table type
                 2. cursor.columns() to return "measure" column type
+            :param escape_catalog_name: `bool`, optional (default is False)
+                Escape unescaped underscores in catalog names for schemas(), tables(),
+                and columns() metadata requests. Existing escapes and % wildcards are
+                preserved. Kernel schemas() and columns() already use exact catalog
+                identifiers, so their catalog names are passed through unchanged.
             :param fetch_autocommit_from_server: `bool`, optional (default is False)
                 When True, the connection.autocommit property queries the server for current state
                 using SET AUTOCOMMIT instead of returning cached value.

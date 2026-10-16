@@ -46,6 +46,15 @@ DEFAULT_ERROR_CONTEXT = "Unknown error"
 logger = logging.getLogger(__name__)
 
 
+def escape_metadata_catalog_name(
+    catalog_name: Optional[str], enabled: bool
+) -> Optional[str]:
+    r"""Match JDBC: escape _ unless immediately preceded by \; preserve %."""
+    if not enabled or catalog_name is None:
+        return catalog_name
+    return re.sub(r"(?<!\\)_", r"\\_", catalog_name)
+
+
 def get_session_config_value(
     session_configuration: Optional[Dict[str, Any]], key: str
 ) -> Optional[str]:
