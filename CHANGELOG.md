@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Correct explicit `DecimalParameter` precision and scale ordering and honor a declared zero scale. Callers that followed the previously reversed parameter descriptions must use `precision` for total digits and `scale` for fractional digits. Explicit zero precision is now sent as declared instead of silently using automatic sizing.
 - Add the `escape_catalog_name` connection parameter (default `False`) to opt in to escaping unescaped `_` in metadata catalog names on Thrift and kernel connections. Existing escapes and `%` wildcards are preserved.
 
 # 4.6.0 (2026-09-24)
