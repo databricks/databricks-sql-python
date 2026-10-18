@@ -1043,6 +1043,22 @@ class TestPySQLCoreSuite(
                 assert arrow_result_table.field(0).type == ts_type
                 assert arrow_result_value == expected.timestamp() * 1000000
 
+    def test_timestamp_ntz_description_type_code(self):
+        # See issue #786: cursor.description must distinguish TIMESTAMP_NTZ
+        # from TIMESTAMP. Both arrive over Thrift as TTypeId.TIMESTAMP_TYPE,
+        # so the type_code must be recovered from the Arrow field metadata.
+        with self.cursor() as cursor:
+            cursor.execute(
+                "SELECT "
+                "  CAST('2024-10-07 12:00:00' AS TIMESTAMP)     AS tz_aware, "
+                "  CAST('2024-10-07 12:00:00' AS TIMESTAMP_NTZ) AS tz_naive"
+            )
+            description = cursor.description
+            assert description[0][0] == "tz_aware"
+            assert description[0][1] == "timestamp"
+            assert description[1][0] == "tz_naive"
+            assert description[1][1] == "timestamp_ntz"
+
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
     def test_can_flip_compression(self):
         with self.cursor() as cursor:
