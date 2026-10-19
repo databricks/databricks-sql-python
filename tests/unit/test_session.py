@@ -484,6 +484,7 @@ class TestKernelTransportOptionsThreading:
                 _retry_stop_after_attempts_duration=600.0,
                 _socket_timeout=12.5,
                 _pool_maxsize=41,
+                enable_geospatial_support=False,
             )
             try:
                 _, kwargs = mock_kernel_client.call_args
@@ -494,6 +495,7 @@ class TestKernelTransportOptionsThreading:
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
                 assert kwargs["request_timeout_secs"] == 12.5
                 assert kwargs["max_connections"] == 41
+                assert kwargs["enable_geospatial_support"] is False
             finally:
                 conn.close()
 
@@ -799,6 +801,28 @@ class TestUseKernelRoutesThroughRealWheel:
             finally:
                 conn.close()
 
+    def test_enable_geospatial_support_matches_real_kernel_signature(self):
+        self._real_kernel_or_skip()
+
+        from databricks.sql.backend.kernel.client import (
+            _kernel_geospatial_kwargs,
+            _kernel_session_accepts_kwarg,
+        )
+        from databricks.sql.exc import NotSupportedError
+
+        # The ordinary kernel unit-test tier installs the latest published
+        # wheel, which may lag the KERNEL_REV source pin while the matching
+        # kernel change is still in flight. Validate the compatibility error
+        # in that case; once the wheel includes the typed option, validate
+        # both values against its real PyO3 signature.
+        if not _kernel_session_accepts_kwarg("enable_geospatial_support"):
+            with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
+                _kernel_geospatial_kwargs(True)
+            return
+
+        assert _kernel_geospatial_kwargs(True) == {"enable_geospatial_support": True}
+        assert _kernel_geospatial_kwargs(False) == {"enable_geospatial_support": False}
+
 
 class TestReydenThriftFallback:
     """Transparent auto-recovery from a Reyden / Real-Time warehouse rejecting
@@ -852,6 +876,42 @@ class TestReydenThriftFallback:
         )
         args.update(overrides)
         return databricks.sql.connect(**args)
+
+    @pytest.mark.parametrize("route", ["explicit", "recovery", "cached"])
+    @pytest.mark.parametrize(
+        "geospatial_kwargs, expected",
+        [
+            pytest.param({}, False, id="default"),
+            pytest.param({"enable_geospatial_support": False}, False, id="disabled"),
+            pytest.param({"enable_geospatial_support": True}, True, id="enabled"),
+        ],
+    )
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_kernel_routing_preserves_geospatial_representation(
+        self, mock_thrift, route, geospatial_kwargs, expected
+    ):
+        from databricks.sql.backend import reyden_warehouse_cache
+
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        if route == "cached":
+            reyden_warehouse_cache.mark_reyden(self.HOST, "wh-reyden")
+        if route == "explicit":
+            geospatial_kwargs = {**geospatial_kwargs, "use_kernel": True}
+
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect(**geospatial_kwargs)
+            try:
+                assert conn.session.use_kernel is True
+                assert (
+                    mock_kernel.call_args.kwargs["enable_geospatial_support"]
+                    is expected
+                )
+                if route == "recovery":
+                    mock_thrift.return_value.open_session.assert_called_once()
+                else:
+                    mock_thrift.return_value.open_session.assert_not_called()
+            finally:
+                conn.close()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
     def test_thrift_rejection_recovers_onto_kernel(self, mock_thrift):

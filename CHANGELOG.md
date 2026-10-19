@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Add the kernel-only `enable_geospatial_support` connection option (default `False`). GEOMETRY / GEOGRAPHY results are exposed as `{"srid": int, "wkb": bytes}` values when true or WKT / EWKT strings when false.
 - Add the `escape_catalog_name` connection parameter (default `False`) to opt in to escaping unescaped `_` in metadata catalog names on Thrift and kernel connections. Existing escapes and `%` wildcards are preserved.
 
 # 4.6.0 (2026-09-24)
