@@ -418,7 +418,7 @@ def test_open_session_passes_geospatial_representation_to_kernel(
     assert captured["enable_geospatial_support"] is enabled
 
 
-def test_open_session_enables_geospatial_support_by_default(monkeypatch):
+def test_open_session_disables_native_geospatial_support_by_default(monkeypatch):
     captured = {}
 
     def fake_session(**kw):
@@ -437,7 +437,7 @@ def test_open_session_enables_geospatial_support_by_default(monkeypatch):
 
     c.open_session(session_configuration=None, catalog=None, schema=None)
 
-    assert captured["enable_geospatial_support"] is True
+    assert captured["enable_geospatial_support"] is False
 
 
 def test_open_session_rejects_explicit_geospatial_option_with_old_kernel(

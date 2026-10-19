@@ -171,7 +171,7 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
 
 
 def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
-    """Build the default-enabled native geospatial-support kwarg.
+    """Build the explicit native geospatial-support kwarg.
 
     The value is always passed explicitly so the driver and kernel contracts
     cannot drift. Older kernel wheels do not declare
@@ -283,12 +283,12 @@ class KernelDatabricksClient(DatabricksClient):
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
-        # Default-enabled native GEOMETRY / GEOGRAPHY support. True requests
+        # Opt-in native GEOMETRY / GEOGRAPHY support. True requests
         # the canonical Arrow struct and surfaces as ``{"srid": int, "wkb":
         # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
         # intentionally separate from ``session_configuration``: it is never
         # forwarded to SEA.
-        self._enable_geospatial_support = kwargs.get("enable_geospatial_support", True)
+        self._enable_geospatial_support = kwargs.get("enable_geospatial_support", False)
         # Kernel telemetry phase 7 adds binding/runtime identity and
         # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
         self._telemetry_options = kwargs.get("telemetry_options") or {}

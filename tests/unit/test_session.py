@@ -877,6 +877,42 @@ class TestReydenThriftFallback:
         args.update(overrides)
         return databricks.sql.connect(**args)
 
+    @pytest.mark.parametrize("route", ["explicit", "recovery", "cached"])
+    @pytest.mark.parametrize(
+        "geospatial_kwargs, expected",
+        [
+            pytest.param({}, False, id="default"),
+            pytest.param({"enable_geospatial_support": False}, False, id="disabled"),
+            pytest.param({"enable_geospatial_support": True}, True, id="enabled"),
+        ],
+    )
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_kernel_routing_preserves_geospatial_representation(
+        self, mock_thrift, route, geospatial_kwargs, expected
+    ):
+        from databricks.sql.backend import reyden_warehouse_cache
+
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        if route == "cached":
+            reyden_warehouse_cache.mark_reyden(self.HOST, "wh-reyden")
+        if route == "explicit":
+            geospatial_kwargs = {**geospatial_kwargs, "use_kernel": True}
+
+        with self._fake_kernel() as mock_kernel:
+            conn = self._connect(**geospatial_kwargs)
+            try:
+                assert conn.session.use_kernel is True
+                assert (
+                    mock_kernel.call_args.kwargs["enable_geospatial_support"]
+                    is expected
+                )
+                if route == "recovery":
+                    mock_thrift.return_value.open_session.assert_called_once()
+                else:
+                    mock_thrift.return_value.open_session.assert_not_called()
+            finally:
+                conn.close()
+
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
     def test_thrift_rejection_recovers_onto_kernel(self, mock_thrift):
         mock_thrift.return_value.open_session.side_effect = self._reject()

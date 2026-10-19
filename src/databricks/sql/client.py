@@ -194,7 +194,7 @@ class Connection:
                 decision. This is an intentional divergence from the
                 Thrift/SEA paths, where an explicit ``True`` can still
                 be suppressed by the feature flag.
-            :param enable_geospatial_support: `bool`, optional (default is True)
+            :param enable_geospatial_support: `bool`, optional (default is False)
                 Kernel backend only. Controls the public representation of
                 ``GEOMETRY`` and ``GEOGRAPHY`` result values. ``True`` returns
                 ``{"srid": int, "wkb": bytes}``; ``False`` returns WKT / EWKT
