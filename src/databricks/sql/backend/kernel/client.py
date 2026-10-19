@@ -1045,11 +1045,9 @@ class KernelDatabricksClient(DatabricksClient):
         if self._kernel_session is None:
             raise InterfaceError("get_tables requires an open session.")
         try:
-            # ``table_types`` is filtered kernel-side (the kernel applies
-            # it to the reshaped result, case-insensitively as of the
-            # batch-3 kernel change), so we forward it and let the kernel
-            # do the work — no connector-side drain + refilter. Passing it
-            # through preserves streaming for large schemas.
+            # The kernel filters ``table_types`` with case-sensitive
+            # matching for Thrift parity. Forward the values unchanged
+            # to preserve those semantics and streaming for large schemas.
             stream = self._kernel_session.metadata().list_tables(
                 catalog=escape_metadata_catalog_name(
                     _catalog_or_none(catalog_name), self._escape_catalog_name

@@ -1626,7 +1626,7 @@ def _make_tables_stream() -> MagicMock:
 
 def test_get_tables_forwards_table_types_to_kernel():
     """``table_types`` is forwarded verbatim to the kernel's
-    ``list_tables`` (which filters case-insensitively) — the
+    ``list_tables`` (which filters case-sensitively) — the
     connector no longer drains + refilters client-side. The stream
     flows back through the normal ``KernelResultSet`` path unchanged."""
     c = _make_client()
