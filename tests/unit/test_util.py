@@ -153,13 +153,50 @@ class TestUtils:
         assert result_table.column("col2").to_pylist() == [5, 6, 7, 8]
 
     @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_concat_table_chunks_arrow_table_duplicate_column_names(self):
+        arrow_table1 = pyarrow.Table.from_arrays(
+            [pyarrow.array([1]), pyarrow.array([2])], names=["a", "a"]
+        )
+        arrow_table2 = pyarrow.Table.from_arrays(
+            [pyarrow.array([3]), pyarrow.array([4])], names=["a", "a"]
+        )
+
+        result_table = concat_table_chunks([arrow_table1, arrow_table2])
+
+        assert result_table.column_names == ["a", "a"]
+        assert result_table.column(0).to_pylist() == [1, 3]
+        assert result_table.column(1).to_pylist() == [2, 4]
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_concat_table_chunks_arrow_table_promotes_nullability(self):
+        nullable = pyarrow.Table.from_arrays(
+            [pyarrow.array(["x"])],
+            schema=pyarrow.schema([pyarrow.field("col1", pyarrow.string())]),
+        )
+        not_null = pyarrow.Table.from_arrays(
+            [pyarrow.array(["y"])],
+            schema=pyarrow.schema(
+                [pyarrow.field("col1", pyarrow.string(), nullable=False)]
+            ),
+        )
+
+        result_table = concat_table_chunks([nullable, not_null])
+
+        assert result_table.column("col1").to_pylist() == ["x", "y"]
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_concat_table_chunks_arrow_old_pyarrow_fallback(self, monkeypatch):
         # pyarrow < 14 has no `promote_options` kwarg; a base connector install
         # can run against a runtime's old bundled pyarrow (e.g. DBR 13.3/14.3).
         # concat_table_chunks must fall back to the legacy `promote=True` API
         # rather than raise TypeError (regression: DBR LTS install check).
         arrow_table1 = pyarrow.Table.from_pydict({"col1": [1, 2]})
-        arrow_table2 = pyarrow.Table.from_pydict({"col1": [3, 4]})
+        arrow_table2 = pyarrow.Table.from_arrays(
+            [pyarrow.array([3, 4])],
+            schema=pyarrow.schema(
+                [pyarrow.field("col1", pyarrow.int64(), nullable=False)]
+            ),
+        )
 
         real_concat = pyarrow.concat_tables
 

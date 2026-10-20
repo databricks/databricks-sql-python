@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Fix fetching results that contain duplicate column names, which failed with `ArrowInvalid: Can't unify schema with duplicate field names` since 4.2.6.
 
 # 4.7.0 (2026-10-20)
 - Upgrade Databricks SQL Kernel to 1.2.0.
