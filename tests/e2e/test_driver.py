@@ -453,6 +453,28 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
+    def test_duplicate_column_names_survive_arrow_fetch(self):
+        """Queries whose result has two columns with the same name must survive
+        the Arrow fetch path (concat_table_chunks). Regressed in 4.2.6 by the
+        promote_options change (GH #989); 4.2.5 returned Row(a=1, a=2)."""
+        with self.cursor({}) as cursor:
+            cursor.execute("SELECT 1 AS a, 2 AS a")
+            arrow_table = cursor.fetchall_arrow()
+            assert arrow_table.column_names == ["a", "a"]
+            assert arrow_table.column(0).to_pylist() == [1]
+            assert arrow_table.column(1).to_pylist() == [2]
+
+        with self.cursor({}) as cursor:
+            cursor.execute("SELECT 1 AS a, 2 AS a")
+            rows = cursor.fetchall()
+            assert len(rows) == 1
+            assert list(rows[0]) == [1, 2]
+
+        with self.cursor({}) as cursor:
+            cursor.execute("SELECT 1 AS a, 2 AS a")
+            row = cursor.fetchone()
+            assert list(row) == [1, 2]
+
     def test_dml_rowcount(self):
         """cursor.rowcount reports the affected-row count for DML
         (INSERT/UPDATE/DELETE) instead of the hardcoded -1, and resets
