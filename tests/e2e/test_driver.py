@@ -453,6 +453,7 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
+    @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
     def test_duplicate_column_names_survive_arrow_fetch(self):
         """Queries whose result has two columns with the same name must survive
         the Arrow fetch path (concat_table_chunks). Regressed in 4.2.6 by the
