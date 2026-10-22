@@ -497,19 +497,19 @@ ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
 name = "databricks-sql-kernel"
-version = "1.1.0"
+version = "1.2.0"
 description = "Python bindings for the Databricks SQL Kernel (PyO3)"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"kernel\""
 files = [
-    {file = "databricks_sql_kernel-1.1.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e9082e924f1b2957e2f7df751200abcb68a2d1e907e5bbf6ee0019013642c245"},
-    {file = "databricks_sql_kernel-1.1.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:8d7bf7aa002dc2f4864170f1e9185ba10fdf5460efb114269ec9337b084bd501"},
-    {file = "databricks_sql_kernel-1.1.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:207544c0e12c278cd655852dd13815b244fc26f9a63eb1c4e64a3adb596a2bcd"},
-    {file = "databricks_sql_kernel-1.1.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:1a7d72dc0c959fe1df159a3a5af0da5b5e145e9804363c096174616a17f74fa0"},
-    {file = "databricks_sql_kernel-1.1.0-cp39-abi3-win_amd64.whl", hash = "sha256:2f8c863f20a2a58a02c033fc639144b7756d93d025309c62f4978d5e7b4e1f23"},
-    {file = "databricks_sql_kernel-1.1.0.tar.gz", hash = "sha256:c0920c42fbaa6190798ba8d7422fa2ad81e44328257ca76a702fe26a4ca5df77"},
+    {file = "databricks_sql_kernel-1.2.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:3e56f4d20baba6dd4cb17d040db2e3c348fc90173faa48f1e859fe4a18a399df"},
+    {file = "databricks_sql_kernel-1.2.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:44e272a72f07de2e241eea0eddd699201d2c808ff3c5923b2874712f27731058"},
+    {file = "databricks_sql_kernel-1.2.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:dd420a3cfd067718bb280ca3fc8dc6575e618519058389d9176889ab394148da"},
+    {file = "databricks_sql_kernel-1.2.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:01fdfe0a622ae08bffa5166bb2e2eac997805245d34d83eadd23b139057006b2"},
+    {file = "databricks_sql_kernel-1.2.0-cp39-abi3-win_amd64.whl", hash = "sha256:ad8ba67c9dea4da7b356cfd2230410c5c8e44a7daa9476e75d8a998efd7150d0"},
+    {file = "databricks_sql_kernel-1.2.0.tar.gz", hash = "sha256:88f5066d8ef44a8d1ab30a2eba350ea27e1d174b99d346c8fcbafc95c3ccf81a"},
 ]
 
 [package.dependencies]
@@ -2057,4 +2057,4 @@ pyarrow = ["pyarrow", "pyarrow", "pyarrow"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "c795408ec234d68dbb17d7e6e74e114a2596e750e58452260528d246757bc990"
+content-hash = "906a800e5ab8ef821af88a610ad730885cab39b190b09f0e0445e7d1558ad741"
