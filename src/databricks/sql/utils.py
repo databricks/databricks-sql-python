@@ -927,6 +927,11 @@ def _concat_arrow_tables(table_chunks: List["pyarrow.Table"]) -> "pyarrow.Table"
     raises ``TypeError: unexpected keyword argument``. Fall back to the legacy
     ``promote=True`` there (equivalent to ``promote_options="default"``).
     """
+    first_schema = table_chunks[0].schema
+    if all(chunk.schema.equals(first_schema) for chunk in table_chunks[1:]):
+        # Nothing to promote. Schema unification rejects duplicate column names
+        # (e.g. SELECT 1 AS a, 2 AS a), so skip it when the chunks already agree.
+        return pyarrow.concat_tables(table_chunks)
     try:
         return pyarrow.concat_tables(table_chunks, promote_options="default")
     except TypeError:
