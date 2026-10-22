@@ -158,4 +158,8 @@ until a human merges it. The engineer author phase reads this log (see
 - **Context:** PR #990 changed `_hive_schema_to_description` (thrift_backend.py) from pairing Thrift result columns with Arrow schema fields by a `field_dict[name]` lookup to pairing by positional index, because SQL permits duplicate column aliases for which a name lookup is ambiguous (silently mis-attributing logical types like variant/geometry/geography).
   **Rule:** Join result-set columns to Arrow schema fields by positional index, not by column name — duplicate aliases make name lookups ambiguous; keep name as a fallback only for malformed/short schemas and document the one-for-one ordering invariant the position pairing assumes.
 
+### 2026-10-22: learnings since 2026-10-21T17:31:29Z
+- **Context:** Engineer-bot run #39665896492 fixed GH #989 in `src/databricks/sql/utils.py::_concat_arrow_tables`, which unconditionally called `pyarrow.concat_tables(..., promote_options="default")` (fallback `promote=True`) and failed on duplicate column names.
+  **Rule:** When concatenating pyarrow tables, only pass a `promote`/`promote_options` argument when chunk schemas actually differ — any promote option triggers Arrow schema unification, which raises `ArrowInvalid: Can't unify schema with duplicate field names` even for a single chunk; valid SQL (`SELECT 1 AS a, 2 AS a`, self-JOINs) legitimately produces duplicate column names, so short-circuit to a plain `concat_tables` when all chunk schemas equal the first, preserving promotion only for the genuine differing-schema (e.g. nullability) case.
+
 --- *Add new entries above this line (oldest→newest); newest sections sort to the bottom.* ---
