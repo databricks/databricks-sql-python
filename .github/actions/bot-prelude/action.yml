@@ -31,7 +31,7 @@ inputs:
     # value to move every bot to a new engine commit; never @main.
     description: 'Engine commit SHA (full 40-char) to install.'
     required: false
-    default: '654a31d0d26d2b77bcb58e84f1e4abe018f9fd5a'
+    default: '67b0550bceaae9f12921b09f16f2151b9ae76a18'
   engine-repo:
     description: 'owner/name of the engine repo.'
     required: false
@@ -84,7 +84,7 @@ runs:
     - name: Setup Node (for the Claude Code CLI the SDK spawns)
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
       with:
-        node-version: '20'
+        node-version: '22'
 
     - name: Install engine + Claude SDK/CLI
       uses: ./.github/actions/install-bot-engine

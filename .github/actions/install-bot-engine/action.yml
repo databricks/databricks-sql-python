@@ -34,11 +34,11 @@ inputs:
   sdk-version:
     description: 'claude-agent-sdk version. Keep in sync with the engine at the pinned SHA.'
     required: false
-    default: '0.2.102'
+    default: '0.2.167'
   cli-version:
     description: '@anthropic-ai/claude-code version. Keep in sync with the engine at the pinned SHA.'
     required: false
-    default: '2.1.61'
+    default: '2.1.300'
 
 runs:
   using: composite
