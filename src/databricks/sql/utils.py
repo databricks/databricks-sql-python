@@ -926,7 +926,25 @@ def _concat_arrow_tables(table_chunks: List["pyarrow.Table"]) -> "pyarrow.Table"
     bundled pyarrow -- e.g. DBR 13.3 (12.x) / 14.3 -- where ``promote_options``
     raises ``TypeError: unexpected keyword argument``. Fall back to the legacy
     ``promote=True`` there (equivalent to ``promote_options="default"``).
+
+    Schema promotion triggers Arrow's schema unification, which rejects
+    duplicate field names (``ArrowInvalid: Can't unify schema with duplicate
+    field names``) even when no promotion is actually needed -- breaking valid
+    SQL like ``SELECT 1 AS a, 2 AS a`` or ``SELECT * FROM a JOIN b`` (GH #989).
+    Promotion is only needed when chunk schemas actually differ (e.g. the
+    nullability case from GH #418), so when every chunk shares the first
+    chunk's schema we concatenate without promotion.
+
+    Known limitation: a result set that has *both* duplicate column names *and*
+    chunks whose schemas genuinely differ falls through to the promotion path
+    and still re-raises ``ArrowInvalid: Can't unify schema with duplicate field
+    names``. Arrow cannot unify a schema with duplicate field names, so there is
+    no promotion-based fix for that combination without renaming fields; it is a
+    narrow, pre-existing edge left unhandled here.
     """
+    if all(table.schema.equals(table_chunks[0].schema) for table in table_chunks[1:]):
+        return pyarrow.concat_tables(table_chunks)
+
     try:
         return pyarrow.concat_tables(table_chunks, promote_options="default")
     except TypeError:

@@ -174,6 +174,23 @@ class TestUtils:
         result_table = concat_table_chunks([arrow_table1, arrow_table2])
         assert result_table.column("col1").to_pylist() == [1, 2, 3, 4]
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_concat_table_chunks_duplicate_column_names(self):
+        # Duplicate column names are valid SQL (e.g. SELECT 1 AS a, 2 AS a).
+        # Schema promotion rejects them with ArrowInvalid, so when chunk
+        # schemas match we must concatenate without promotion (GH #989).
+        arrow_table1 = pyarrow.Table.from_arrays(
+            [pyarrow.array([1]), pyarrow.array([2])], names=["a", "a"]
+        )
+        arrow_table2 = pyarrow.Table.from_arrays(
+            [pyarrow.array([3]), pyarrow.array([4])], names=["a", "a"]
+        )
+
+        result_table = concat_table_chunks([arrow_table1, arrow_table2])
+        assert result_table.column_names == ["a", "a"]
+        assert result_table.column(0).to_pylist() == [1, 3]
+        assert result_table.column(1).to_pylist() == [2, 4]
+
     def test_concat_table_chunks_empty(self):
         result_table = concat_table_chunks([])
         assert result_table == []
