@@ -2,6 +2,8 @@
 
 # Unreleased
 
+- Upgrade Databricks SQL Kernel to 1.3.0.
+
 # 4.7.0 (2026-10-20)
 - Upgrade Databricks SQL Kernel to 1.2.0.
 - Add the kernel-only `enable_geospatial_support` option (default `False`) to return GEOMETRY / GEOGRAPHY values as SRID/WKB objects instead of WKT/EWKT strings.
