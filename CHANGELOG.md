@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Correct explicit `DecimalParameter` precision and scale ordering and honor a declared zero scale. Callers that followed the previously reversed parameter descriptions must use `precision` for total digits and `scale` for fractional digits. Explicit zero precision is now sent as declared instead of silently using automatic sizing.
 
 - Upgrade Databricks SQL Kernel to 1.3.0.
 
