@@ -100,7 +100,7 @@ class ResultSetDownloadHandler:
             self.link, self.settings.link_expiry_buffer_secs
         )
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         with self._http_client.request_context(
             method=HttpMethod.GET,
@@ -113,7 +113,7 @@ class ResultSetDownloadHandler:
             compressed_data = response.data
 
         # Log download metrics
-        download_duration = time.time() - start_time
+        download_duration = time.perf_counter() - start_time
         self._log_download_metrics(
             self.link.fileLink, len(compressed_data), download_duration
         )
@@ -148,8 +148,13 @@ class ResultSetDownloadHandler:
         self, url: str, bytes_downloaded: int, duration_seconds: float
     ):
         """Log download speed metrics at INFO/WARN levels."""
-        # Calculate speed in MB/s (ensure float division for precision)
-        speed_mbps = (float(bytes_downloaded) / (1024 * 1024)) / duration_seconds
+        # Calculate speed in MB/s (ensure float division for precision). A download
+        # that finishes within the clock resolution has no measurable duration.
+        speed_mbps = (
+            (float(bytes_downloaded) / (1024 * 1024)) / duration_seconds
+            if duration_seconds > 0
+            else float("inf")
+        )
 
         urlEndpoint = url.split("?")[0]
         # INFO level logging
