@@ -2,7 +2,10 @@
 
 # Unreleased
 
-- Upgrade Databricks SQL Kernel to 1.3.0.
+# 4.8.0 (2026-10-24)
+- Upgrade Databricks SQL Kernel to 1.3.0 to address security findings.
+- Update locked Black and certifi dependencies to address security findings.
+- Fix Arrow result fetching for queries that return duplicate column names.
 
 # 4.7.0 (2026-10-20)
 - Upgrade Databricks SQL Kernel to 1.2.0.
