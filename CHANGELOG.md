@@ -2,7 +2,18 @@
 
 # Unreleased
 - Include the available SQL statement ID in Thrift failure telemetry so errors can be correlated with the failed statement.
-- Add the `escape_catalog_name` connection parameter (default `False`) to opt in to escaping unescaped `_` in metadata catalog names on Thrift and kernel connections. Existing escapes and `%` wildcards are preserved.
+
+# 4.8.0 (2026-10-24)
+- Upgrade Databricks SQL Kernel to 1.3.0 to address security findings.
+- Update locked Black and certifi dependencies to address security findings.
+- Fix Arrow result fetching for queries that return duplicate column names.
+
+# 4.7.0 (2026-10-20)
+- Upgrade Databricks SQL Kernel to 1.2.0.
+- Add the kernel-only `enable_geospatial_support` option (default `False`) to return GEOMETRY / GEOGRAPHY values as SRID/WKB objects instead of WKT/EWKT strings.
+- Add opt-in `escape_catalog_name` support (default `False`) for metadata queries on Thrift and kernel connections.
+- Share feature-flag values across connections to the same workspace, with typed reads and coordinated refreshes.
+- Allow Apache Thrift 0.25.x and OAuthlib 4.x, including security fixes while preserving support for large Thrift results.
 
 # 4.6.0 (2026-09-24)
 - Upgrade Databricks SQL Kernel to 1.1.0; the kernel dependency is now stable and no longer experimental.

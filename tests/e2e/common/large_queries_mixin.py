@@ -24,7 +24,7 @@ def fetch_rows(test_case, cursor, row_count, fetchmany_size):
         rows = _get_some_rows(cursor, fetchmany_size)
     if not rows:
         # Read all the rows, row_count should match
-        test_case.assertEqual(n, row_count)
+        assert n == row_count, "fetched {} rows, expected {}".format(n, row_count)
 
     num_fetches = max(math.ceil(n / 10000), 1)
     latency_ms = int((time.time() - start_time) * 1000 / num_fetches), 1

@@ -383,12 +383,12 @@ def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
         assert cur.fetchall() == []
 
 
-def test_tables_table_types_filter_is_case_insensitive(conn):
-    """Lowercase ``table_types=['view']`` / uppercase ``['TABLE']``
-    each match the right object regardless of case — locks the
-    kernel-side case-insensitive ``table_types`` match (batch-3 kernel
-    B2) end-to-end plus the connector drain removal (the filter now
-    runs kernel-side, not client-side).
+def test_tables_table_types_filter_is_case_sensitive(conn):
+    """Table types match exact case, consistent with Thrift.
+
+    Uppercase ``['VIEW']`` / ``['TABLE']`` match the corresponding
+    object; lowercase and mixed-case values match no objects. The
+    kernel applies the filter to values forwarded by the connector.
 
     Self-contained: creates a table + a view over it in the session's
     default (writable) schema, scopes the lookup to a unique name
@@ -411,12 +411,12 @@ def test_tables_table_types_filter_is_case_insensitive(conn):
                 ni, ti = cols.index("TABLE_NAME"), cols.index("TABLE_TYPE")
                 return {(r[ni], r[ti]) for r in rows}
 
-            # Lowercase 'view' must match the VIEW (and only it).
+            # Uppercase 'VIEW' must match the VIEW (and only it).
             cur.tables(
                 catalog_name=cat,
                 schema_name=sch,
                 table_name=name_pat,
-                table_types=["view"],
+                table_types=["VIEW"],
             )
             assert _names_and_types() == {(vw, "VIEW")}
 
@@ -428,6 +428,16 @@ def test_tables_table_types_filter_is_case_insensitive(conn):
                 table_types=["TABLE"],
             )
             assert _names_and_types() == {(tbl, "TABLE")}
+
+            # Lowercase and mixed-case requests must not match either type.
+            for table_type in ("view", "View", "table", "Table"):
+                cur.tables(
+                    catalog_name=cat,
+                    schema_name=sch,
+                    table_name=name_pat,
+                    table_types=[table_type],
+                )
+                assert _names_and_types() == set(), table_type
         finally:
             cur.execute(f"DROP VIEW IF EXISTS {vw}")
             cur.execute(f"DROP TABLE IF EXISTS {tbl}")

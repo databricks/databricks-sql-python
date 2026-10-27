@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import logging
 import math
+import re
 import time
 import threading
 from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
@@ -838,27 +839,35 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             precision, scale = None, None
 
-        # Extract variant type from field if available
+        # Extract logical types that Thrift surfaces as strings from Arrow metadata.
         if field is not None:
             try:
-                # Check for variant type in metadata
                 if field.metadata and b"Spark:DataType:SqlName" in field.metadata:
                     sql_type = field.metadata.get(b"Spark:DataType:SqlName")
-                    if sql_type == b"VARIANT":
-                        cleaned_type = "variant"
+                    logical_type = re.fullmatch(
+                        rb"(variant|geometry|geography)(?:\([^()]*\))?",
+                        sql_type.strip(),
+                        re.IGNORECASE,
+                    )
+                    if logical_type:
+                        cleaned_type = logical_type.group(1).decode("ascii").lower()
             except Exception as e:
-                logger.debug(f"Could not extract variant type from field: {e}")
+                logger.debug(f"Could not extract logical type from field: {e}")
 
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
     def _hive_schema_to_description(t_table_schema, schema_bytes=None, host_url=None):
+        arrow_fields = []
         field_dict = {}
         if pyarrow and schema_bytes:
             try:
                 arrow_schema = pyarrow.ipc.read_schema(pyarrow.py_buffer(schema_bytes))
-                # Build a dictionary mapping column names to fields
-                for field in arrow_schema:
+                arrow_fields = list(arrow_schema)
+                # Retain a name fallback for malformed/partial schemas, but use
+                # result-column position whenever it is available. SQL permits
+                # duplicate aliases, for which a name lookup is ambiguous.
+                for field in arrow_fields:
                     field_dict[field.name] = field
             except Exception as e:
                 logger.debug(f"Could not parse arrow schema: {e}")
@@ -866,10 +875,14 @@ class ThriftDatabricksClient(DatabricksClient):
         return [
             ThriftDatabricksClient._col_to_description(
                 col,
-                field_dict.get(col.columnName) if field_dict else None,
+                (
+                    arrow_fields[index]
+                    if index < len(arrow_fields)
+                    else field_dict.get(col.columnName)
+                ),
                 host_url,
             )
-            for col in t_table_schema.columns
+            for index, col in enumerate(t_table_schema.columns)
         ]
 
     def _results_message_to_execute_response(
