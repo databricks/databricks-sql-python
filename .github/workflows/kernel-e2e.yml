@@ -332,6 +332,9 @@ jobs:
         run: |
           $CONNECTOR_VENV_PY -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel module has no __file__ — wheel install failed'; print('kernel ok:', k.__file__)"
 
+      - name: Run async reader routing tests
+        run: $CONNECTOR_VENV_PY -m pytest tests/unit/test_kernel_async_readers.py -m realkernel -v
+
       - name: Run kernel e2e tests
         run: poetry run pytest tests/e2e/test_kernel_backend.py -v
 

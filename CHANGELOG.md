@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
 
 # 4.8.0 (2026-10-24)
 - Upgrade Databricks SQL Kernel to 1.3.0 to address security findings.

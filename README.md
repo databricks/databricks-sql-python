@@ -59,6 +59,11 @@ Notes:
 - Authentication supports PAT (`access_token`), OAuth M2M/U2M, and SP-wide
   workload identity federation (`identity_federation_client_id`).
 
+For Lakehouse Real-Time, submit asynchronous statements and poll or fetch results
+through the submitting connection. Re-fetching and concurrent status polling on
+that connection are supported. Submitting on one connection and polling or
+fetching through another connection is unsupported.
+
 
 ```bash
 export DATABRICKS_HOST=********.databricks.com
