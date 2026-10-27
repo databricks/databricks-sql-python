@@ -161,7 +161,9 @@ class NoopTelemetryClient(BaseTelemetryClient):
     ):
         pass
 
-    def export_failure_log(self, error_name, error_message, session_id=None):
+    def export_failure_log(
+        self, error_name, error_message, session_id=None, sql_statement_id=None
+    ):
         pass
 
     def export_latency_log(
@@ -414,9 +416,15 @@ class TelemetryClient(BaseTelemetryClient):
         self._user_agent = user_agent
         self._export_telemetry_log(session_id=session_id)
 
-    def export_failure_log(self, error_name, error_message, session_id=None):
+    def export_failure_log(
+        self, error_name, error_message, session_id=None, sql_statement_id=None
+    ):
         error_info = DriverErrorInfo(error_name=error_name, stack_trace=error_message)
-        self._export_telemetry_log(session_id=session_id, error_info=error_info)
+        self._export_telemetry_log(
+            session_id=session_id,
+            sql_statement_id=sql_statement_id,
+            error_info=error_info,
+        )
 
     def export_latency_log(
         self, latency_ms, sql_execution_event, sql_statement_id, session_id=None

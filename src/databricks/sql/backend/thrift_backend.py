@@ -304,7 +304,19 @@ class ThriftDatabricksClient(DatabricksClient):
             )
 
     @staticmethod
-    def _check_response_for_error(response, host_url=None, detect_reyden=False):
+    def _get_statement_id(op_handle):
+        operation_id = getattr(op_handle, "operationId", None)
+        guid = getattr(operation_id, "guid", None)
+        return guid_to_hex_id(guid) if guid is not None else None
+
+    @staticmethod
+    def _check_response_for_error(
+        response,
+        host_url=None,
+        detect_reyden=False,
+        session_id_hex=None,
+        sql_statement_id=None,
+    ):
         if response.status and response.status.statusCode in [
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
@@ -324,6 +336,11 @@ class ThriftDatabricksClient(DatabricksClient):
             raise DatabaseError(
                 response.status.errorMessage,
                 host_url=host_url,
+                session_id_hex=session_id_hex,
+                sql_statement_id=ThriftDatabricksClient._get_statement_id(
+                    getattr(response, "operationHandle", None)
+                )
+                or sql_statement_id,
             )
 
     @staticmethod
@@ -379,6 +396,10 @@ class ThriftDatabricksClient(DatabricksClient):
                 full_error_info_context,
                 self._host,
                 error_info.error,
+                session_id_hex=self._session_id_hex,
+                sql_statement_id=self._get_statement_id(
+                    getattr(error_info.request, "operationHandle", None)
+                ),
             )
             logger.info(network_request_error.message_with_context())
 
@@ -559,6 +580,10 @@ class ThriftDatabricksClient(DatabricksClient):
                     response,
                     self._host,
                     detect_reyden=getattr(method, "__name__", None) == "OpenSession",
+                    session_id_hex=self._session_id_hex,
+                    sql_statement_id=self._get_statement_id(
+                        getattr(request, "operationHandle", None)
+                    ),
                 )
                 return response
 
@@ -681,6 +706,8 @@ class ThriftDatabricksClient(DatabricksClient):
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
                     host_url=self._host,
+                    session_id_hex=self._session_id_hex,
+                    sql_statement_id=self._get_statement_id(op_handle),
                 )
             else:
                 raise ServerOperationError(
@@ -691,6 +718,8 @@ class ThriftDatabricksClient(DatabricksClient):
                         "diagnostic-info": None,
                     },
                     host_url=self._host,
+                    session_id_hex=self._session_id_hex,
+                    sql_statement_id=self._get_statement_id(op_handle),
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
@@ -702,6 +731,8 @@ class ThriftDatabricksClient(DatabricksClient):
                     and guid_to_hex_id(op_handle.operationId.guid)
                 },
                 host_url=self._host,
+                session_id_hex=self._session_id_hex,
+                sql_statement_id=self._get_statement_id(op_handle),
             )
 
     def _poll_for_status(self, op_handle):
@@ -875,6 +906,8 @@ class ThriftDatabricksClient(DatabricksClient):
                     ]
                 ),
                 host_url=self._host,
+                session_id_hex=self._session_id_hex,
+                sql_statement_id=self._get_statement_id(resp.operationHandle),
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
@@ -1032,27 +1065,40 @@ class ThriftDatabricksClient(DatabricksClient):
         return state
 
     @staticmethod
-    def _check_direct_results_for_error(t_spark_direct_results, host_url=None):
+    def _check_direct_results_for_error(
+        t_spark_direct_results,
+        host_url=None,
+        session_id_hex=None,
+        sql_statement_id=None,
+    ):
         if t_spark_direct_results:
             if t_spark_direct_results.operationStatus:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.operationStatus,
                     host_url,
+                    session_id_hex=session_id_hex,
+                    sql_statement_id=sql_statement_id,
                 )
             if t_spark_direct_results.resultSetMetadata:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.resultSetMetadata,
                     host_url,
+                    session_id_hex=session_id_hex,
+                    sql_statement_id=sql_statement_id,
                 )
             if t_spark_direct_results.resultSet:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.resultSet,
                     host_url,
+                    session_id_hex=session_id_hex,
+                    sql_statement_id=sql_statement_id,
                 )
             if t_spark_direct_results.closeOperation:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.closeOperation,
                     host_url,
+                    session_id_hex=session_id_hex,
+                    sql_statement_id=sql_statement_id,
                 )
 
     def execute_command(
@@ -1340,7 +1386,12 @@ class ThriftDatabricksClient(DatabricksClient):
             raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults, self._host)
+        self._check_direct_results_for_error(
+            resp.directResults,
+            self._host,
+            session_id_hex=self._session_id_hex,
+            sql_statement_id=command_id.to_hex_guid(),
+        )
 
         final_operation_state, final_status_resp = self._wait_until_command_done(
             resp.operationHandle,
@@ -1364,7 +1415,12 @@ class ThriftDatabricksClient(DatabricksClient):
             raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults, self._host)
+        self._check_direct_results_for_error(
+            resp.directResults,
+            self._host,
+            session_id_hex=self._session_id_hex,
+            sql_statement_id=command_id.to_hex_guid(),
+        )
 
     def fetch_results(
         self,
@@ -1403,6 +1459,8 @@ class ThriftDatabricksClient(DatabricksClient):
                     expected_row_start_offset, resp.results.startRowOffset
                 ),
                 host_url=self._host,
+                session_id_hex=self._session_id_hex,
+                sql_statement_id=command_id.to_hex_guid(),
             )
 
         queue = ThriftResultSetQueueFactory.build_queue(
