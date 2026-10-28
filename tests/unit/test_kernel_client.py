@@ -1116,6 +1116,25 @@ def test_get_query_state_returns_succeeded_when_server_404s():
     assert c.get_query_state(cid) == CommandState.SUCCEEDED
 
 
+@pytest.mark.parametrize("read_result", [False, True], ids=["status", "result"])
+def test_independent_async_read_requires_reader_api(read_result):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    owner = MagicMock(spec=["status", "await_result"])
+    cid = CommandId.from_sea_statement_id("tracked-async")
+    c._async_handles[cid.guid] = owner
+    c._async_result_stream_started.add(cid.guid)
+
+    with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
+        if read_result:
+            c.get_execution_result(cid, cursor=MagicMock())
+        else:
+            c.get_query_state(cid)
+
+    c._kernel_session.attach_async_statement.assert_not_called()
+    assert c._async_handles[cid.guid] is owner
+
+
 def test_get_query_state_returns_closed_from_server():
     """A closed-but-not-yet-GC'd async command: the server still answers
     GetStatementStatus with state=CLOSED (200), which flows through the
@@ -1155,19 +1174,19 @@ def test_get_query_state_uses_retained_owning_handle_before_result_stream():
     handle.status.assert_called_once_with()
 
 
-def test_get_query_state_concurrent_poll_routes_to_attach_by_id():
+def test_get_query_state_concurrent_poll_uses_reader():
     """A second concurrent poll of the same async id (while the first
     poll's owning-handle status() is in flight, before result streaming
-    is claimed) falls back to attach-by-id rather than racing status()
+    is claimed) derives a reader rather than racing status()
     on the shared owning handle. The owning-handle reservation is
     released once the first poll returns, so a later serial poll takes
     the owning-handle path again."""
     c = _make_client()
     c._kernel_session = MagicMock()
     owning_handle = MagicMock()
-    attached_handle = MagicMock()
-    attached_handle.status.return_value = ("Running", None)
-    c._kernel_session.attach_async_statement.return_value = attached_handle
+    reader = MagicMock()
+    reader.status.return_value = ("Running", None)
+    owning_handle.reader.return_value = reader
     cid = CommandId.from_sea_statement_id("async-status-concurrent")
     c._async_handles[cid.guid] = owning_handle
 
@@ -1178,30 +1197,30 @@ def test_get_query_state_concurrent_poll_routes_to_attach_by_id():
         # A concurrent poll arriving while this one holds the reservation
         # must not touch the owning handle.
         reentrant_state["state"] = c.get_query_state(cid)
+        assert cid.guid in c._async_status_in_flight
         return ("Running", None)
 
     owning_handle.status.side_effect = owning_status
 
     assert c.get_query_state(cid) == CommandState.RUNNING
-    # The re-entrant (concurrent) poll fell back to attach-by-id.
+    # The re-entrant (concurrent) poll uses a reader derived from the owner.
     assert reentrant_state["state"] == CommandState.RUNNING
-    c._kernel_session.attach_async_statement.assert_called_once_with(
-        "async-status-concurrent"
-    )
+    owning_handle.reader.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_not_called()
     owning_handle.status.assert_called_once_with()
     # Reservation released after the first poll returns.
     assert cid.guid not in c._async_status_in_flight
 
 
-def test_get_query_state_attaches_by_id_after_result_stream_started():
+def test_get_query_state_uses_reader_after_result_stream_started():
     """Once get_execution_result has claimed the owning handle for result
-    streaming, status polling falls back to attach-by-id."""
+    streaming, status polling derives a reader."""
     c = _make_client()
     c._kernel_session = MagicMock()
     owning_handle = MagicMock()
-    attached_handle = MagicMock()
-    attached_handle.status.return_value = ("Succeeded", None)
-    c._kernel_session.attach_async_statement.return_value = attached_handle
+    reader = MagicMock()
+    reader.status.return_value = ("Succeeded", None)
+    owning_handle.reader.return_value = reader
     cid = CommandId.from_sea_statement_id("async-status-attached")
     c._async_handles[cid.guid] = owning_handle
     c._async_result_stream_started.add(cid.guid)
@@ -1209,10 +1228,9 @@ def test_get_query_state_attaches_by_id_after_result_stream_started():
     assert c.get_query_state(cid) == CommandState.SUCCEEDED
 
     owning_handle.status.assert_not_called()
-    c._kernel_session.attach_async_statement.assert_called_once_with(
-        "async-status-attached"
-    )
-    attached_handle.status.assert_called_once_with()
+    owning_handle.reader.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_not_called()
+    reader.status.assert_called_once_with()
 
 
 def test_get_execution_result_uses_retained_owning_handle_first():
@@ -1276,12 +1294,12 @@ def test_get_execution_result_owning_handle_failure_can_retry_owning_handle():
     c._kernel_session.attach_async_statement.assert_not_called()
 
 
-def test_get_execution_result_construction_failure_retains_marker_and_attaches_by_id():
+def test_get_execution_result_construction_failure_retains_marker_and_uses_reader():
     """If the owning handle's ``await_result()`` succeeds but result-set
     construction then raises, the ``_async_result_stream_started`` marker
     is deliberately left set (the owning stream may be partially
     consumed, so re-awaiting it is unsafe). A subsequent call must route
-    through the attach-by-id fallback rather than re-awaiting the owning
+    through the derived reader fallback rather than re-awaiting the owning
     handle."""
     c = _make_client()
     c._kernel_session = MagicMock()
@@ -1302,13 +1320,13 @@ def test_get_execution_result_construction_failure_retains_marker_and_attaches_b
     owning_handle.await_result.assert_called_once_with()
     c._kernel_session.attach_async_statement.assert_not_called()
 
-    # A retry now attaches by id (fresh stream) instead of re-awaiting
+    # A retry derives a reader (fresh stream) instead of re-awaiting
     # the partially-consumed owning handle.
     retry_stream = MagicMock()
     retry_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
-    attached_handle = MagicMock()
-    attached_handle.await_result.return_value = retry_stream
-    c._kernel_session.attach_async_statement.return_value = attached_handle
+    reader = MagicMock()
+    reader.await_result.return_value = retry_stream
+    owning_handle.reader.return_value = reader
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1316,10 +1334,9 @@ def test_get_execution_result_construction_failure_retains_marker_and_attaches_b
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
-    c._kernel_session.attach_async_statement.assert_called_once_with(
-        "async-construct-fail"
-    )
-    attached_handle.await_result.assert_called_once_with()
+    owning_handle.reader.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_not_called()
+    reader.await_result.assert_called_once_with()
     # The owning handle was not re-awaited on the retry.
     owning_handle.await_result.assert_called_once_with()
 
@@ -1550,13 +1567,13 @@ def test_kernel_error_during_result_set_construction_is_mapped():
 
 
 # ---------------------------------------------------------------------------
-# get_execution_result uses the owning handle once, then attach-by-id
+# get_execution_result uses the owning handle once, then derived readers
 # ---------------------------------------------------------------------------
 
 
 def test_get_execution_result_is_re_callable():
     """The first result fetch uses the owning handle for telemetry; a
-    second fetch for the same async command re-attaches by id so
+    second fetch for the same async command derives a reader so
     Thrift-parity re-fetch still works."""
     c = _make_client()
     c._kernel_session = MagicMock()
@@ -1564,9 +1581,9 @@ def test_get_execution_result_is_re_callable():
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     owning_handle = MagicMock()
     owning_handle.await_result.return_value = fake_stream
-    attached_handle = MagicMock()
-    attached_handle.await_result.return_value = fake_stream
-    c._kernel_session.attach_async_statement.return_value = attached_handle
+    reader = MagicMock()
+    reader.await_result.return_value = fake_stream
+    owning_handle.reader.return_value = reader
     cid = CommandId.from_sea_statement_id("async-recall-twice")
     c._async_handles[cid.guid] = owning_handle
     cursor = MagicMock()
@@ -1578,10 +1595,9 @@ def test_get_execution_result_is_re_callable():
 
     assert rs1 is not None and rs2 is not None
     owning_handle.await_result.assert_called_once_with()
-    c._kernel_session.attach_async_statement.assert_called_once_with(
-        "async-recall-twice"
-    )
-    attached_handle.await_result.assert_called_once_with()
+    owning_handle.reader.assert_called_once_with()
+    c._kernel_session.attach_async_statement.assert_not_called()
+    reader.await_result.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
