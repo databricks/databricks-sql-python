@@ -446,6 +446,17 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rows, list(range(100)))
         self.assertLessEqual(m.call_count, 100 // 10 + 2)
 
+    def test_fetchone_refill_is_capped_for_large_arraysize(self):
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        n_rows = _FETCHONE_BUFFER_MAX_ROWS * 3
+        rs = self.make_columnar_result_set(n_rows, arraysize=100000)
+        self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(rs._row_buffer_count(), _FETCHONE_BUFFER_MAX_ROWS - 1)
+        self.assertEqual(rs.rownumber, 1)
+        self.assertEqual([r[0] for r in rs.fetchall()], list(range(1, n_rows)))
+        self.assertEqual(rs.rownumber, n_rows)
+
     def test_mixed_fetches_keep_order_and_rownumber(self):
         rs = self.make_columnar_result_set(10, arraysize=4)
         self.assertEqual(rs.fetchone()[0], 0)

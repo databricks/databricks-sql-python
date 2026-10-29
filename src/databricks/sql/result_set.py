@@ -27,6 +27,12 @@ from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
+# Upper bound on how many rows a fetchone() refill pulls and converts at once. The
+# refill uses ``arraysize`` but is capped here so the first fetchone() on a cursor
+# with a large arraysize (default 100000) doesn't materialise a full page just to
+# return one row.
+_FETCHONE_BUFFER_MAX_ROWS = 1000
+
 
 class ResultSet(ABC):
     """
@@ -194,7 +200,10 @@ class ResultSet(ABC):
     def _fetchone_buffered(
         self, fetch_raw: Callable[[int], Any], convert: Callable[[Any], List[Row]]
     ) -> Optional[Row]:
-        """Serve fetchone() from the row buffer, refilling ``arraysize`` rows at a time.
+        """Serve fetchone() from the row buffer, refilling in small batches.
+
+        Each refill fetches ``arraysize`` rows, capped at
+        ``_FETCHONE_BUFFER_MAX_ROWS``.
 
         ``_next_row_index`` keeps counting rows handed to the caller: rows parked in
         the buffer are subtracted on refill and added back as they are taken. The
@@ -203,7 +212,7 @@ class ResultSet(ABC):
         ``expected_row_start_offset``).
         """
         if self._row_buffer_count() == 0:
-            raw = fetch_raw(max(self.arraysize, 1))
+            raw = fetch_raw(max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1))
             rows = convert(raw)
             if not rows:
                 return None
