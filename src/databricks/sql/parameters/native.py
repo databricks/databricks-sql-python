@@ -657,7 +657,10 @@ class DecimalParameter(DbsqlParameterBase):
                 raise ValueError(
                     "DecimalParameter scale must be >= 0, got {}".format(self.scale)
                 )
-            if self.precision < 0 or self.precision > self.MAX_PRECISION:
+            # precision=0 is rejected here too (not swapped): earlier releases
+            # treated it as unset and inferred the type, so swapping e.g.
+            # scale=5, precision=0 into DECIMAL(5,0) would silently round the value.
+            if not 1 <= self.precision <= self.MAX_PRECISION:
                 raise ValueError(
                     "DecimalParameter precision must be between 1 and {}, got {}".format(
                         self.MAX_PRECISION, self.precision
@@ -700,19 +703,10 @@ class DecimalParameter(DbsqlParameterBase):
             self.scale, self.precision = self.precision, self.scale
             # Preserve the old bound type exactly (no widening) for these callers,
             # so the only change they see is the warning.
+            # No re-validation needed: the swapped scale is the raw precision
+            # (already 1..38) and the swapped precision is the raw scale (already
+            # > that and <= 38), so the result is always a valid DECIMAL.
             self._legacy_swapped = True
-
-        if self.scale is not None and self.precision is not None:
-            if self.scale < 0:
-                raise ValueError(
-                    "DecimalParameter scale must be >= 0, got {}".format(self.scale)
-                )
-            if not 1 <= self.precision <= self.MAX_PRECISION:
-                raise ValueError(
-                    "DecimalParameter precision must be between 1 and {}, got {}".format(
-                        self.MAX_PRECISION, self.precision
-                    )
-                )
 
     def valid_scale_and_precision(self):
         def _is_int(x):

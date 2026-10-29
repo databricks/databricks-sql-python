@@ -235,6 +235,9 @@ def test_decimal_bool_scale_or_precision_raises(scale, precision):
     (
         (50, 2, "scale must be between 0 and 38, got 50"),
         (5, -1, "precision must be between 1 and 38, got -1"),
+        # precision=0 used to mean "unset" (type inferred); it must not be swapped
+        # into DECIMAL(5,0), which would round the value.
+        (5, 0, "precision must be between 1 and 38, got 0"),
     ),
 )
 def test_decimal_out_of_range_raw_args_raise_before_legacy_swap(scale, precision, match):
