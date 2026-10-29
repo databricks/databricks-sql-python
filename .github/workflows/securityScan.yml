@@ -17,7 +17,7 @@ name: Security Scan
 #
 #   - workflow_dispatch: behaves like the cron run (full reporting).
 #
-# Scanner: OSV-Scanner v2.3.8 (purl-based via OSV.dev; federates GHSA,
+# Scanner: OSV-Scanner v2.7.0 (purl-based via OSV.dev; federates GHSA,
 # NVD, PyPA, RustSec, Go vuln DB). Reads `poetry.lock` natively --
 # no separate SBOM tool needed.
 #
@@ -27,7 +27,7 @@ name: Security Scan
 # justification ("dev-only, not shipped in the wheel").
 #
 # Suppressions live in `osv-scanner.toml` as [[IgnoredVulns]] entries
-# (CVE-id global; OSV-Scanner v2.3.8 doesn't support per-package CVE
+# (CVE-id global; OSV-Scanner v2.7.0 doesn't support per-package CVE
 # scoping). Each entry has a justification comment and an `ignoreUntil`
 # expiry so suppressions re-surface for re-review rather than lingering.
 
@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_amd64
+            https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64
           chmod +x /tmp/osv-scanner
           /tmp/osv-scanner --version
 
