@@ -648,6 +648,24 @@ class DecimalParameter(DbsqlParameterBase):
                 "as integers"
             )
 
+        if self.precision == 0:
+            # Earlier releases treated precision=0 as falsy, i.e. "unset", and inferred
+            # the type from the value. Keep that behaviour for now (swapping e.g.
+            # scale=5, precision=0 into DECIMAL(5,0) would silently round the value),
+            # but warn so callers migrate before this becomes an error, like the
+            # other legacy-convention calls below.
+            warnings.warn(
+                "DecimalParameter received precision=0 (scale={}); ignoring scale and "
+                "precision and inferring the DECIMAL type from the value, as earlier "
+                "releases did. `precision` must be between 1 and {}; pass both as None "
+                "to infer the type. This will raise ValueError in a future "
+                "release.".format(self.scale, self.MAX_PRECISION),
+                FutureWarning,
+                stacklevel=2,
+            )
+            self.scale = None
+            self.precision = None
+
         if self.scale is not None and self.precision is not None:
             # Range-check the raw arguments *before* the legacy swap below, so a call
             # that is simply invalid (rather than written for the legacy convention)
@@ -657,9 +675,6 @@ class DecimalParameter(DbsqlParameterBase):
                 raise ValueError(
                     "DecimalParameter scale must be >= 0, got {}".format(self.scale)
                 )
-            # precision=0 is rejected here too (not swapped): earlier releases
-            # treated it as unset and inferred the type, so swapping e.g.
-            # scale=5, precision=0 into DECIMAL(5,0) would silently round the value.
             if not 1 <= self.precision <= self.MAX_PRECISION:
                 raise ValueError(
                     "DecimalParameter precision must be between 1 and {}, got {}".format(
@@ -769,6 +784,16 @@ class DecimalParameter(DbsqlParameterBase):
         if not isinstance(exponent, int):
             # NaN / Infinity: leave the declared type as-is
             return precision, scale
+
+        # Trailing fractional zeros carry no information, so ignore them: otherwise
+        # Decimal("1.50") and Decimal("1.5") would bind different types for the same
+        # declared parameter. (Stripping keeps len(digits) + exponent unchanged.)
+        while exponent < 0 and len(digits) > 1 and digits[-1] == 0:
+            digits = digits[:-1]
+            exponent += 1
+        if digits == (0,):
+            # Zero (e.g. Decimal("0.000")) has no significant fractional digits
+            exponent = max(exponent, 0)
 
         value_scale = max(-exponent, 0)
         declared_int_digits = precision - scale

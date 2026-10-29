@@ -115,6 +115,11 @@ def test_calculate_decimal_cast_string(value, expected):
         (Decimal("123"), 0, 10, "DECIMAL(10,0)"),
         # Value scale exceeds declared scale: scale widens, declared int room (8) is kept
         (Decimal("123.4567"), 2, 10, "DECIMAL(12,4)"),
+        # Trailing fractional zeros are not significant and do not widen the scale
+        (Decimal("123.4500"), 2, 10, "DECIMAL(10,2)"),
+        (Decimal("123.4560"), 2, 10, "DECIMAL(11,3)"),
+        (Decimal("0.000"), 2, 10, "DECIMAL(10,2)"),
+        (Decimal("100"), 0, 10, "DECIMAL(10,0)"),
         # Value has more integer digits than declared precision - scale allows:
         # integer room is not widened, so the server rejects it as out of range
         (Decimal("123456789012.5"), 2, 10, "DECIMAL(10,2)"),
@@ -211,7 +216,6 @@ def test_decimal_correct_order_with_more_fractional_digits_is_widened():
     "scale,precision,match",
     (
         (2, 50, "precision must be between 1 and 38"),
-        (0, 0, "precision must be between 1 and 38"),
         (-1, 10, "scale must be >= 0"),
     ),
 )
@@ -235,9 +239,6 @@ def test_decimal_bool_scale_or_precision_raises(scale, precision):
     (
         (50, 2, "scale must be between 0 and 38, got 50"),
         (5, -1, "precision must be between 1 and 38, got -1"),
-        # precision=0 used to mean "unset" (type inferred); it must not be swapped
-        # into DECIMAL(5,0), which would round the value.
-        (5, 0, "precision must be between 1 and 38, got 0"),
     ),
 )
 def test_decimal_out_of_range_raw_args_raise_before_legacy_swap(scale, precision, match):
@@ -247,6 +248,17 @@ def test_decimal_out_of_range_raw_args_raise_before_legacy_swap(scale, precision
         warnings.simplefilter("error", FutureWarning)
         with pytest.raises(ValueError, match=match):
             DecimalParameter(Decimal("1.5"), scale=scale, precision=precision)
+
+
+@pytest.mark.parametrize("scale", (0, 5, 10))
+def test_decimal_precision_zero_falls_back_to_inferred_type_with_warning(scale):
+    """precision=0 used to mean "unset" (type inferred). Keep that, with a
+    FutureWarning, rather than raising or swapping into DECIMAL(scale,0), which
+    would round the value."""
+    with pytest.warns(FutureWarning, match="precision=0"):
+        p = DecimalParameter(Decimal("1234.56"), scale=scale, precision=0)
+    assert p.scale is None and p.precision is None
+    assert p._cast_expr() == "DECIMAL(6,2)"
 
 
 class Primitive(Enum):
