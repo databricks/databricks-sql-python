@@ -135,10 +135,13 @@ def test_decimal_explicit_precision_scale_cast_string(value, scale, precision, e
     assert p._cast_expr() == expected
 
 
-def test_decimal_scale_greater_than_precision_rejected():
-    """Callers using the old (swapped) argument convention must fail loudly."""
-    with pytest.raises(ValueError, match="must not exceed precision"):
-        DecimalParameter(Decimal("12.3456"), scale=4, precision=2)
+def test_decimal_scale_greater_than_precision_legacy_swapped():
+    """Callers using the old (swapped) convention keep working, with a deprecation warning."""
+    with pytest.warns(DeprecationWarning, match="legacy"):
+        p = DecimalParameter(Decimal("123.45"), scale=10, precision=2)
+    assert p.precision == 10
+    assert p.scale == 2
+    assert p._cast_expr() == "DECIMAL(10,2)"
 
 
 class Primitive(Enum):

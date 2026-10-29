@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import warnings
 from enum import Enum, auto
 from typing import Optional, Sequence, Any, TYPE_CHECKING
 
@@ -640,15 +641,21 @@ class DecimalParameter(DbsqlParameterBase):
 
         if self.scale is not None and self.precision is not None and self.scale > self.precision:
             # Earlier releases documented these arguments the other way round
-            # (scale = total digits, precision = fractional digits). Fail loudly
-            # instead of silently reinterpreting a call written that way.
-            raise ValueError(
-                "DecimalParameter scale ({}) must not exceed precision ({}). `precision` is "
-                "the total number of digits and `scale` is the number of digits after the "
-                "decimal point, as in SQL DECIMAL(precision, scale).".format(
-                    self.scale, self.precision
-                )
+            # (scale = total digits, precision = fractional digits). A valid
+            # DECIMAL can never have scale > precision, so this can only be a call
+            # written for the old convention: keep it working for now (swap the
+            # arguments) but warn so callers migrate before this becomes an error.
+            warnings.warn(
+                "DecimalParameter received scale ({}) > precision ({}); interpreting the "
+                "arguments using the legacy (swapped) convention as DECIMAL({},{}). "
+                "`precision` is the total number of digits and `scale` is the number of "
+                "digits after the decimal point, as in SQL DECIMAL(precision, scale). "
+                "Swap your arguments; this will raise ValueError in a future "
+                "release.".format(self.scale, self.precision, self.scale, self.precision),
+                DeprecationWarning,
+                stacklevel=2,
             )
+            self.scale, self.precision = self.precision, self.scale
 
     def valid_scale_and_precision(self):
         if (self.scale is None and self.precision is None) or (
