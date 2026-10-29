@@ -612,7 +612,8 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
             calls.append(table.num_rows)
             if len(calls) == 1:
                 raise batch_error
-            raise ValueError("row failure")
+            # Same type and message as the batch error: a systematic failure.
+            raise ValueError("batch failure")
 
         rs = self.make_columnar_result_set(50, arraysize=20)
         with patch.object(
@@ -621,17 +622,56 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
             autospec=True,
             side_effect=convert,
         ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            tb_depths = []
             for i in range(20):
                 with self.assertRaises(ValueError) as ctx:
                     rs.fetchone()
                 if i >= _FETCHONE_FALLBACK_PROBE_ROWS:
                     self.assertIs(ctx.exception, batch_error)
+                    tb, depth = ctx.exception.__traceback__, 0
+                    while tb is not None:
+                        tb, depth = tb.tb_next, depth + 1
+                    tb_depths.append(depth)
                 self.assertEqual(rs.rownumber, i + 1)
+            # Re-raising the shared batch error must not grow its traceback per row.
+            self.assertEqual(len(set(tb_depths)), 1)
         # One batch attempt plus only the probe rows were converted individually.
         self.assertEqual(len(calls), 1 + _FETCHONE_FALLBACK_PROBE_ROWS)
         self.assertTrue(any("20 of 20 row(s)" in m for m in logs.output))
         self.assertTrue(any("batch failure" in m for m in logs.output))
         self.assertEqual(rs.fetchone()[0], 20)
+
+    def test_fetchone_leading_bad_rows_do_not_drop_later_good_rows(self):
+        from unittest.mock import patch
+        from databricks.sql.result_set import _FETCHONE_FALLBACK_PROBE_ROWS
+
+        real_convert = ThriftResultSet._convert_columnar_table
+        n_bad = _FETCHONE_FALLBACK_PROBE_ROWS + 1
+
+        def convert(self_, table):
+            rows = real_convert(self_, table)
+            bad = [r[0] for r in rows if r[0] < n_bad]
+            if bad:
+                # Each bad row fails with its own message, unlike the batch error.
+                raise ValueError("bad value in row {}".format(bad[0]))
+            return rows
+
+        rs = self.make_columnar_result_set(20, arraysize=20)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            for i in range(n_bad):
+                with self.assertRaises(ValueError) as ctx:
+                    rs.fetchone()
+                self.assertEqual(str(ctx.exception), "bad value in row {}".format(i))
+            # Rows after the leading bad run still convert and are served.
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(n_bad, 20)))
+        self.assertTrue(any("{} of 20 row(s)".format(n_bad) in m for m in logs.output))
+        self.assertFalse(any("rest not retried" in m for m in logs.output))
+        self.assertEqual(rs.rownumber, 20)
 
     def test_fetchone_raw_converted_count_mismatch_fails_loudly(self):
         from unittest.mock import patch

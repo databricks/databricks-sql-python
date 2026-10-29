@@ -35,19 +35,25 @@ logger = logging.getLogger(__name__)
 _FETCHONE_BUFFER_MAX_ROWS = 1000
 
 # After a fetchone() batch conversion fails, the batch is retried one row at a time.
-# If this many leading rows all fail too, the failure is treated as systematic: the
-# rest of the batch is not retried row by row (each would cost a separate
-# conversion) and those rows re-raise the original batch error instead.
+# If this many leading rows all fail too, with the same error type and message as
+# the batch, the failure is treated as systematic: the rest of the batch is not
+# retried row by row (each would cost a separate conversion) and those rows re-raise
+# the original batch error instead. Leading rows failing for other reasons do not
+# trigger the shortcut, so later good rows are still converted.
 _FETCHONE_FALLBACK_PROBE_ROWS = 5
 
 
 class _FailedRow:
     """Placeholder in the fetchone() row buffer for a row that failed to convert."""
 
-    __slots__ = ("error",)
+    __slots__ = ("error", "traceback")
 
     def __init__(self, error: Exception):
         self.error = error
+        # Snapshot the conversion traceback. Systematic failures park the same
+        # exception instance in many rows; restoring this before each raise keeps
+        # its __traceback__ from growing (and pinning frames) on every fetchone().
+        self.traceback = error.__traceback__
 
 
 class ResultSet(ABC):
@@ -200,7 +206,7 @@ class ResultSet(ABC):
             if isinstance(row, _FailedRow):
                 # The taken rows are consumed either way, matching how a failed
                 # conversion behaved before fetchone() buffering.
-                raise row.error
+                raise row.error.with_traceback(row.traceback)
         return taken
 
     @staticmethod
@@ -219,20 +225,29 @@ class ResultSet(ABC):
 
         Rows that fail are returned as ``_FailedRow`` placeholders so the error is
         raised only when that row is handed out. If the first
-        ``_FETCHONE_FALLBACK_PROBE_ROWS`` rows all fail, the failure is treated as
-        systematic and the remaining rows are parked with ``batch_error`` instead of
-        being converted one by one. Returns None if ``raw`` has no rows to split, in
+        ``_FETCHONE_FALLBACK_PROBE_ROWS`` rows all fail with the same error as the
+        batch (same type and message), the failure is treated as systematic and the
+        remaining rows are parked with ``batch_error`` instead of being converted one
+        by one. Otherwise every row is tried individually. Returns None if ``raw`` has no rows to split, in
         which case the caller re-raises the batch error.
         """
         n = ResultSet._raw_row_count(raw)
         if not n:
             return None
+        def same_as_batch(r: Any) -> bool:
+            return (
+                isinstance(r, _FailedRow)
+                and type(r.error) is type(batch_error)
+                and str(r.error) == str(batch_error)
+            )
+
         rows: List[Any] = []
         systematic = False
         for i in range(n):
-            if i == _FETCHONE_FALLBACK_PROBE_ROWS and all(
-                isinstance(r, _FailedRow) for r in rows
-            ):
+            # Only skip the remaining per-row retries when every probe row failed
+            # with the same error as the batch; leading rows that fail for their
+            # own reasons must not cause later good rows to be dropped.
+            if i == _FETCHONE_FALLBACK_PROBE_ROWS and all(same_as_batch(r) for r in rows):
                 systematic = True
                 rows.extend(_FailedRow(batch_error) for _ in range(n - i))
                 break
@@ -242,16 +257,20 @@ class ResultSet(ABC):
             except Exception as e:
                 rows.append(_FailedRow(e))
         failed = sum(isinstance(r, _FailedRow) for r in rows)
+        # One summary line, no traceback: the error itself still reaches the caller
+        # when the failing row is fetched. The full traceback is only logged at DEBUG.
         logger.warning(
             "fetchone(): failed to convert %d of %d row(s) in a batch%s; each failing "
-            "row raises when fetched",
+            "row raises when fetched (%s: %s)",
             failed,
             n,
             " (first %d rows all failed, rest not retried)" % _FETCHONE_FALLBACK_PROBE_ROWS
             if systematic
             else "",
-            exc_info=batch_error,
+            type(batch_error).__name__,
+            batch_error,
         )
+        logger.debug("fetchone(): batch conversion error", exc_info=batch_error)
         return rows
 
     def _cap_to_current_chunk(self, size: int) -> int:
