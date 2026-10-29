@@ -107,6 +107,19 @@ def test_calculate_decimal_cast_string(value, expected):
     assert p._cast_expr() == expected
 
 
+@pytest.mark.parametrize(
+    "value,scale,precision,expected",
+    (
+        (Decimal("123.45"), 2, 10, "DECIMAL(10,2)"),
+        (Decimal("123"), 0, 10, "DECIMAL(10,0)"),
+    ),
+)
+def test_decimal_explicit_precision_scale_cast_string(value, scale, precision, expected):
+    """PARAMQUERY-021: SQL DECIMAL type is DECIMAL(precision, scale)."""
+    p = DecimalParameter(value, scale=scale, precision=precision)
+    assert p._cast_expr() == expected
+
+
 class Primitive(Enum):
     """These are the inferrable types. This Enum is used for parametrized tests."""
 

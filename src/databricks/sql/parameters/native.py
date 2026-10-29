@@ -615,9 +615,10 @@ class DecimalParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         :scale:
-            The maximum precision (total number of digits) of the number between 1 and 38.
+            The number of digits to the right of the decimal point. If the value itself
+            has more fractional digits, the value's scale is used so no digits are lost.
         :precision:
-            The number of digits to the right of the decimal point.
+            The maximum precision (total number of digits) of the number between 1 and 38.
         """
         self.value: decimal.Decimal = value
         self.name = name
@@ -638,10 +639,36 @@ class DecimalParameter(DbsqlParameterBase):
             return False
 
     def _cast_expr(self):
-        if self.scale and self.precision:
-            return self.CAST_EXPR.format(self.scale, self.precision)
+        if self.scale is not None and self.precision is not None:
+            precision, scale = self._effective_precision_and_scale(self.precision, self.scale)
+            # SQL DECIMAL type syntax is DECIMAL(precision, scale)
+            return self.CAST_EXPR.format(precision, scale)
         else:
             return self.calculate_decimal_cast_string(self.value)
+
+    MAX_PRECISION = 38
+
+    def _effective_precision_and_scale(self, precision: int, scale: int):
+        """Widen a declared DECIMAL(precision, scale) so the bound value never loses
+        fractional digits: the value's own scale is authoritative over an
+        under-declared target scale. Integer-digit room from the declared type is kept.
+        """
+        try:
+            sign, digits, exponent = self.value.as_tuple()
+        except AttributeError:
+            return precision, scale
+        if not isinstance(exponent, int):
+            # NaN / Infinity: leave the declared type as-is
+            return precision, scale
+
+        value_scale = max(-exponent, 0)
+        value_int_digits = max(len(digits) + exponent, 0)
+
+        effective_scale = max(scale, value_scale)
+        int_digits = max(precision - scale, value_int_digits)
+        effective_precision = min(int_digits + effective_scale, self.MAX_PRECISION)
+        effective_scale = min(effective_scale, effective_precision)
+        return effective_precision, effective_scale
 
     def calculate_decimal_cast_string(self, input: decimal.Decimal) -> str:
         """Returns the smallest SQL cast argument that can contain the passed decimal
