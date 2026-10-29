@@ -196,20 +196,34 @@ class ResultSet(ABC):
         return start, length
 
     def _row_buffer_take_rows(self, n: Optional[int] = None) -> List[Row]:
-        """Pop up to ``n`` (all if None) converted rows from the buffer."""
+        """Pop up to ``n`` (all if None) converted rows from the buffer.
+
+        If the requested range contains a ``_FailedRow``, only the rows up to and
+        including the first failed row are consumed and its error is raised. Rows
+        after it stay in the buffer for the next fetch. The good rows before it in
+        the same call are consumed with the failed fetch (a fetch either returns
+        all of its rows or raises), so ``rownumber`` stays aligned with what is
+        left in the buffer.
+        """
         if self._row_buffer_count() == 0:
             return []
         rows = self._row_buffer_rows
-        start, length = self._row_buffer_advance(n)
+        available = self._row_buffer_count()
+        length = available if n is None else max(0, min(n, available))
+        start = self._row_buffer_pos
+        failed: Optional[_FailedRow] = None
+        for i in range(start, start + length):
+            row = rows[i]
+            if isinstance(row, _FailedRow):
+                failed = row
+                length = i - start + 1
+                break
+        self._row_buffer_advance(length)
         if self._row_buffer_count() == 0:
             self._row_buffer_clear()
-        taken = rows[start : start + length]
-        for row in taken:
-            if isinstance(row, _FailedRow):
-                # The taken rows are consumed either way, matching how a failed
-                # conversion behaved before fetchone() buffering.
-                raise row.error.with_traceback(row.traceback)
-        return taken
+        if failed is not None:
+            raise failed.error.with_traceback(failed.traceback)
+        return rows[start : start + length]
 
     @staticmethod
     def _raw_row_count(raw: Any) -> Optional[int]:

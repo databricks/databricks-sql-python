@@ -585,6 +585,52 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertTrue(any("1 of 4 row(s)" in m for m in logs.output))
         self.assertEqual(rs.rownumber, 10)
 
+    def _patch_convert_failing_on_2(self):
+        from unittest.mock import patch
+
+        real_convert = ThriftResultSet._convert_columnar_table
+
+        def convert_failing_on_2(self_, table):
+            rows = real_convert(self_, table)
+            if any(r[0] == 2 for r in rows):
+                raise ValueError("bad value")
+            return rows
+
+        return patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert_failing_on_2,
+        )
+
+    def test_fetchmany_over_failed_buffered_row_keeps_rows_after_it(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with self._patch_convert_failing_on_2(), self.assertLogs(
+            "databricks.sql.result_set", level="WARNING"
+        ):
+            # Buffer now holds rows 1, 2 (failed), 3.
+            self.assertEqual(rs.fetchone()[0], 0)
+            with self.assertRaises(ValueError):
+                rs.fetchmany(3)
+            # Consumed up to and including the failed row; row 3 stays buffered.
+            self.assertEqual(rs.rownumber, 3)
+            self.assertEqual(rs._row_buffer_count(), 1)
+            self.assertEqual([r[0] for r in rs.fetchmany(3)], [3, 4, 5])
+            self.assertEqual([r[0] for r in rs.fetchall()], [6, 7, 8, 9])
+        self.assertEqual(rs.rownumber, 10)
+
+    def test_fetchall_over_failed_buffered_row_keeps_rows_after_it(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with self._patch_convert_failing_on_2(), self.assertLogs(
+            "databricks.sql.result_set", level="WARNING"
+        ):
+            self.assertEqual(rs.fetchone()[0], 0)
+            with self.assertRaises(ValueError):
+                rs.fetchall()
+            self.assertEqual(rs.rownumber, 3)
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(3, 10)))
+        self.assertEqual(rs.rownumber, 10)
+
     def test_fetchone_convert_failure_on_every_row_reraises_per_row(self):
         from unittest.mock import patch
 

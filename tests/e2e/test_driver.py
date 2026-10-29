@@ -992,10 +992,16 @@ class TestPySQLCoreSuite(
         assert len(rows) == n
         assert [r[0] for r in rows] == list(range(n))
         assert all(r[1] == str(r[0]) for r in rows)
-        # Refills are capped per server batch / CloudFetch chunk, so an exact
-        # ceil(n/arraysize) bound is layout-dependent. Only distinguish "a few"
-        # conversions from "~n" (one per row, issue #981).
-        bound = n // 10
+        # Each refill converts up to min(arraysize, _FETCHONE_BUFFER_MAX_ROWS)
+        # rows, but refills are also capped at a server batch / CloudFetch chunk
+        # boundary, which can add one short refill per boundary. Allow 2x the
+        # ideal refill count plus a small constant for that slack — tight
+        # enough to catch tiny refills, not just one conversion per row (#981).
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        per_refill = max(min(arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
+        ideal = -(-n // per_refill)
+        bound = 2 * ideal + 10
         assert calls <= bound, (
             "row conversion called {} times for {} rows (arraysize={}); "
             "expected at most {} (issue #981)".format(calls, n, arraysize, bound)
