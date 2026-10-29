@@ -728,6 +728,9 @@ class DecimalParameter(DbsqlParameterBase):
             # DECIMAL can never have scale > precision, so this can only be a call
             # written for the old convention: keep it working for now (swap the
             # arguments) but warn so callers migrate before this becomes an error.
+            # scale == precision is deliberately *not* handled here: it reads the
+            # same under both conventions, so it gets the SQL meaning and is widened
+            # like any correctly ordered call (documented in the CHANGELOG).
             warnings.warn(
                 "DecimalParameter received scale ({}) > precision ({}); interpreting the "
                 "arguments using the legacy (swapped) convention as DECIMAL({},{}). "

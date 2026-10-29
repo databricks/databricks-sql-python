@@ -214,6 +214,17 @@ def test_decimal_correct_order_with_more_fractional_digits_is_widened():
     assert p._cast_expr() == "DECIMAL(6,4)"
 
 
+def test_decimal_scale_equal_to_precision_is_widened_without_warning():
+    """scale == precision means the same in both conventions, so it is not treated as
+    a legacy call: it gets the SQL meaning and is widened like any correctly ordered
+    call (earlier releases bound DECIMAL(2,2) and rounded to 0.12). See CHANGELOG."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        p = DecimalParameter(Decimal("0.1234"), scale=2, precision=2)
+    assert not p._legacy_swapped
+    assert p._cast_expr() == "DECIMAL(4,4)"
+
+
 @pytest.mark.parametrize(
     "scale,precision,match",
     (
