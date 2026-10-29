@@ -16,8 +16,9 @@ if TYPE_CHECKING:
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.types import Row
-from databricks.sql.exc import RequestError, CursorAlreadyClosedError
+from databricks.sql.exc import InternalError, RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
+    CloudFetchQueue,
     ColumnTable,
     ColumnQueue,
     concat_table_chunks,
@@ -197,6 +198,14 @@ class ResultSet(ABC):
         return taken
 
     @staticmethod
+    def _raw_row_count(raw: Any) -> Optional[int]:
+        """Row count of a raw chunk (Arrow table, ColumnTable or list); None if unknown."""
+        if raw is None:
+            return 0
+        n = len(raw) if isinstance(raw, list) else getattr(raw, "num_rows", None)
+        return n if isinstance(n, int) else None
+
+    @staticmethod
     def _convert_rows_individually(
         raw: Any, convert: Callable[[Any], List[Row]]
     ) -> Optional[List[Any]]:
@@ -206,9 +215,7 @@ class ResultSet(ABC):
         raised only when that row is handed out. Returns None if ``raw`` has no rows
         to split, in which case the caller re-raises the batch error.
         """
-        if raw is None:
-            return None
-        n = len(raw) if isinstance(raw, list) else getattr(raw, "num_rows", 0)
+        n = ResultSet._raw_row_count(raw)
         if not n:
             return None
         rows: List[Any] = []
@@ -275,6 +282,16 @@ class ResultSet(ABC):
                 rows = fallback
             if not rows:
                 return None
+            raw_count = self._raw_row_count(raw)
+            if raw_count is not None and raw_count != len(rows):
+                # fetch_raw advanced _next_row_index (and the Thrift fetch offset)
+                # by raw_count; the buffer must line up 1:1 with the raw chunk or
+                # rownumber and fetchmany_arrow slicing would silently drift.
+                raise InternalError(
+                    "fetchone(): converted {} row(s) from a chunk of {} raw row(s)".format(
+                        len(rows), raw_count
+                    )
+                )
             self._row_buffer_raw = raw
             self._row_buffer_rows = rows
             self._row_buffer_pos = 0
@@ -552,18 +569,30 @@ class ThriftResultSet(ResultSet):
         until ``size`` rows are collected: it only refills the queue while it is
         empty, so fetchone() makes no more round-trips than it needs to return one
         row (server pages can be smaller than ``size`` when they hit the byte limit).
+        On CloudFetch, ``next_n_rows`` keeps walking downloaded files until it has
+        ``size`` rows, so the request is also capped at what the current chunk still
+        holds; otherwise a refill near a chunk boundary would block on the next
+        download before returning a row that is already available.
         Only called while the fetchone() row buffer is empty.
         """
-        results = self.results.next_n_rows(size)
+        results = self.results.next_n_rows(self._cap_to_current_chunk(size))
         while (
             results.num_rows == 0
             and not self.has_been_closed_server_side
             and self.has_more_rows
         ):
             self._fill_results_buffer()
-            results = self.results.next_n_rows(size)
+            results = self.results.next_n_rows(self._cap_to_current_chunk(size))
         self._next_row_index += results.num_rows
         return results
+
+    def _cap_to_current_chunk(self, size: int) -> int:
+        """Cap ``size`` at the rows left in the current CloudFetch chunk, if any."""
+        if isinstance(self.results, CloudFetchQueue) and self.results.table:
+            available = self.results.table.num_rows - self.results.table_row_index
+            if available > 0:
+                return min(size, available)
+        return size
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""

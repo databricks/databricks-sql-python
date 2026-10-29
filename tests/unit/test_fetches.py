@@ -392,6 +392,27 @@ class FetchTests(unittest.TestCase):
         self.assertIsNone(rs.fetchone())
         self.assertEqual(rs.rownumber, 5)
 
+    def test_cloudfetch_fetchone_refill_capped_to_current_chunk(self):
+        # fetchone() must not block on the next CloudFetch file while the current
+        # chunk still holds rows: the refill is capped at what the chunk has left.
+        from databricks.sql.utils import ThriftCloudFetchQueue
+
+        _, chunk = self.make_arrow_table([[i] for i in range(10)])
+        queue = Mock(spec=ThriftCloudFetchQueue)
+        queue.table = chunk
+        queue.table_row_index = 8
+        queue.next_n_rows.side_effect = lambda n: chunk.slice(8, n)
+        rs = self.make_dummy_result_set_from_queue_list(
+            [queue],
+            description=[("col0", "integer", None, None, None, None, None)],
+        )
+        rs.arraysize = 100
+
+        self.assertSequenceEqual(rs.fetchone(), [8])
+        queue.next_n_rows.assert_called_once_with(2)
+        self.assertSequenceEqual(rs.fetchone(), [9])
+        self.assertEqual(rs.rownumber, 2)
+
     # Regression tests for fetchmany_arrow / fetchall_arrow handling of
     # the schemaless CloudFetch placeholder.
     def test_fetchall_arrow_drops_mismatched_empty_placeholder(self):
@@ -578,6 +599,25 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
                 self.assertEqual(rs.rownumber, expected_rownumber)
         self.assertEqual(rs._row_buffer_count(), 0)
         self.assertEqual(rs.fetchone()[0], 4)
+
+    def test_fetchone_raw_converted_count_mismatch_fails_loudly(self):
+        from unittest.mock import patch
+        from databricks.sql.exc import InternalError
+
+        real_convert = ThriftResultSet._convert_columnar_table
+
+        def convert_dropping_a_row(self_, table):
+            return real_convert(self_, table)[:-1]
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert_dropping_a_row,
+        ):
+            with self.assertRaises(InternalError):
+                rs.fetchone()
 
     @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
     def test_fetchone_then_fetchall_arrow_keeps_order(self):

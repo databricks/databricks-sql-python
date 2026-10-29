@@ -193,7 +193,7 @@ class SeaResultSet(ResultSet):
         ``size`` rows, so a refill that starts near the end of the current chunk
         would block on the next download before returning a row that is already
         available. Cap the request at what the current chunk still holds (matching
-        Thrift's ``_fetch_available_from_queue`` and the kernel's ``_fetch_available``).
+        Thrift's ``_cap_to_current_chunk`` and the kernel's ``_fetch_available``).
         Only called while the fetchone() row buffer is empty.
         """
         if isinstance(self.results, CloudFetchQueue) and self.results.table:
