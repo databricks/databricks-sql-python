@@ -641,7 +641,8 @@ class DecimalParameter(DbsqlParameterBase):
 
         if not self.valid_scale_and_precision():
             raise ValueError(
-                "DecimalParameter requires both or none of scale and precision to be set"
+                "DecimalParameter requires both or none of scale and precision to be set, "
+                "as integers"
             )
 
         if self.scale is not None and self.precision is not None and self.scale > self.precision:
@@ -677,8 +678,13 @@ class DecimalParameter(DbsqlParameterBase):
                 )
 
     def valid_scale_and_precision(self):
+        def _is_int(x):
+            # bool is a subclass of int; reject it so precision=True/scale=False
+            # cannot silently bind DECIMAL(1,0).
+            return isinstance(x, int) and not isinstance(x, bool)
+
         if (self.scale is None and self.precision is None) or (
-            isinstance(self.scale, int) and isinstance(self.precision, int)
+            _is_int(self.scale) and _is_int(self.precision)
         ):
             return True
         else:
@@ -687,7 +693,20 @@ class DecimalParameter(DbsqlParameterBase):
     def _cast_expr(self):
         if self.scale is not None and self.precision is not None:
             precision, scale = self._effective_precision_and_scale(self.precision, self.scale)
-            if (precision, scale) != (self.precision, self.scale):
+            if precision - scale > self.precision - self.scale:
+                # The value has more integer digits than the declared type allows.
+                # Earlier releases let the server reject this as out of range, so
+                # surface it above DEBUG for callers relying on the declared type.
+                logger.warning(
+                    "DecimalParameter value has more integer digits than declared "
+                    "DECIMAL(%d,%d) allows; it is bound as DECIMAL(%d,%d) instead of "
+                    "being rejected as out of range",
+                    self.precision,
+                    self.scale,
+                    precision,
+                    scale,
+                )
+            elif (precision, scale) != (self.precision, self.scale):
                 logger.debug(
                     "DecimalParameter declared DECIMAL(%d,%d) is bound as DECIMAL(%d,%d) "
                     "to fit the value's digits (precision capped at 38)",

@@ -153,6 +153,24 @@ def test_decimal_widened_type_is_logged(caplog):
     assert "DECIMAL(10,2) is bound as DECIMAL(12,4)" in caplog.text
 
 
+def test_decimal_widened_integer_room_is_warned(caplog):
+    """Widening the integer room (no longer an out-of-range error) is logged at WARNING."""
+    p = DecimalParameter(Decimal("123456789012.5"), scale=2, precision=10)
+    with caplog.at_level("WARNING", logger="databricks.sql.parameters.native"):
+        assert p._cast_expr() == "DECIMAL(14,2)"
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "DECIMAL(10,2) allows; it is bound as DECIMAL(14,2)" in warnings[0].getMessage()
+
+
+def test_decimal_widened_scale_only_is_not_warned(caplog):
+    """Scale-only widening (the bug fix) stays at DEBUG, not WARNING."""
+    p = DecimalParameter(Decimal("123.4567"), scale=2, precision=10)
+    with caplog.at_level("DEBUG", logger="databricks.sql.parameters.native"):
+        assert p._cast_expr() == "DECIMAL(12,4)"
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
 def test_decimal_unchanged_type_is_not_logged(caplog):
     p = DecimalParameter(Decimal("123.45"), scale=2, precision=10)
     with caplog.at_level("DEBUG", logger="databricks.sql.parameters.native"):
@@ -179,6 +197,16 @@ def test_decimal_scale_greater_than_precision_legacy_swapped():
 )
 def test_decimal_invalid_declared_precision_or_scale_raises(scale, precision, match):
     with pytest.raises(ValueError, match=match):
+        DecimalParameter(Decimal("1.5"), scale=scale, precision=precision)
+
+
+@pytest.mark.parametrize(
+    "scale,precision",
+    ((False, True), (0, True), (False, 10)),
+)
+def test_decimal_bool_scale_or_precision_raises(scale, precision):
+    """bool is an int subclass but must not be accepted as a scale/precision."""
+    with pytest.raises(ValueError, match="as integers"):
         DecimalParameter(Decimal("1.5"), scale=scale, precision=precision)
 
 
