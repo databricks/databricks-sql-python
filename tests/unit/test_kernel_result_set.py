@@ -212,6 +212,20 @@ def test_mixed_fetches_keep_order_and_rownumber(int_schema):
     assert rs.rownumber == 10
 
 
+def test_fetchone_refill_pulls_at_most_one_batch(int_schema):
+    # First-row latency: a fetchone() refill must not loop fetch_next_batch()
+    # until arraysize rows are buffered.
+    handle = _ten_rows_handle(int_schema)
+    rs = _make_rs(handle, arraysize=100)
+    assert rs.fetchone()[0] == 0
+    assert len(handle._batches) == 2
+    assert rs.fetchone()[0] == 1
+    assert rs.fetchone()[0] == 2
+    assert len(handle._batches) == 2
+    assert rs.fetchone()[0] == 3
+    assert len(handle._batches) == 1
+
+
 def test_fetchone_then_fetchall_arrow_keeps_order(int_schema):
     rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
     assert rs.fetchone()[0] == 0
@@ -224,10 +238,11 @@ def test_fetchone_then_fetchall_arrow_keeps_order(int_schema):
 def test_fetchone_then_fetchmany_arrow_keeps_order(int_schema):
     rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
     assert rs.fetchone()[0] == 0
-    # Served entirely from the fetchone() row buffer (3 rows left in it).
+    # Served entirely from the fetchone() row buffer (2 rows left in it: the
+    # refill only took the first kernel batch).
     assert rs.fetchmany_arrow(2).column(0).to_pylist() == [1, 2]
     assert rs.rownumber == 3
-    # Drains the last buffered row, then continues from the batch FIFO.
+    # Row buffer is empty; continues from the batch FIFO.
     assert rs.fetchmany_arrow(3).column(0).to_pylist() == [3, 4, 5]
     assert rs.rownumber == 6
     assert rs.fetchmany_arrow(0).num_rows == 0
@@ -239,7 +254,7 @@ def test_fetchone_then_fetchmany_arrow_keeps_order(int_schema):
 def test_fetchone_then_fetchmany_rows_spans_buffer(int_schema):
     rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
     assert rs.fetchone()[0] == 0
-    # 3 rows come from the row buffer, the rest from the batch FIFO.
+    # 2 rows come from the row buffer, the rest from the batch FIFO.
     assert [r[0] for r in rs.fetchmany(6)] == [1, 2, 3, 4, 5, 6]
     assert rs.rownumber == 7
     assert [r[0] for r in rs.fetchmany(10)] == [7, 8, 9]
@@ -262,6 +277,15 @@ def test_close_is_idempotent_and_calls_handle(int_schema):
     assert handle.closed is True
     assert rs.status == CommandState.CLOSED
     rs.close()  # second call is a no-op (kernel handle is None)
+
+
+def test_close_drops_fetchone_row_buffer(int_schema):
+    # Rows parked in the fetchone() buffer must not survive close().
+    rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
+    assert rs.fetchone()[0] == 0
+    rs.close()
+    assert rs.fetchone() is None
+    assert rs.fetchall() == []
 
 
 def test_empty_stream(int_schema):

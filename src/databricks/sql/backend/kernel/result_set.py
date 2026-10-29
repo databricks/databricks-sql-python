@@ -197,6 +197,17 @@ class KernelResultSet(ResultSet):
         self._ensure_buffered(size)
         return self._take_buffered(size)
 
+    def _fetch_available(self, size: int) -> pyarrow.Table:
+        """Take up to ``size`` rows already buffered, for fetchone() refills.
+
+        Unlike ``_fetchmany_arrow_unbuffered`` this does not keep pulling
+        batches until ``size`` rows are collected: it only pulls from the
+        kernel while the batch FIFO is empty, so latency to the first row
+        matches the pre-buffering behaviour.
+        """
+        self._ensure_buffered(1)
+        return self._take_buffered(min(size, self._buffered_rows()))
+
     @staticmethod
     def _prepend_buffered(
         buffered: Optional[pyarrow.Table], rest: pyarrow.Table
@@ -228,7 +239,7 @@ class KernelResultSet(ResultSet):
         # Rows are converted ``arraysize`` at a time and served from the
         # base-class row buffer; converting one row per call is very slow.
         return self._fetchone_buffered(
-            self._fetchmany_arrow_unbuffered, self._convert_arrow_table
+            self._fetch_available, self._convert_arrow_table
         )
 
     def fetchmany(self, size: int) -> List[Row]:
@@ -258,6 +269,9 @@ class KernelResultSet(ResultSet):
         connection-close would otherwise issue a kernel call into an
         already-disposed session.
         """
+        # Drop rows parked by fetchone() so post-close fetches return
+        # nothing, matching the cleared batch FIFO below.
+        self._row_buffer_clear()
         if self._kernel_handle is None:
             return
         if not self.connection.open:

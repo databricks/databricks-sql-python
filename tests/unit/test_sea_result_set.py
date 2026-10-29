@@ -579,6 +579,85 @@ class TestSeaResultSet:
         assert table.column(1).to_pylist() == list(range(1, 10))
         assert rs.rownumber == 10
 
+    def _make_arrow_result_set(
+        self, mock_connection, mock_sea_client, execute_response, n_rows, arraysize
+    ):
+        from databricks.sql.utils import ArrowQueue
+
+        mock_connection.disable_pandas = True
+        table = pyarrow.Table.from_pydict(
+            {
+                "col1": ["v{}".format(i) for i in range(n_rows)],
+                "col2": list(range(n_rows)),
+                "col3": [True] * n_rows,
+            }
+        )
+        result_data = ResultData(data=None, external_links=None, row_count=n_rows)
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=ArrowQueue(table, n_rows),
+        ):
+            return SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=result_data,
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
+                buffer_size_bytes=1000,
+                arraysize=arraysize,
+            )
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_arrow_mixed_fetches_keep_order_and_rownumber(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Buffered Arrow slice joined with the queue's next chunk via concat."""
+        rs = self._make_arrow_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.rownumber == 1
+        # 3 rows left in the buffer; ask for 5 so 2 must come from the queue.
+        table = rs.fetchmany_arrow(5)
+        assert isinstance(table, pyarrow.Table)
+        assert table.column(1).to_pylist() == [1, 2, 3, 4, 5]
+        assert rs.rownumber == 6
+        assert rs.fetchone().col2 == 6
+        assert rs.rownumber == 7
+        # Fully served from the buffer (remaining == 0 path).
+        assert rs.fetchmany_arrow(1).column(1).to_pylist() == [7]
+        assert rs.rownumber == 8
+        assert [r.col2 for r in rs.fetchall()] == [8, 9]
+        assert rs.rownumber == 10
+        assert rs.fetchone() is None
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_arrow_buffer_with_exhausted_queue_returns_buffer(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Queue returns a 0-row slice after the buffer drains: buffered rows only."""
+        rs = self._make_arrow_result_set(
+            mock_connection, mock_sea_client, execute_response, 3, arraysize=10
+        )
+        assert rs.fetchone().col2 == 0
+        table = rs.fetchmany_arrow(5)
+        assert table.column(1).to_pylist() == [1, 2]
+        assert rs.rownumber == 3
+        assert rs.fetchall_arrow().num_rows == 0
+        assert rs.rownumber == 3
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_arrow_fetchone_then_fetchall_arrow_keeps_order(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        rs = self._make_arrow_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        table = rs.fetchall_arrow()
+        assert table.column(1).to_pylist() == list(range(1, 10))
+        assert rs.rownumber == 10
+
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response
     ):

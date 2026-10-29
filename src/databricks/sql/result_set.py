@@ -203,9 +203,9 @@ class ResultSet(ABC):
         """Serve fetchone() from the row buffer, refilling in small batches.
 
         Each refill asks ``fetch_raw`` for up to ``arraysize`` rows, capped at
-        ``_FETCHONE_BUFFER_MAX_ROWS``. ``fetch_raw`` may return fewer (Thrift only
-        serves what its current queue holds, refilling it at most until one row is
-        available, so latency to the first row is unchanged).
+        ``_FETCHONE_BUFFER_MAX_ROWS``. ``fetch_raw`` may return fewer (Thrift and the
+        kernel backend only serve what is already buffered, refilling at most until
+        one row is available, so latency to the first row is unchanged).
 
         ``_next_row_index`` keeps counting rows handed to the caller: rows parked in
         the buffer are subtracted on refill and added back as they are taken. The
@@ -283,6 +283,8 @@ class ResultSet(ABC):
             if isinstance(e.args[1], CursorAlreadyClosedError):
                 logger.info("Operation was canceled by a prior request")
         finally:
+            # Drop rows parked by fetchone() so post-close fetches return nothing.
+            self._row_buffer_clear()
             self.has_been_closed_server_side = True
             self.status = CommandState.CLOSED
 
@@ -411,7 +413,7 @@ class ThriftResultSet(ResultSet):
         An empty sequence is returned when no more rows are available.
         """
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
         buffered = self._row_buffer_take_raw(size)
         remaining = size - (buffered.num_rows if buffered is not None else 0)
         rest = self._fetchmany_arrow_from_queue(remaining) if remaining > 0 else None
@@ -425,7 +427,7 @@ class ThriftResultSet(ResultSet):
         An empty sequence is returned when no more rows are available.
         """
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
         buffered = self._row_buffer_take_raw(size)
         remaining = size - (buffered.num_rows if buffered is not None else 0)
         rest = self._fetchmany_columnar_from_queue(remaining) if remaining > 0 else None
@@ -436,7 +438,7 @@ class ThriftResultSet(ResultSet):
     def _fetchmany_arrow_from_queue(self, size: int) -> "pyarrow.Table":
         """Fetch up to ``size`` rows from the results queue, bypassing the row buffer."""
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
         # CloudFetchQueue may return a placeholder empty table whose schema does not
@@ -473,7 +475,7 @@ class ThriftResultSet(ResultSet):
     def _fetchmany_columnar_from_queue(self, size: int):
         """Fetch up to ``size`` rows from the results queue, bypassing the row buffer."""
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
@@ -605,7 +607,7 @@ class ThriftResultSet(ResultSet):
         An empty sequence is returned when no more rows are available.
         """
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
         buffered = self._row_buffer_take_rows(size)
         remaining = size - len(buffered)
         if buffered and remaining == 0:
