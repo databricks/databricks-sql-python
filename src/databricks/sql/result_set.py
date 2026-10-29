@@ -141,8 +141,12 @@ class ResultSet(ABC):
             column = table.column(col_idx)
             if not pyarrow.types.is_floating(column.type):
                 continue
-            nan_mask = pc.fill_null(pc.is_nan(column), False)
-            res[nan_mask.to_numpy(), col_idx] = float("nan")
+            nan_mask = pc.is_nan(column)
+            # Cheap early-out: most float columns contain no NaN. pc.any skips
+            # nulls, so all-null/empty columns yield None and are skipped too.
+            if not pc.any(nan_mask).as_py():
+                continue
+            res[pc.fill_null(nan_mask, False).to_numpy(), col_idx] = float("nan")
 
         return [ResultRow(*v) for v in res]
 
