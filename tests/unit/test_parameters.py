@@ -130,8 +130,13 @@ def test_calculate_decimal_cast_string(value, expected):
         # NaN / Infinity leave the declared type untouched
         (Decimal("NaN"), 2, 10, "DECIMAL(10,2)"),
         (Decimal("Infinity"), 2, 10, "DECIMAL(10,2)"),
-        # Non-Decimal values (no as_tuple) fall back to the declared type
+        # Non-Decimal values are inspected via str(value), which is what is sent
         (1.5, 2, 10, "DECIMAL(10,2)"),
+        (12.3456, 2, 10, "DECIMAL(12,4)"),
+        (123456789012, 0, 10, "DECIMAL(12,0)"),
+        ("123.4567", 2, 10, "DECIMAL(12,4)"),
+        # Unparseable values fall back to the declared type
+        ("not-a-number", 2, 10, "DECIMAL(10,2)"),
     ),
 )
 def test_decimal_explicit_precision_scale_cast_string(value, scale, precision, expected):
@@ -162,6 +167,26 @@ def test_decimal_scale_greater_than_precision_legacy_swapped():
     assert p.precision == 10
     assert p.scale == 2
     assert p._cast_expr() == "DECIMAL(10,2)"
+
+
+@pytest.mark.parametrize(
+    "scale,precision,match",
+    (
+        (2, 50, "precision must be between 1 and 38"),
+        (0, 0, "precision must be between 1 and 38"),
+        (-1, 10, "scale must be >= 0"),
+    ),
+)
+def test_decimal_invalid_declared_precision_or_scale_raises(scale, precision, match):
+    with pytest.raises(ValueError, match=match):
+        DecimalParameter(Decimal("1.5"), scale=scale, precision=precision)
+
+
+def test_decimal_legacy_swapped_out_of_range_precision_raises():
+    """The range check applies after the legacy swap (scale=50 becomes precision=50)."""
+    with pytest.warns(FutureWarning, match="legacy"):
+        with pytest.raises(ValueError, match="precision must be between 1 and 38"):
+            DecimalParameter(Decimal("1.5"), scale=50, precision=2)
 
 
 class Primitive(Enum):

@@ -664,6 +664,18 @@ class DecimalParameter(DbsqlParameterBase):
             )
             self.scale, self.precision = self.precision, self.scale
 
+        if self.scale is not None and self.precision is not None:
+            if self.scale < 0:
+                raise ValueError(
+                    "DecimalParameter scale must be >= 0, got {}".format(self.scale)
+                )
+            if not 1 <= self.precision <= self.MAX_PRECISION:
+                raise ValueError(
+                    "DecimalParameter precision must be between 1 and {}, got {}".format(
+                        self.MAX_PRECISION, self.precision
+                    )
+                )
+
     def valid_scale_and_precision(self):
         if (self.scale is None and self.precision is None) or (
             isinstance(self.scale, int) and isinstance(self.precision, int)
@@ -692,18 +704,25 @@ class DecimalParameter(DbsqlParameterBase):
     MAX_PRECISION = 38
 
     def _effective_precision_and_scale(self, precision: int, scale: int):
-        """Widen a declared DECIMAL(precision, scale) so the bound value does not lose
-        fractional digits: the value's own scale is authoritative over an
-        under-declared target scale. Integer-digit room from the declared type is kept.
+        """Widen a declared DECIMAL(precision, scale) so the bound value fits: the
+        value's own scale is authoritative over an under-declared target scale, and
+        the integer-digit room is widened to the value's integer digits when the
+        declared ``precision - scale`` is too small (so the declared precision is not
+        enforced as a range check). Extra integer room from the declared type is kept.
 
         Exception: the total is capped at MAX_PRECISION (38) digits. If the value
         itself needs more than 38 digits (e.g. a scale over 38), the cast is clamped
         and the server rounds away the fractional digits that do not fit.
         """
-        try:
-            sign, digits, exponent = self.value.as_tuple()
-        except AttributeError:
-            return precision, scale
+        value = self.value
+        if not isinstance(value, decimal.Decimal):
+            # The value is sent to the server as str(value), so inspect that same
+            # textual form; this makes int / float / str values widen like Decimals.
+            try:
+                value = decimal.Decimal(str(value))
+            except (decimal.InvalidOperation, ValueError, TypeError):
+                return precision, scale
+        sign, digits, exponent = value.as_tuple()
         if not isinstance(exponent, int):
             # NaN / Infinity: leave the declared type as-is
             return precision, scale
