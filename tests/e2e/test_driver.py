@@ -476,6 +476,72 @@ class TestPySQLCoreSuite(
             row = cursor.fetchone()
             assert list(row) == [1, 2]
 
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_double_nan_distinct_from_null_with_pandas(self, extra_params):
+        """GH #978: with pandas enabled, IEEE NaN in a DOUBLE column must come
+        back as float('nan'), not None (which is reserved for SQL NULL)."""
+        import math
+
+        query = (
+            "SELECT * FROM VALUES (1, CAST('NaN' AS DOUBLE)), (2, CAST(NULL AS DOUBLE)), "
+            "(3, CAST('Infinity' AS DOUBLE)), (4, CAST(1.5 AS DOUBLE)) AS t(id, d) ORDER BY id"
+        )
+        with self.cursor(extra_params) as cursor:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+        assert len(rows) == 4
+        assert isinstance(rows[0].d, float) and math.isnan(rows[0].d)
+        assert rows[1].d is None
+        assert rows[2].d == float("inf")
+        assert rows[3].d == 1.5
+
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_float_nan_distinct_from_null_matches_disable_pandas(self, extra_params):
+        """GH #978: FLOAT (float32) NaN must be returned as NaN with pandas
+        enabled, matching the _disable_pandas=True output."""
+        import math
+
+        query = (
+            "SELECT * FROM VALUES (1, CAST('NaN' AS FLOAT)), (2, CAST(NULL AS FLOAT)), "
+            "(3, CAST('Infinity' AS FLOAT)), (4, CAST(1.5 AS FLOAT)) AS t(id, f) ORDER BY id"
+        )
+        with self.cursor(extra_params) as cursor:
+            cursor.execute(query)
+            pandas_rows = cursor.fetchall()
+        with self.cursor(dict(extra_params, _disable_pandas=True)) as cursor:
+            cursor.execute(query)
+            plain_rows = cursor.fetchall()
+
+        assert isinstance(pandas_rows[0].f, float) and math.isnan(pandas_rows[0].f)
+        assert pandas_rows[1].f is None
+
+        def _norm(v):
+            return "NaN" if isinstance(v, float) and math.isnan(v) else v
+
+        assert [tuple(_norm(v) for v in r) for r in pandas_rows] == [
+            tuple(_norm(v) for v in r) for r in plain_rows
+        ]
+
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_nan_preserved_in_fetchone_and_fetchmany(self, extra_params):
+        """GH #978: fetchone/fetchmany share _convert_arrow_table and must also
+        keep NaN distinct from NULL."""
+        import math
+
+        query = "SELECT CAST('NaN' AS DOUBLE) AS d, CAST(NULL AS DOUBLE) AS n"
+        with self.cursor(extra_params) as cursor:
+            cursor.execute(query)
+            row = cursor.fetchone()
+            assert isinstance(row.d, float) and math.isnan(row.d)
+            assert row.n is None
+
+            cursor.execute(query)
+            rows = cursor.fetchmany(1)
+            assert len(rows) == 1
+            assert isinstance(rows[0].d, float) and math.isnan(rows[0].d)
+            assert rows[0].n is None
+
     def test_dml_rowcount(self):
         """cursor.rowcount reports the affected-row count for DML
         (INSERT/UPDATE/DELETE) instead of the hardcoded -1, and resets

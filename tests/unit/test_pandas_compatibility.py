@@ -122,6 +122,51 @@ class TestConvertArrowTablePandasCompat(unittest.TestCase):
         self.assertIsNone(rows[1].float32_col)
         self.assertAlmostEqual(rows[2].float64_col, 4.5)
 
+    def test_float_nan_distinct_from_null(self):
+        """GH #978: NaN must stay NaN (not None) on the pandas path, across
+        chunked arrays and duplicate column names, matching disable_pandas."""
+        import math
+
+        nan = float("nan")
+        f32 = pa.chunked_array(
+            [
+                pa.array([nan, None], type=pa.float32()),
+                pa.array([float("inf"), 1.5], type=pa.float32()),
+            ]
+        )
+        f64 = pa.chunked_array(
+            [
+                pa.array([nan], type=pa.float64()),
+                pa.array([None, float("inf"), 1.5], type=pa.float64()),
+            ]
+        )
+        table = pa.Table.from_arrays([f32, f64, f64], names=["f", "d", "d"])
+        description = [
+            ("f", "float", None, None, None, None, None),
+            ("d", "double", None, None, None, None, None),
+            ("d", "double", None, None, None, None, None),
+        ]
+
+        pandas_rows = _make_result_set(description)._convert_arrow_table(table)
+        plain_rows = _make_result_set(description, disable_pandas=True)._convert_arrow_table(table)
+
+        self.assertEqual(len(pandas_rows), 4)
+        for col in range(3):
+            first = pandas_rows[0][col]
+            self.assertIsInstance(first, float)
+            self.assertTrue(math.isnan(first))
+            self.assertIsNone(pandas_rows[1][col])
+            self.assertEqual(pandas_rows[2][col], float("inf"))
+            self.assertAlmostEqual(pandas_rows[3][col], 1.5, places=5)
+
+        def _norm(v):
+            return "NaN" if isinstance(v, float) and math.isnan(v) else v
+
+        self.assertEqual(
+            [tuple(_norm(v) for v in r) for r in pandas_rows],
+            [tuple(_norm(v) for v in r) for r in plain_rows],
+        )
+
     def test_boolean_type(self):
         table = pa.table(
             {

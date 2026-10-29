@@ -130,6 +130,23 @@ class ResultSet(ABC):
         )
 
         res = df.to_numpy(na_value=None, dtype="object")
+
+        import pyarrow.compute as pc
+
+        # Pandas' nullable Float dtypes treat IEEE NaN as missing (pd.NA), which
+        # to_numpy(na_value=None) turns into None, making NaN indistinguishable
+        # from SQL NULL. Restore NaN from the Arrow column so results match the
+        # non-pandas path (NULL -> None, NaN -> float('nan')).
+        for col_idx in range(table.num_columns):
+            column = table.column(col_idx)
+            if not pyarrow.types.is_floating(column.type):
+                continue
+            nan_mask = pc.fill_null(pc.is_nan(column), False)
+            if not pc.any(nan_mask).as_py():
+                continue
+            for row_idx in nan_mask.to_numpy().nonzero()[0]:
+                res[row_idx, col_idx] = float("nan")
+
         return [ResultRow(*v) for v in res]
 
     @property
