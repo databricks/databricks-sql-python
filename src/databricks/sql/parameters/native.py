@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import logging
 import warnings
 from enum import Enum, auto
 from typing import Optional, Sequence, Any, TYPE_CHECKING
 
 from databricks.sql.exc import NotSupportedError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     # Type-annotation-only imports. ``from __future__ import annotations`` keeps
@@ -672,6 +675,15 @@ class DecimalParameter(DbsqlParameterBase):
     def _cast_expr(self):
         if self.scale is not None and self.precision is not None:
             precision, scale = self._effective_precision_and_scale(self.precision, self.scale)
+            if (precision, scale) != (self.precision, self.scale):
+                logger.debug(
+                    "DecimalParameter declared DECIMAL(%d,%d) is bound as DECIMAL(%d,%d) "
+                    "to fit the value's digits (precision capped at 38)",
+                    self.precision,
+                    self.scale,
+                    precision,
+                    scale,
+                )
             # SQL DECIMAL type syntax is DECIMAL(precision, scale)
             return self.CAST_EXPR.format(precision, scale)
         else:

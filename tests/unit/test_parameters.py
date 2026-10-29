@@ -140,8 +140,23 @@ def test_decimal_explicit_precision_scale_cast_string(value, scale, precision, e
     assert p._cast_expr() == expected
 
 
+def test_decimal_widened_type_is_logged(caplog):
+    """A bound type that differs from the declared one is reported at debug level."""
+    p = DecimalParameter(Decimal("123.4567"), scale=2, precision=10)
+    with caplog.at_level("DEBUG", logger="databricks.sql.parameters.native"):
+        assert p._cast_expr() == "DECIMAL(12,4)"
+    assert "DECIMAL(10,2) is bound as DECIMAL(12,4)" in caplog.text
+
+
+def test_decimal_unchanged_type_is_not_logged(caplog):
+    p = DecimalParameter(Decimal("123.45"), scale=2, precision=10)
+    with caplog.at_level("DEBUG", logger="databricks.sql.parameters.native"):
+        assert p._cast_expr() == "DECIMAL(10,2)"
+    assert "is bound as" not in caplog.text
+
+
 def test_decimal_scale_greater_than_precision_legacy_swapped():
-    """Callers using the old (swapped) convention keep working, with a deprecation warning."""
+    """Callers using the old (swapped) convention keep working, with a FutureWarning."""
     with pytest.warns(FutureWarning, match="legacy"):
         p = DecimalParameter(Decimal("123.45"), scale=10, precision=2)
     assert p.precision == 10
