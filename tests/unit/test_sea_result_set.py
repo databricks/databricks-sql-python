@@ -527,6 +527,7 @@ class TestSeaResultSet:
         assert [r.col2 for r in rows] == list(range(100))
         assert m.call_count <= 100 // 10 + 2
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_json_mixed_fetches_keep_order_and_rownumber(
         self, mock_connection, mock_sea_client, execute_response
     ):
@@ -547,6 +548,7 @@ class TestSeaResultSet:
         assert rs.rownumber == 10
         assert rs.fetchone() is None
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_json_fetchone_then_fetchall_arrow_keeps_order(
         self, mock_connection, mock_sea_client, execute_response
     ):

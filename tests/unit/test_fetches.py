@@ -534,6 +534,7 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rs.rownumber, 10)
         self.assertIsNone(rs.fetchone())
 
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
     def test_fetchone_then_fetchall_arrow_keeps_order(self):
         rs = self.make_columnar_result_set(10, arraysize=4)
         self.assertEqual(rs.fetchone()[0], 0)
