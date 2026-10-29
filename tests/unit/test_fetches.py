@@ -393,8 +393,9 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(rs.rownumber, 5)
 
     def test_cloudfetch_fetchone_refill_capped_to_current_chunk(self):
-        # fetchone() must not block on the next CloudFetch file while the current
-        # chunk still holds rows: the refill is capped at what the chunk has left.
+        # The fetchone() refill is capped at the rows left in the current CloudFetch
+        # chunk, so one refill never spans several files. (This only bounds the
+        # batch size; the mock queue does not model advancing to the next file.)
         from databricks.sql.utils import ThriftCloudFetchQueue
 
         _, chunk = self.make_arrow_table([[i] for i in range(10)])

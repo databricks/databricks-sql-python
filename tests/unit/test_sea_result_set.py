@@ -662,7 +662,7 @@ class TestSeaResultSet:
     def test_cloudfetch_fetchone_refill_capped_to_current_chunk(
         self, mock_connection, mock_sea_client, execute_response
     ):
-        """fetchone() must not block on the next link while the current chunk has rows."""
+        """fetchone() refill is capped at the rows left in the current chunk (batch size only)."""
         from databricks.sql.backend.sea.queue import SeaCloudFetchQueue
 
         chunk = pyarrow.Table.from_pydict(

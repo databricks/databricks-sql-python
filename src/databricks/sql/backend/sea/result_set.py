@@ -189,12 +189,11 @@ class SeaResultSet(ResultSet):
     def _fetch_available_from_queue(self, size: int) -> Any:
         """Fetch up to ``size`` rows the queue already holds, for Arrow fetchone() refills.
 
-        On CloudFetch, ``next_n_rows`` keeps walking downloaded links until it has
-        ``size`` rows, so a refill that starts near the end of the current chunk
-        would block on the next download before returning a row that is already
-        available. Cap the request at what the current chunk still holds (matching
-        Thrift and the kernel's ``_fetch_available``) via the shared
-        ``ResultSet._cap_to_current_chunk``.
+        On CloudFetch, the request is capped at what the current chunk still holds
+        (matching Thrift) via the shared ``ResultSet._cap_to_current_chunk``, so a
+        refill is limited to one chunk rather than stitching several links into one
+        batch. It does not avoid waiting on the next download: reading to the end of
+        a chunk still makes ``next_n_rows`` advance to the next link in that call.
         Only called while the fetchone() row buffer is empty.
         """
         return self._fetch_raw_from_queue(self._cap_to_current_chunk(size))

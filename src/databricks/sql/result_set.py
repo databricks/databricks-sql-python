@@ -257,6 +257,9 @@ class ResultSet(ABC):
     def _cap_to_current_chunk(self, size: int) -> int:
         """Cap ``size`` at the rows left in the current CloudFetch chunk, if any.
 
+        Limits each fetchone() refill to a single CloudFetch chunk. It does not
+        avoid waiting on the next download: ``next_n_rows`` advances to the next
+        file as soon as the current one is fully read, inside the same call.
         Shared by the Thrift and SEA fetchone() refills so the CloudFetchQueue
         internals (``table`` / ``table_row_index``) are read in one place.
         """
@@ -604,10 +607,11 @@ class ThriftResultSet(ResultSet):
         until ``size`` rows are collected: it only refills the queue while it is
         empty, so fetchone() makes no more round-trips than it needs to return one
         row (server pages can be smaller than ``size`` when they hit the byte limit).
-        On CloudFetch, ``next_n_rows`` keeps walking downloaded files until it has
-        ``size`` rows, so the request is also capped at what the current chunk still
-        holds; otherwise a refill near a chunk boundary would block on the next
-        download before returning a row that is already available.
+        On CloudFetch, the request is also capped at what the current chunk still
+        holds (see ``_cap_to_current_chunk``), so a refill never stitches rows from
+        several downloaded files into one batch. This only bounds the batch: reading
+        to the end of a chunk still makes ``next_n_rows`` advance to (and wait for)
+        the next file before it returns, exactly as the uncapped path did.
         Only called while the fetchone() row buffer is empty.
         """
         results = self.results.next_n_rows(self._cap_to_current_chunk(size))
