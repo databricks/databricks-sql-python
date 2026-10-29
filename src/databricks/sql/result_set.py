@@ -122,6 +122,8 @@ class ResultSet(ABC):
         self._row_buffer_raw: Any = None
         self._row_buffer_rows: List[Row] = []
         self._row_buffer_pos = 0
+        # Set once a fetchone() conversion failure has been logged at WARNING.
+        self._fetchone_conversion_warned = False
 
     def __iter__(self):
         while True:
@@ -219,7 +221,10 @@ class ResultSet(ABC):
 
     @staticmethod
     def _convert_rows_individually(
-        raw: Any, convert: Callable[[Any], List[Row]], batch_error: Exception
+        raw: Any,
+        convert: Callable[[Any], List[Row]],
+        batch_error: Exception,
+        log_level: int = logging.WARNING,
     ) -> Optional[List[Any]]:
         """Convert ``raw`` row by row after a batch conversion failed.
 
@@ -228,12 +233,13 @@ class ResultSet(ABC):
         ``_FETCHONE_FALLBACK_PROBE_ROWS`` rows all fail with the same error as the
         batch (same type and message), the failure is treated as systematic and the
         remaining rows are parked with ``batch_error`` instead of being converted one
-        by one. Otherwise every row is tried individually. Returns None if ``raw`` has no rows to split, in
-        which case the caller re-raises the batch error.
+        by one. Otherwise every row is tried individually. Returns None if ``raw``
+        has no rows to split, in which case the caller re-raises the batch error.
         """
         n = ResultSet._raw_row_count(raw)
         if not n:
             return None
+
         def same_as_batch(r: Any) -> bool:
             return (
                 isinstance(r, _FailedRow)
@@ -247,7 +253,9 @@ class ResultSet(ABC):
             # Only skip the remaining per-row retries when every probe row failed
             # with the same error as the batch; leading rows that fail for their
             # own reasons must not cause later good rows to be dropped.
-            if i == _FETCHONE_FALLBACK_PROBE_ROWS and all(same_as_batch(r) for r in rows):
+            if i == _FETCHONE_FALLBACK_PROBE_ROWS and all(
+                same_as_batch(r) for r in rows
+            ):
                 systematic = True
                 rows.extend(_FailedRow(batch_error) for _ in range(n - i))
                 break
@@ -259,14 +267,19 @@ class ResultSet(ABC):
         failed = sum(isinstance(r, _FailedRow) for r in rows)
         # One summary line, no traceback: the error itself still reaches the caller
         # when the failing row is fetched. The full traceback is only logged at DEBUG.
-        logger.warning(
+        # ``log_level`` lets the caller log this at WARNING only once per result set.
+        logger.log(
+            log_level,
             "fetchone(): failed to convert %d of %d row(s) in a batch%s; each failing "
             "row raises when fetched (%s: %s)",
             failed,
             n,
-            " (first %d rows all failed, rest not retried)" % _FETCHONE_FALLBACK_PROBE_ROWS
-            if systematic
-            else "",
+            (
+                " (first %d rows all failed, rest not retried)"
+                % _FETCHONE_FALLBACK_PROBE_ROWS
+                if systematic
+                else ""
+            ),
             type(batch_error).__name__,
             batch_error,
         )
@@ -330,9 +343,19 @@ class ResultSet(ABC):
                 # as before batching, only the row(s) that fail to convert are
                 # lost: each failing row is parked as a _FailedRow and re-raises
                 # its own error when it is reached.
-                fallback = self._convert_rows_individually(raw, convert, batch_error)
+                # Warn once per result set; later failing batches (e.g. a column
+                # type that fails in every row) log at DEBUG to avoid a WARNING
+                # per refill for callers that catch and keep fetching.
+                warned = getattr(self, "_fetchone_conversion_warned", False)
+                fallback = self._convert_rows_individually(
+                    raw,
+                    convert,
+                    batch_error,
+                    log_level=logging.DEBUG if warned else logging.WARNING,
+                )
                 if fallback is None:
                     raise
+                self._fetchone_conversion_warned = True
                 rows = fallback
             # Check for drift before the empty-result early return, so a converter
             # that yields [] for a non-empty chunk raises instead of silently
@@ -555,7 +578,9 @@ class ThriftResultSet(ResultSet):
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
         buffered = self._row_buffer_take_raw(size)
         remaining = size - (buffered.num_rows if buffered is not None else 0)
-        rest = self._fetchmany_columnar_from_queue(remaining) if remaining > 0 else None
+        rest = (
+            self._fetchmany_columnar_from_queue(remaining) if remaining > 0 else None
+        )
         if buffered is None and rest is None:
             rest = self._fetchmany_columnar_from_queue(0)
         return self._prepend_buffered(buffered, rest)
@@ -647,7 +672,9 @@ class ThriftResultSet(ResultSet):
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         buffered = self._row_buffer_take_raw()
-        result_table = self._prepend_buffered(buffered, self._fetchall_arrow_from_queue())
+        result_table = self._prepend_buffered(
+            buffered, self._fetchall_arrow_from_queue()
+        )
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
         # Valid only for metadata commands result set
         if isinstance(result_table, ColumnTable) and pyarrow:

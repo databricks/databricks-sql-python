@@ -601,6 +601,29 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rs._row_buffer_count(), 0)
         self.assertEqual(rs.fetchone()[0], 4)
 
+    def test_fetchone_convert_failure_warns_once_per_result_set(self):
+        import logging
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(12, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=ValueError("bad value"),
+        ), self.assertLogs("databricks.sql.result_set", level="DEBUG") as logs:
+            # Three refill batches, every row failing the same way.
+            for _ in range(12):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+        summaries = [
+            r for r in logs.records if "failed to convert" in r.getMessage()
+        ]
+        self.assertEqual(len(summaries), 3)
+        self.assertEqual(
+            [r.levelno for r in summaries],
+            [logging.WARNING, logging.DEBUG, logging.DEBUG],
+        )
+
     def test_fetchone_systematic_convert_failure_stops_per_row_retries(self):
         from unittest.mock import patch
         from databricks.sql.result_set import _FETCHONE_FALLBACK_PROBE_ROWS
