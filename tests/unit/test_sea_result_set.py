@@ -482,6 +482,83 @@ class TestSeaResultSet:
         assert rows[0].col2 == 1
         assert rows[0].col3 is True
 
+    def _make_json_result_set(
+        self, mock_connection, mock_sea_client, execute_response, n_rows, arraysize
+    ):
+        data = [["v{}".format(i), str(i), "true"] for i in range(n_rows)]
+        result_data = ResultData(data=data, external_links=None, row_count=n_rows)
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=JsonQueue(data),
+        ):
+            return SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=result_data,
+                manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
+                buffer_size_bytes=1000,
+                arraysize=arraysize,
+            )
+
+    @pytest.mark.parametrize("mode", ["iterate", "fetchone"])
+    def test_json_fetchone_converts_in_batches(
+        self, mock_connection, mock_sea_client, execute_response, mode
+    ):
+        """Issue #981: per-row fetchone must not convert one row at a time."""
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 100, arraysize=10
+        )
+        with patch.object(
+            SeaResultSet,
+            "_create_json_table",
+            autospec=True,
+            side_effect=SeaResultSet._create_json_table,
+        ) as m:
+            if mode == "iterate":
+                rows = list(rs)
+            else:
+                rows = []
+                while True:
+                    row = rs.fetchone()
+                    if row is None:
+                        break
+                    rows.append(row)
+        assert [r.col2 for r in rows] == list(range(100))
+        assert m.call_count <= 100 // 10 + 2
+
+    def test_json_mixed_fetches_keep_order_and_rownumber(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.fetchone().col2 == 1
+        assert rs.rownumber == 2
+        assert [r.col2 for r in rs.fetchmany(3)] == [2, 3, 4]
+        assert rs.rownumber == 5
+        assert rs.fetchone().col2 == 5
+        assert rs.rownumber == 6
+        table = rs.fetchmany_arrow(2)
+        assert table.column(1).to_pylist() == [6, 7]
+        assert rs.rownumber == 8
+        assert [r.col2 for r in rs.fetchall()] == [8, 9]
+        assert rs.rownumber == 10
+        assert rs.fetchone() is None
+
+    def test_json_fetchone_then_fetchall_arrow_keeps_order(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.rownumber == 1
+        table = rs.fetchall_arrow()
+        assert table.column(1).to_pylist() == list(range(1, 10))
+        assert rs.rownumber == 10
+
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response
     ):

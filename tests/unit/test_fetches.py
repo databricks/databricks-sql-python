@@ -391,5 +391,82 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(result.num_rows, 0)
 
 
+class ColumnarFetchoneBufferTests(unittest.TestCase):
+    """Issue #981: fetchone/iteration on the Thrift ColumnQueue path must convert
+    rows in batches (not one row at a time) while keeping order and rownumber."""
+
+    @staticmethod
+    def make_columnar_result_set(n_rows, arraysize):
+        from databricks.sql.utils import ColumnQueue, ColumnTable
+
+        table = ColumnTable([list(range(n_rows))], ["col0"])
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
+        mock_thrift_backend.fetch_results.return_value = (ColumnQueue(table), False, 0)
+        return ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=None,
+                status=None,
+                has_been_closed_server_side=True,
+                description=[("col0", "integer", None, None, None, None, None)],
+                lz4_compressed=False,
+                is_staging_operation=False,
+            ),
+            thrift_client=mock_thrift_backend,
+            arraysize=arraysize,
+        )
+
+    @staticmethod
+    def _count_conversions():
+        from unittest.mock import patch
+
+        return patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=ThriftResultSet._convert_columnar_table,
+        )
+
+    def test_iteration_converts_in_batches(self):
+        rs = self.make_columnar_result_set(100, arraysize=10)
+        with self._count_conversions() as m:
+            rows = [r[0] for r in rs]
+        self.assertEqual(rows, list(range(100)))
+        self.assertLessEqual(m.call_count, 100 // 10 + 2)
+
+    def test_fetchone_loop_converts_in_batches(self):
+        rs = self.make_columnar_result_set(100, arraysize=10)
+        rows = []
+        with self._count_conversions() as m:
+            while True:
+                row = rs.fetchone()
+                if row is None:
+                    break
+                rows.append(row[0])
+        self.assertEqual(rows, list(range(100)))
+        self.assertLessEqual(m.call_count, 100 // 10 + 2)
+
+    def test_mixed_fetches_keep_order_and_rownumber(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(rs.fetchone()[0], 1)
+        self.assertEqual(rs.rownumber, 2)
+        self.assertEqual([r[0] for r in rs.fetchmany(3)], [2, 3, 4])
+        self.assertEqual(rs.rownumber, 5)
+        self.assertEqual(rs.fetchone()[0], 5)
+        self.assertEqual(rs.rownumber, 6)
+        self.assertEqual([r[0] for r in rs.fetchall()], [6, 7, 8, 9])
+        self.assertEqual(rs.rownumber, 10)
+        self.assertIsNone(rs.fetchone())
+
+    def test_fetchone_then_fetchall_arrow_keeps_order(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(rs.rownumber, 1)
+        table = rs.fetchall_arrow()
+        self.assertEqual(table.column(0).to_pylist(), list(range(1, 10)))
+        self.assertEqual(rs.rownumber, 10)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -183,6 +183,71 @@ def test_fetchall_arrow(conn):
         assert table.column_names == ["a", "b"]
 
 
+def _count_arrow_conversions():
+    """Patch ``ResultSet._convert_arrow_table`` to count calls (issue #981)."""
+    from unittest import mock
+    from databricks.sql.result_set import ResultSet
+
+    orig = ResultSet._convert_arrow_table
+    counter = {"calls": 0}
+
+    def _wrapped(self_, table):
+        counter["calls"] += 1
+        return orig(self_, table)
+
+    return counter, mock.patch.object(ResultSet, "_convert_arrow_table", _wrapped)
+
+
+_ROW_BUFFER_N = 5000
+_ROW_BUFFER_ARRAYSIZE = 1000
+
+
+def _assert_rows_and_bound(rows, calls):
+    assert len(rows) == _ROW_BUFFER_N
+    assert [r[0] for r in rows] == list(range(_ROW_BUFFER_N))
+    assert all(r[1] == str(r[0]) for r in rows)
+    bound = -(-_ROW_BUFFER_N // _ROW_BUFFER_ARRAYSIZE) + 2
+    assert calls <= bound, (
+        f"_convert_arrow_table called {calls} times for {_ROW_BUFFER_N} rows; "
+        f"expected at most {bound} (issue #981)"
+    )
+
+
+def test_iteration_converts_rows_in_batches(conn):
+    with conn.cursor(arraysize=_ROW_BUFFER_ARRAYSIZE) as cur:
+        cur.execute(f"SELECT id, CAST(id AS STRING) AS s FROM range({_ROW_BUFFER_N})")
+        counter, patch = _count_arrow_conversions()
+        with patch:
+            rows = [row for row in cur]
+        _assert_rows_and_bound(rows, counter["calls"])
+
+
+def test_fetchone_loop_converts_rows_in_batches(conn):
+    with conn.cursor(arraysize=_ROW_BUFFER_ARRAYSIZE) as cur:
+        cur.execute(f"SELECT id, CAST(id AS STRING) AS s FROM range({_ROW_BUFFER_N})")
+        counter, patch = _count_arrow_conversions()
+        rows = []
+        with patch:
+            while True:
+                row = cur.fetchone()
+                if row is None:
+                    break
+                rows.append(row)
+        _assert_rows_and_bound(rows, counter["calls"])
+
+
+def test_fetchone_mixed_with_other_fetches_keeps_order(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM range(10)")
+        assert cur.fetchone()[0] == 0
+        assert cur.fetchone()[0] == 1
+        assert [r[0] for r in cur.fetchmany(3)] == [2, 3, 4]
+        assert cur.fetchone()[0] == 5
+        assert cur.fetchmany_arrow(2).column(0).to_pylist() == [6, 7]
+        assert [r[0] for r in cur.fetchall()] == [8, 9]
+        assert cur.fetchone() is None
+
+
 @pytest.mark.parametrize("row_limit", [None, 0, 1, 5])
 def test_cursor_row_limit(conn, row_limit):
     with conn.cursor(row_limit=row_limit) as cur:

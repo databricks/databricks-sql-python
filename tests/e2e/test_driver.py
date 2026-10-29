@@ -942,6 +942,112 @@ class TestPySQLCoreSuite(
                 for j in range(len(row)):
                     assert row[j] == expected_results[i][j]
 
+    @contextmanager
+    def _count_row_conversions(self):
+        """Count every call that turns a fetched batch into ``Row`` objects
+        (Arrow, Thrift columnar and SEA JSON paths) — issue #981."""
+        from unittest import mock
+        from databricks.sql.result_set import ResultSet, ThriftResultSet
+        from databricks.sql.backend.sea.result_set import SeaResultSet
+
+        counter = {"calls": 0}
+        targets = [
+            (ResultSet, "_convert_arrow_table"),
+            (ThriftResultSet, "_convert_columnar_table"),
+            (SeaResultSet, "_create_json_table"),
+        ]
+        patches = []
+        for cls, name in targets:
+            orig = getattr(cls, name)
+
+            def _wrapped(self_, *args, _orig=orig, **kwargs):
+                counter["calls"] += 1
+                return _orig(self_, *args, **kwargs)
+
+            patches.append(mock.patch.object(cls, name, _wrapped))
+        for p in patches:
+            p.start()
+        try:
+            yield counter
+        finally:
+            for p in patches:
+                p.stop()
+
+    _ROW_BUFFER_PARAMS = [
+        {},
+        {
+            "use_sea": True,
+            "use_cloud_fetch": False,
+            "enable_query_result_lz4_compression": False,
+        },
+        {
+            "use_sea": True,
+        },
+    ]
+    _ROW_BUFFER_N = 5000
+    _ROW_BUFFER_QUERY = "SELECT id, CAST(id AS STRING) AS s FROM range({})"
+
+    def _assert_rows_and_bound(self, rows, calls, arraysize):
+        n = self._ROW_BUFFER_N
+        assert len(rows) == n
+        assert [r[0] for r in rows] == list(range(n))
+        assert all(r[1] == str(r[0]) for r in rows)
+        bound = -(-n // arraysize) + 2
+        assert calls <= bound, (
+            "row conversion called {} times for {} rows (arraysize={}); "
+            "expected at most {} (issue #981)".format(calls, n, arraysize, bound)
+        )
+
+    @pytest.mark.parametrize("extra_params", _ROW_BUFFER_PARAMS)
+    def test_iteration_converts_rows_in_batches(self, extra_params):
+        with self.cursor(extra_params) as cursor:
+            cursor.execute(self._ROW_BUFFER_QUERY.format(self._ROW_BUFFER_N))
+            with self._count_row_conversions() as counter:
+                rows = [row for row in cursor]
+            self._assert_rows_and_bound(rows, counter["calls"], cursor.arraysize)
+
+    @pytest.mark.parametrize("extra_params", _ROW_BUFFER_PARAMS)
+    def test_fetchone_loop_converts_rows_in_batches(self, extra_params):
+        with self.cursor(extra_params) as cursor:
+            cursor.execute(self._ROW_BUFFER_QUERY.format(self._ROW_BUFFER_N))
+            rows = []
+            with self._count_row_conversions() as counter:
+                while True:
+                    row = cursor.fetchone()
+                    if row is None:
+                        break
+                    rows.append(row)
+            self._assert_rows_and_bound(rows, counter["calls"], cursor.arraysize)
+
+    @pytest.mark.parametrize("extra_params", _ROW_BUFFER_PARAMS)
+    def test_fetchone_mixed_with_other_fetches_keeps_order(self, extra_params):
+        with self.cursor(extra_params) as cursor:
+            cursor.execute("SELECT * FROM range(10)")
+            assert cursor.fetchone()[0] == 0
+            assert cursor.fetchone()[0] == 1
+            assert cursor.rownumber == 2
+            assert [r[0] for r in cursor.fetchmany(3)] == [2, 3, 4]
+            assert cursor.rownumber == 5
+            assert cursor.fetchone()[0] == 5
+            assert cursor.rownumber == 6
+            table = cursor.fetchmany_arrow(2)
+            assert table.column(0).to_pylist() == [6, 7]
+            assert cursor.rownumber == 8
+            assert [r[0] for r in cursor.fetchall()] == [8, 9]
+            assert cursor.rownumber == 10
+            assert cursor.fetchone() is None
+
+    @pytest.mark.parametrize("extra_params", _ROW_BUFFER_PARAMS)
+    def test_fetchone_then_fetchall_arrow_keeps_order(self, extra_params):
+        with self.cursor(extra_params) as cursor:
+            cursor.execute("SELECT * FROM range(10)")
+            assert cursor.fetchone()[0] == 0
+            assert cursor.rownumber == 1
+            table = cursor.fetchall_arrow()
+            assert table.column(0).to_pylist() == list(range(1, 10))
+            assert cursor.rownumber == 10
+            assert cursor.fetchone() is None
+
     def test_temp_view_fetch(self):
         with self.cursor({}) as cursor:
             query = "create temporary view f as select * from range(10)"

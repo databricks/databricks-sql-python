@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING, Tuple
+from typing import Any, Callable, List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 import pandas
@@ -85,6 +85,15 @@ class ResultSet(ABC):
         self._arrow_schema_bytes = arrow_schema_bytes
         # Affected-row count for DML; None for SELECT / unreported.
         self.num_modified_rows = num_modified_rows
+        # Small row buffer that serves fetchone()/iteration. Rows are fetched and
+        # converted ``arraysize`` at a time instead of one at a time (converting a
+        # single row costs a full pandas round-trip). ``_row_buffer_raw`` holds the
+        # un-converted chunk (Arrow table, ColumnTable or JSON row list) aligned with
+        # ``_row_buffer_rows`` so the Arrow/columnar fetch methods can drain it too.
+        # Every fetch method drains this buffer first, preserving row order.
+        self._row_buffer_raw: Any = None
+        self._row_buffer_rows: List[Row] = []
+        self._row_buffer_pos = 0
 
     def __iter__(self):
         while True:
@@ -135,6 +144,74 @@ class ResultSet(ABC):
     @property
     def rownumber(self):
         return self._next_row_index
+
+    # ----- fetchone() row buffer helpers -----
+
+    def _row_buffer_count(self) -> int:
+        return len(self._row_buffer_rows) - self._row_buffer_pos
+
+    def _row_buffer_clear(self) -> None:
+        self._row_buffer_raw = None
+        self._row_buffer_rows = []
+        self._row_buffer_pos = 0
+
+    def _row_buffer_advance(self, n: Optional[int]) -> Tuple[int, int]:
+        """Advance the buffer by up to ``n`` rows (all if None); return (start, length)."""
+        available = self._row_buffer_count()
+        length = available if n is None else max(0, min(n, available))
+        start = self._row_buffer_pos
+        self._row_buffer_pos += length
+        # Buffered rows only count as consumed once they are handed to the caller.
+        self._next_row_index += length
+        return start, length
+
+    def _row_buffer_take_rows(self, n: Optional[int] = None) -> List[Row]:
+        """Pop up to ``n`` (all if None) converted rows from the buffer."""
+        if self._row_buffer_count() == 0:
+            return []
+        rows = self._row_buffer_rows
+        start, length = self._row_buffer_advance(n)
+        if self._row_buffer_count() == 0:
+            self._row_buffer_clear()
+        return rows[start : start + length]
+
+    def _row_buffer_take_raw(self, n: Optional[int] = None) -> Any:
+        """Pop up to ``n`` (all if None) un-converted rows from the buffer.
+
+        Returns None when the buffer is empty, otherwise a slice of the raw chunk
+        (same type as what the queue returned: Arrow table, ColumnTable or list).
+        """
+        if self._row_buffer_count() == 0:
+            return None
+        raw = self._row_buffer_raw
+        start, length = self._row_buffer_advance(n)
+        if self._row_buffer_count() == 0:
+            self._row_buffer_clear()
+        if isinstance(raw, list):
+            return raw[start : start + length]
+        return raw.slice(start, length)
+
+    def _fetchone_buffered(
+        self, fetch_raw: Callable[[int], Any], convert: Callable[[Any], List[Row]]
+    ) -> Optional[Row]:
+        """Serve fetchone() from the row buffer, refilling ``arraysize`` rows at a time.
+
+        ``_next_row_index`` keeps counting rows handed to the caller: rows parked in
+        the buffer are subtracted on refill and added back as they are taken. The
+        queue is only read again once the buffer is empty, so at that point the
+        index equals the queue position again (Thrift relies on that for
+        ``expected_row_start_offset``).
+        """
+        if self._row_buffer_count() == 0:
+            raw = fetch_raw(max(self.arraysize, 1))
+            rows = convert(raw)
+            if not rows:
+                return None
+            self._row_buffer_raw = raw
+            self._row_buffer_rows = rows
+            self._row_buffer_pos = 0
+            self._next_row_index -= len(rows)
+        return self._row_buffer_take_rows(1)[0]
 
     @property
     def is_staging_operation(self) -> bool:
@@ -302,12 +379,45 @@ class ThriftResultSet(ResultSet):
 
         return result
 
+    def _prepend_buffered(self, buffered, rest):
+        """Concatenate rows drained from the fetchone() buffer with freshly fetched ones."""
+        if buffered is None:
+            return rest
+        if rest is None or rest.num_rows == 0:
+            return buffered
+        return concat_table_chunks([buffered, rest])
+
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
 
         An empty sequence is returned when no more rows are available.
         """
+        if size < 0:
+            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+        buffered = self._row_buffer_take_raw(size)
+        remaining = size - (buffered.num_rows if buffered is not None else 0)
+        rest = self._fetchmany_arrow_from_queue(remaining) if remaining > 0 else None
+        if buffered is None and rest is None:
+            rest = self._fetchmany_arrow_from_queue(0)
+        return self._prepend_buffered(buffered, rest)
+
+    def fetchmany_columnar(self, size: int):
+        """
+        Fetch the next set of rows of a query result, returning a Columnar Table.
+        An empty sequence is returned when no more rows are available.
+        """
+        if size < 0:
+            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+        buffered = self._row_buffer_take_raw(size)
+        remaining = size - (buffered.num_rows if buffered is not None else 0)
+        rest = self._fetchmany_columnar_from_queue(remaining) if remaining > 0 else None
+        if buffered is None and rest is None:
+            rest = self._fetchmany_columnar_from_queue(0)
+        return self._prepend_buffered(buffered, rest)
+
+    def _fetchmany_arrow_from_queue(self, size: int) -> "pyarrow.Table":
+        """Fetch up to ``size`` rows from the results queue, bypassing the row buffer."""
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
@@ -343,11 +453,8 @@ class ThriftResultSet(ResultSet):
             partial_result_chunks.append(zero_row_table)
         return concat_table_chunks(partial_result_chunks)
 
-    def fetchmany_columnar(self, size: int):
-        """
-        Fetch the next set of rows of a query result, returning a Columnar Table.
-        An empty sequence is returned when no more rows are available.
-        """
+    def _fetchmany_columnar_from_queue(self, size: int):
+        """Fetch up to ``size`` rows from the results queue, bypassing the row buffer."""
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
@@ -370,6 +477,22 @@ class ThriftResultSet(ResultSet):
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
+        buffered = self._row_buffer_take_raw()
+        result_table = self._prepend_buffered(buffered, self._fetchall_arrow_from_queue())
+        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
+        # Valid only for metadata commands result set
+        if isinstance(result_table, ColumnTable) and pyarrow:
+            data = {
+                name: col
+                for name, col in zip(
+                    result_table.column_names, result_table.column_table
+                )
+            }
+            return pyarrow.Table.from_pydict(data)
+        return result_table
+
+    def _fetchall_arrow_from_queue(self):
+        """Drain the results queue (bypassing the row buffer) without type conversion."""
         # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
         # CloudFetchQueue may return a placeholder empty table whose schema does not
         # match the real downloaded chunks; concatenating it would corrupt the result.
@@ -394,21 +517,15 @@ class ThriftResultSet(ResultSet):
         if not partial_result_chunks:
             partial_result_chunks.append(zero_row_table)
 
-        result_table = concat_table_chunks(partial_result_chunks)
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        if isinstance(result_table, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(
-                    result_table.column_names, result_table.column_table
-                )
-            }
-            return pyarrow.Table.from_pydict(data)
-        return result_table
+        return concat_table_chunks(partial_result_chunks)
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
+        buffered = self._row_buffer_take_raw()
+        return self._prepend_buffered(buffered, self._fetchall_columnar_from_queue())
+
+    def _fetchall_columnar_from_queue(self):
+        """Drain the results queue as a Columnar table, bypassing the row buffer."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
         partial_result_chunks = [results]
@@ -426,23 +543,21 @@ class ThriftResultSet(ResultSet):
         or None when no more data is available.
         """
         if isinstance(self.results, ColumnQueue):
-            res = self._convert_columnar_table(self.fetchmany_columnar(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
-
-        if len(res) > 0:
-            return res[0]
-        else:
-            return None
+            return self._fetchone_buffered(
+                self.fetchmany_columnar, self._convert_columnar_table
+            )
+        return self._fetchone_buffered(self.fetchmany_arrow, self._convert_arrow_table)
 
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
+        buffered = self._row_buffer_take_rows()
         if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchall_columnar())
+            rest = self._convert_columnar_table(self.fetchall_columnar())
         else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            rest = self._convert_arrow_table(self.fetchall_arrow())
+        return buffered + rest if buffered else rest
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -450,10 +565,17 @@ class ThriftResultSet(ResultSet):
 
         An empty sequence is returned when no more rows are available.
         """
+        if size < 0:
+            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+        buffered = self._row_buffer_take_rows(size)
+        remaining = size - len(buffered)
+        if buffered and remaining == 0:
+            return buffered
         if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchmany_columnar(size))
+            rest = self._convert_columnar_table(self.fetchmany_columnar(remaining))
         else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            rest = self._convert_arrow_table(self.fetchmany_arrow(remaining))
+        return buffered + rest if buffered else rest
 
     @staticmethod
     def _get_schema_description(table_schema_message):

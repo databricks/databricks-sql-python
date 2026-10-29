@@ -189,38 +189,62 @@ class KernelResultSet(ResultSet):
 
     # ----- Arrow fetches -----
 
-    def fetchall_arrow(self) -> pyarrow.Table:
-        return self._drain()
-
-    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
-        if size < 0:
-            raise ValueError(f"fetchmany_arrow size must be >= 0, got {size}")
+    def _fetchmany_arrow_unbuffered(self, size: int) -> pyarrow.Table:
+        """Take up to ``size`` rows from the batch FIFO, bypassing the
+        fetchone() row buffer."""
         if size == 0:
             return pyarrow.Table.from_batches([], schema=self._schema)
         self._ensure_buffered(size)
         return self._take_buffered(size)
 
+    @staticmethod
+    def _prepend_buffered(
+        buffered: Optional[pyarrow.Table], rest: pyarrow.Table
+    ) -> pyarrow.Table:
+        if buffered is None:
+            return rest
+        if rest.num_rows == 0:
+            return buffered
+        return pyarrow.concat_tables([buffered, rest])
+
+    def fetchall_arrow(self) -> pyarrow.Table:
+        buffered = self._row_buffer_take_raw()
+        return self._prepend_buffered(buffered, self._drain())
+
+    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
+        if size < 0:
+            raise ValueError(f"fetchmany_arrow size must be >= 0, got {size}")
+        buffered = self._row_buffer_take_raw(size)
+        remaining = size - (buffered.num_rows if buffered is not None else 0)
+        if buffered is not None and remaining == 0:
+            return buffered
+        return self._prepend_buffered(
+            buffered, self._fetchmany_arrow_unbuffered(remaining)
+        )
+
     # ----- Row fetches -----
 
     def fetchone(self) -> Optional[Row]:
-        self._ensure_buffered(1)
-        if self._buffered_rows() == 0:
-            return None
-        table = self._take_buffered(1)
-        rows = self._convert_arrow_table(table)
-        return rows[0] if rows else None
+        # Rows are converted ``arraysize`` at a time and served from the
+        # base-class row buffer; converting one row per call is very slow.
+        return self._fetchone_buffered(
+            self._fetchmany_arrow_unbuffered, self._convert_arrow_table
+        )
 
     def fetchmany(self, size: int) -> List[Row]:
         if size < 0:
             raise ValueError(f"fetchmany size must be >= 0, got {size}")
-        if size == 0:
-            return []
-        self._ensure_buffered(size)
-        table = self._take_buffered(size)
-        return self._convert_arrow_table(table)
+        buffered = self._row_buffer_take_rows(size)
+        remaining = size - len(buffered)
+        if remaining == 0:
+            return buffered
+        rest = self._convert_arrow_table(self._fetchmany_arrow_unbuffered(remaining))
+        return buffered + rest if buffered else rest
 
     def fetchall(self) -> List[Row]:
-        return self._convert_arrow_table(self._drain())
+        buffered = self._row_buffer_take_rows()
+        rest = self._convert_arrow_table(self._drain())
+        return buffered + rest if buffered else rest
 
     def close(self) -> None:
         """Close the underlying kernel handle and notify the backend.

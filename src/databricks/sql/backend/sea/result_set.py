@@ -19,6 +19,7 @@ from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.result_set import ResultSet
+from databricks.sql.utils import concat_table_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -160,10 +161,7 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
-        self._next_row_index += len(results)
-
-        return results
+        return self._fetch_raw_with_buffer(size)
 
     def fetchall_json(self) -> List[List[str]]:
         """
@@ -173,10 +171,35 @@ class SeaResultSet(ResultSet):
             Columnar table containing all remaining rows
         """
 
-        results = self.results.remaining_rows()
-        self._next_row_index += len(results)
+        return self._fetch_raw_with_buffer(None)
 
+    @staticmethod
+    def _raw_num_rows(raw: Any) -> int:
+        return len(raw) if isinstance(raw, list) else raw.num_rows
+
+    def _fetch_raw_from_queue(self, size: Optional[int]) -> Any:
+        """Fetch ``size`` (all if None) raw rows from the queue, bypassing the row buffer."""
+        if size is None:
+            results = self.results.remaining_rows()
+        else:
+            results = self.results.next_n_rows(size)
+        self._next_row_index += self._raw_num_rows(results)
         return results
+
+    def _fetch_raw_with_buffer(self, size: Optional[int]) -> Any:
+        """Fetch ``size`` (all if None) raw rows, draining the fetchone() buffer first."""
+        buffered = self._row_buffer_take_raw(size)
+        if buffered is None:
+            return self._fetch_raw_from_queue(size)
+        remaining = None if size is None else size - self._raw_num_rows(buffered)
+        if remaining == 0:
+            return buffered
+        rest = self._fetch_raw_from_queue(remaining)
+        if self._raw_num_rows(rest) == 0:
+            return buffered
+        if isinstance(buffered, list):
+            return buffered + list(rest)
+        return concat_table_chunks([buffered, rest])
 
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
@@ -196,11 +219,9 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
+        results = self._fetch_raw_with_buffer(size)
         if isinstance(self.results, JsonQueue):
             results = self._convert_json_to_arrow_table(results)
-
-        self._next_row_index += results.num_rows
 
         return results
 
@@ -209,11 +230,9 @@ class SeaResultSet(ResultSet):
         Fetch all remaining rows as an Arrow table.
         """
 
-        results = self.results.remaining_rows()
+        results = self._fetch_raw_with_buffer(None)
         if isinstance(self.results, JsonQueue):
             results = self._convert_json_to_arrow_table(results)
-
-        self._next_row_index += results.num_rows
 
         return results
 
@@ -227,11 +246,8 @@ class SeaResultSet(ResultSet):
         """
 
         if isinstance(self.results, JsonQueue):
-            res = self._create_json_table(self.fetchmany_json(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
-
-        return res[0] if res else None
+            return self._fetchone_buffered(self.fetchmany_json, self._create_json_table)
+        return self._fetchone_buffered(self.fetchmany_arrow, self._convert_arrow_table)
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -247,10 +263,17 @@ class SeaResultSet(ResultSet):
             ValueError: If size is negative
         """
 
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+        buffered = self._row_buffer_take_rows(size)
+        remaining = size - len(buffered)
+        if buffered and remaining == 0:
+            return buffered
         if isinstance(self.results, JsonQueue):
-            return self._create_json_table(self.fetchmany_json(size))
+            rest = self._create_json_table(self.fetchmany_json(remaining))
         else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            rest = self._convert_arrow_table(self.fetchmany_arrow(remaining))
+        return buffered + rest if buffered else rest
 
     def fetchall(self) -> List[Row]:
         """
@@ -260,7 +283,9 @@ class SeaResultSet(ResultSet):
             List of Row objects containing all remaining rows
         """
 
+        buffered = self._row_buffer_take_rows()
         if isinstance(self.results, JsonQueue):
-            return self._create_json_table(self.fetchall_json())
+            rest = self._create_json_table(self.fetchall_json())
         else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            rest = self._convert_arrow_table(self.fetchall_arrow())
+        return buffered + rest if buffered else rest
