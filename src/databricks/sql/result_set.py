@@ -220,8 +220,24 @@ class ResultSet(ABC):
             # still equals the queue position. Rolling the index back would make it
             # lag the queue and break Thrift's expected_row_start_offset check on
             # the next fetch, and retrying convert() on the same data would just
-            # fail again.
-            rows = convert(raw)
+            # fail again. A warning records how many rows were discarded so a
+            # caller that swallows the error and keeps fetching isn't silently
+            # short of rows.
+            try:
+                rows = convert(raw)
+            except Exception:
+                if raw is None:
+                    dropped = 0
+                elif isinstance(raw, list):
+                    dropped = len(raw)
+                else:
+                    dropped = getattr(raw, "num_rows", 0)
+                logger.warning(
+                    "fetchone(): failed to convert a batch of %d row(s); these rows "
+                    "are discarded and will not be returned by later fetches",
+                    dropped,
+                )
+                raise
             if not rows:
                 return None
             self._row_buffer_raw = raw

@@ -534,6 +534,23 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rs.rownumber, 10)
         self.assertIsNone(rs.fetchone())
 
+    def test_fetchone_convert_failure_logs_dropped_rows_and_reraises(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=ValueError("bad value"),
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            with self.assertRaises(ValueError):
+                rs.fetchone()
+        self.assertTrue(any("batch of 4 row(s)" in m for m in logs.output))
+        # The failed batch is dropped; the next fetch resumes after it.
+        self.assertEqual(rs._row_buffer_count(), 0)
+        self.assertEqual(rs.rownumber, 4)
+        self.assertEqual(rs.fetchone()[0], 4)
+
     @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
     def test_fetchone_then_fetchall_arrow_keeps_order(self):
         rs = self.make_columnar_result_set(10, arraysize=4)
