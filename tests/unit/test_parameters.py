@@ -123,9 +123,11 @@ def test_calculate_decimal_cast_string(value, expected):
         # Value has more integer digits than declared precision - scale allows:
         # integer room is not widened, so the server rejects it as out of range
         (Decimal("123456789012.5"), 2, 10, "DECIMAL(10,2)"),
-        # Positive exponent: 1E+3 needs 4 integer digits; declared room (2) is kept
-        (Decimal("1E+3"), 0, 2, "DECIMAL(2,0)"),
+        # Positive exponent: 1E+3 needs 4 integer digits, which DECIMAL(5,0) fits
         (Decimal("1E+3"), 0, 5, "DECIMAL(5,0)"),
+        (Decimal("1E+3"), 0, 4, "DECIMAL(4,0)"),
+        # scale=0 with a fractional value that fits the integer room: honoured, widened
+        (Decimal("123.45"), 0, 3, "DECIMAL(5,2)"),
         # Widened precision is capped at 38
         (Decimal("0.123456789012345678901234567890123456"), 2, 10, "DECIMAL(38,36)"),
         # Widened scale is capped at the (capped) precision
@@ -144,7 +146,7 @@ def test_calculate_decimal_cast_string(value, expected):
         # Non-Decimal values are inspected via str(value), which is what is sent
         (1.5, 2, 10, "DECIMAL(10,2)"),
         (12.3456, 2, 10, "DECIMAL(12,4)"),
-        (123456789012, 0, 10, "DECIMAL(10,0)"),
+        (1234567890, 0, 10, "DECIMAL(10,0)"),
         ("123.4567", 2, 10, "DECIMAL(12,4)"),
         # Unparseable values fall back to the declared type
         ("not-a-number", 2, 10, "DECIMAL(10,2)"),
@@ -259,6 +261,36 @@ def test_decimal_precision_zero_falls_back_to_inferred_type_with_warning(scale):
         p = DecimalParameter(Decimal("1234.56"), scale=scale, precision=0)
     assert p.scale is None and p.precision is None
     assert p._cast_expr() == "DECIMAL(6,2)"
+
+
+@pytest.mark.parametrize(
+    "value,precision,expected",
+    (
+        (Decimal("123.45"), 2, "DECIMAL(5,2)"),
+        (Decimal("1E+3"), 2, "DECIMAL(4,0)"),
+        (123456789012, 10, "DECIMAL(12,0)"),
+    ),
+)
+def test_decimal_scale_zero_integer_overflow_falls_back_to_inferred_type(
+    value, precision, expected
+):
+    """scale=0 used to mean "unset" (type inferred). When honouring DECIMAL(precision,0)
+    would overflow the value's integer digits (a call that used to succeed), keep the
+    inferred type, with a FutureWarning."""
+    with pytest.warns(FutureWarning, match="scale=0"):
+        p = DecimalParameter(value, scale=0, precision=precision)
+    assert p.scale is None and p.precision is None
+    assert p._cast_expr() == expected
+
+
+@pytest.mark.parametrize(
+    "value,precision", ((Decimal("123.45"), 3), (Decimal("0.5"), 1), (Decimal("NaN"), 1))
+)
+def test_decimal_scale_zero_that_fits_is_honoured_without_warning(value, precision):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        p = DecimalParameter(value, scale=0, precision=precision)
+    assert (p.scale, p.precision) == (0, precision)
 
 
 class Primitive(Enum):

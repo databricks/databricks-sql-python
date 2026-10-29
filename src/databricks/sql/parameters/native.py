@@ -608,7 +608,8 @@ class DecimalParameter(DbsqlParameterBase):
         the value has more fractional digits than `scale`, the bound scale (and so the
         precision) is widened to fit them (capped at precision 38) so they are not lost;
         the declared integer room (`precision - scale`) is kept, so a value with more
-        integer digits than that is still rejected by the server as out of range.
+        integer digits than that is still rejected by the server as out of range
+        (except, for backward compatibility, with `scale=0`: see the CHANGELOG).
         Round the `Decimal` yourself (e.g. with `Decimal.quantize`) before binding if
         you need it narrowed to the declared scale.
 
@@ -688,6 +689,31 @@ class DecimalParameter(DbsqlParameterBase):
                     )
                 )
 
+        if self.scale == 0 and self.precision is not None:
+            # Earlier releases also treated scale=0 as falsy, i.e. "unset", and
+            # inferred the type from the value. Honouring DECIMAL(precision, 0) is
+            # only a regression when the value has more integer digits than
+            # `precision` (the server would now reject a call that used to work), so
+            # keep the inferred type for exactly that case, with a warning.
+            normalized = self._normalized_value_digits()
+            if normalized is not None:
+                digits, exponent = normalized
+                if max(len(digits) + exponent, 0) > self.precision:
+                    warnings.warn(
+                        "DecimalParameter received scale=0, precision={} for a value "
+                        "with more than {} integer digits; ignoring scale and "
+                        "precision and inferring the DECIMAL type from the value, as "
+                        "earlier releases did. Declare a precision large enough for "
+                        "the value, or pass both as None to infer the type. This "
+                        "will raise ValueError in a future release.".format(
+                            self.precision, self.precision
+                        ),
+                        FutureWarning,
+                        stacklevel=2,
+                    )
+                    self.scale = None
+                    self.precision = None
+
         if (
             self.scale is not None
             and self.precision is not None
@@ -761,6 +787,33 @@ class DecimalParameter(DbsqlParameterBase):
 
     MAX_PRECISION = 38
 
+    def _normalized_value_digits(self):
+        """Return ``(digits, exponent)`` of the value with insignificant trailing
+        fractional zeros stripped, or None if the value is not a finite number."""
+        value = self.value
+        if not isinstance(value, decimal.Decimal):
+            # The value is sent to the server as str(value), so inspect that same
+            # textual form; this makes int / float / str values widen like Decimals.
+            try:
+                value = decimal.Decimal(str(value))
+            except (decimal.InvalidOperation, ValueError, TypeError):
+                return None
+        sign, digits, exponent = value.as_tuple()
+        if not isinstance(exponent, int):
+            # NaN / Infinity
+            return None
+
+        # Trailing fractional zeros carry no information, so ignore them: otherwise
+        # Decimal("1.50") and Decimal("1.5") would bind different types for the same
+        # declared parameter. (Stripping keeps len(digits) + exponent unchanged.)
+        while exponent < 0 and len(digits) > 1 and digits[-1] == 0:
+            digits = digits[:-1]
+            exponent += 1
+        if digits == (0,):
+            # Zero (e.g. Decimal("0.000")) has no significant fractional digits
+            exponent = max(exponent, 0)
+        return digits, exponent
+
     def _effective_precision_and_scale(self, precision: int, scale: int):
         """Widen a declared DECIMAL(precision, scale) so the value's fractional digits
         fit: the value's own scale is authoritative over an under-declared target
@@ -772,28 +825,10 @@ class DecimalParameter(DbsqlParameterBase):
         needs more than that (e.g. a scale over 38), the cast is clamped and the
         server rounds away the fractional digits that do not fit.
         """
-        value = self.value
-        if not isinstance(value, decimal.Decimal):
-            # The value is sent to the server as str(value), so inspect that same
-            # textual form; this makes int / float / str values widen like Decimals.
-            try:
-                value = decimal.Decimal(str(value))
-            except (decimal.InvalidOperation, ValueError, TypeError):
-                return precision, scale
-        sign, digits, exponent = value.as_tuple()
-        if not isinstance(exponent, int):
-            # NaN / Infinity: leave the declared type as-is
+        normalized = self._normalized_value_digits()
+        if normalized is None:
             return precision, scale
-
-        # Trailing fractional zeros carry no information, so ignore them: otherwise
-        # Decimal("1.50") and Decimal("1.5") would bind different types for the same
-        # declared parameter. (Stripping keeps len(digits) + exponent unchanged.)
-        while exponent < 0 and len(digits) > 1 and digits[-1] == 0:
-            digits = digits[:-1]
-            exponent += 1
-        if digits == (0,):
-            # Zero (e.g. Decimal("0.000")) has no significant fractional digits
-            exponent = max(exponent, 0)
+        digits, exponent = normalized
 
         value_scale = max(-exponent, 0)
         declared_int_digits = precision - scale
