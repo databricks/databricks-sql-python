@@ -640,12 +640,35 @@ class DecimalParameter(DbsqlParameterBase):
         self.name = name
         self.scale = scale
         self.precision = precision
+        self._legacy_swapped = False
 
         if not self.valid_scale_and_precision():
             raise ValueError(
                 "DecimalParameter requires both or none of scale and precision to be set, "
                 "as integers"
             )
+
+        if self.scale is not None and self.precision is not None:
+            # Range-check the raw arguments *before* the legacy swap below, so a call
+            # that is simply invalid (rather than written for the legacy convention)
+            # gets an error naming the argument the caller actually passed, and no
+            # misleading migration warning.
+            if self.scale < 0:
+                raise ValueError(
+                    "DecimalParameter scale must be >= 0, got {}".format(self.scale)
+                )
+            if self.precision < 0 or self.precision > self.MAX_PRECISION:
+                raise ValueError(
+                    "DecimalParameter precision must be between 1 and {}, got {}".format(
+                        self.MAX_PRECISION, self.precision
+                    )
+                )
+            if self.scale > self.MAX_PRECISION:
+                raise ValueError(
+                    "DecimalParameter scale must be between 0 and {}, got {}".format(
+                        self.MAX_PRECISION, self.scale
+                    )
+                )
 
         if (
             self.scale is not None
@@ -663,7 +686,10 @@ class DecimalParameter(DbsqlParameterBase):
                 "`precision` is the total number of digits and `scale` is the number of "
                 "digits after the decimal point, as in SQL DECIMAL(precision, scale). "
                 "Swap your arguments; this will raise ValueError in a future "
-                "release.".format(
+                "release. Legacy-convention calls keep the previous behaviour (the "
+                "server rounds the value to the declared scale); with correctly "
+                "ordered arguments the bound scale is widened to fit the value's "
+                "fractional digits instead.".format(
                     self.scale, self.precision, self.scale, self.precision
                 ),
                 # FutureWarning (not DeprecationWarning) so end users see it by
@@ -672,6 +698,9 @@ class DecimalParameter(DbsqlParameterBase):
                 stacklevel=2,
             )
             self.scale, self.precision = self.precision, self.scale
+            # Preserve the old bound type exactly (no widening) for these callers,
+            # so the only change they see is the warning.
+            self._legacy_swapped = True
 
         if self.scale is not None and self.precision is not None:
             if self.scale < 0:
@@ -700,6 +729,10 @@ class DecimalParameter(DbsqlParameterBase):
 
     def _cast_expr(self):
         if self.scale is not None and self.precision is not None:
+            if self._legacy_swapped:
+                # Legacy-convention call: bind the declared type unchanged, as
+                # earlier releases did, so existing rounding is preserved.
+                return self.CAST_EXPR.format(self.precision, self.scale)
             precision, scale = self._effective_precision_and_scale(
                 self.precision, self.scale
             )

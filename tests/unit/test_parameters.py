@@ -1,4 +1,5 @@
 import datetime
+import warnings
 from decimal import Decimal
 from enum import Enum
 from typing import Type
@@ -190,6 +191,22 @@ def test_decimal_scale_greater_than_precision_legacy_swapped():
     assert p._cast_expr() == "DECIMAL(10,2)"
 
 
+def test_decimal_legacy_swapped_is_not_widened():
+    """Legacy-convention calls keep the old bound type (and so the old rounding):
+    DecimalParameter(Decimal("12.3456"), scale=4, precision=2) still binds DECIMAL(4,2)
+    rather than being widened to DECIMAL(6,4)."""
+    with pytest.warns(FutureWarning, match="previous behaviour"):
+        p = DecimalParameter(Decimal("12.3456"), scale=4, precision=2)
+    assert p._cast_expr() == "DECIMAL(4,2)"
+    assert p.as_tspark_param(named=False).type == "DECIMAL(4,2)"
+
+
+def test_decimal_correct_order_with_more_fractional_digits_is_widened():
+    """Counterpart of the legacy test: correctly ordered arguments do widen."""
+    p = DecimalParameter(Decimal("12.3456"), scale=2, precision=4)
+    assert p._cast_expr() == "DECIMAL(6,4)"
+
+
 @pytest.mark.parametrize(
     "scale,precision,match",
     (
@@ -213,11 +230,20 @@ def test_decimal_bool_scale_or_precision_raises(scale, precision):
         DecimalParameter(Decimal("1.5"), scale=scale, precision=precision)
 
 
-def test_decimal_legacy_swapped_out_of_range_precision_raises():
-    """The range check applies after the legacy swap (scale=50 becomes precision=50)."""
-    with pytest.warns(FutureWarning, match="legacy"):
-        with pytest.raises(ValueError, match="precision must be between 1 and 38"):
-            DecimalParameter(Decimal("1.5"), scale=50, precision=2)
+@pytest.mark.parametrize(
+    "scale,precision,match",
+    (
+        (50, 2, "scale must be between 0 and 38, got 50"),
+        (5, -1, "precision must be between 1 and 38, got -1"),
+    ),
+)
+def test_decimal_out_of_range_raw_args_raise_before_legacy_swap(scale, precision, match):
+    """Range checks run on the raw arguments before the legacy swap, so the error
+    names the argument the caller actually passed and no FutureWarning is emitted."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        with pytest.raises(ValueError, match=match):
+            DecimalParameter(Decimal("1.5"), scale=scale, precision=precision)
 
 
 class Primitive(Enum):
