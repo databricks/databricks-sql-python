@@ -623,7 +623,9 @@ class DecimalParameter(DbsqlParameterBase):
             The `name` argument to this function would be `my_param`.
         :scale:
             The number of digits to the right of the decimal point. If the value itself
-            has more fractional digits, the value's scale is used so no digits are lost.
+            has more fractional digits, the value's scale is used so no digits are lost
+            (unless the value needs more than 38 digits in total; the excess fractional
+            digits are then rounded by the server).
         :precision:
             The minimum precision (total number of digits) of the number, between 1 and 38.
             If the value has more integer digits than `precision - scale` allows, or its
@@ -652,7 +654,9 @@ class DecimalParameter(DbsqlParameterBase):
                 "digits after the decimal point, as in SQL DECIMAL(precision, scale). "
                 "Swap your arguments; this will raise ValueError in a future "
                 "release.".format(self.scale, self.precision, self.scale, self.precision),
-                DeprecationWarning,
+                # FutureWarning (not DeprecationWarning) so end users see it by
+                # default, not only when the call originates from __main__.
+                FutureWarning,
                 stacklevel=2,
             )
             self.scale, self.precision = self.precision, self.scale
@@ -676,9 +680,13 @@ class DecimalParameter(DbsqlParameterBase):
     MAX_PRECISION = 38
 
     def _effective_precision_and_scale(self, precision: int, scale: int):
-        """Widen a declared DECIMAL(precision, scale) so the bound value never loses
+        """Widen a declared DECIMAL(precision, scale) so the bound value does not lose
         fractional digits: the value's own scale is authoritative over an
         under-declared target scale. Integer-digit room from the declared type is kept.
+
+        Exception: the total is capped at MAX_PRECISION (38) digits. If the value
+        itself needs more than 38 digits (e.g. a scale over 38), the cast is clamped
+        and the server rounds away the fractional digits that do not fit.
         """
         try:
             sign, digits, exponent = self.value.as_tuple()
@@ -691,11 +699,22 @@ class DecimalParameter(DbsqlParameterBase):
         value_scale = max(-exponent, 0)
         value_int_digits = max(len(digits) + exponent, 0)
 
-        effective_scale = max(scale, value_scale)
-        int_digits = max(precision - scale, value_int_digits)
-        effective_precision = min(int_digits + effective_scale, self.MAX_PRECISION)
-        effective_scale = min(effective_scale, effective_precision)
-        return effective_precision, effective_scale
+        desired_scale = max(scale, value_scale)
+        desired_int_digits = max(precision - scale, value_int_digits)
+
+        # Allocate the (at most MAX_PRECISION) digits by priority so that, when the
+        # cap is hit, the value's own digits win over extra declared room
+        # (similar to Spark's decimal precision adjustment):
+        #   1. the value's integer digits, 2. the value's fractional digits,
+        #   3. extra declared integer room, 4. extra declared fractional room.
+        int_digits = min(value_int_digits, self.MAX_PRECISION)
+        effective_scale = min(value_scale, self.MAX_PRECISION - int_digits)
+        remaining = self.MAX_PRECISION - int_digits - effective_scale
+        extra_int = min(desired_int_digits - int_digits, remaining)
+        int_digits += extra_int
+        remaining -= extra_int
+        effective_scale += min(desired_scale - effective_scale, remaining)
+        return int_digits + effective_scale, effective_scale
 
     def calculate_decimal_cast_string(self, input: decimal.Decimal) -> str:
         """Returns the smallest SQL cast argument that can contain the passed decimal

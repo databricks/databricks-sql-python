@@ -122,6 +122,11 @@ def test_calculate_decimal_cast_string(value, expected):
         (Decimal("0.123456789012345678901234567890123456"), 2, 10, "DECIMAL(38,36)"),
         # Widened scale is capped at the (capped) precision
         (Decimal("0.1234567890123456789012345678901234567890"), 2, 10, "DECIMAL(38,38)"),
+        # When the cap is hit, the value's integer digits win and extra declared
+        # scale shrinks (31 int + 1 frac digits fit losslessly in DECIMAL(38,7))
+        (Decimal("1234567890123456789012345678901.5"), 8, 10, "DECIMAL(38,7)"),
+        # Value fills all 38 digits: declared extra scale is dropped entirely
+        (Decimal("1234567890123456789012345678901234567.8"), 8, 10, "DECIMAL(38,1)"),
         # NaN / Infinity leave the declared type untouched
         (Decimal("NaN"), 2, 10, "DECIMAL(10,2)"),
         (Decimal("Infinity"), 2, 10, "DECIMAL(10,2)"),
@@ -137,7 +142,7 @@ def test_decimal_explicit_precision_scale_cast_string(value, scale, precision, e
 
 def test_decimal_scale_greater_than_precision_legacy_swapped():
     """Callers using the old (swapped) convention keep working, with a deprecation warning."""
-    with pytest.warns(DeprecationWarning, match="legacy"):
+    with pytest.warns(FutureWarning, match="legacy"):
         p = DecimalParameter(Decimal("123.45"), scale=10, precision=2)
     assert p.precision == 10
     assert p.scale == 2

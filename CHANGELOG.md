@@ -1,7 +1,7 @@
 # Release History
 
 # Unreleased
-- **Behaviour change:** `DecimalParameter` now binds `DECIMAL(precision, scale)`, matching SQL: `precision` is the total number of digits and `scale` the number of fractional digits (earlier docs described them the other way round). Calls written for the old convention (`scale > precision`, e.g. `scale=10, precision=2`) still bind `DECIMAL(10,2)` but emit a `DeprecationWarning`; swap your arguments, as this will raise `ValueError` in a future release. A declared `scale` equal to or less than `precision` is now interpreted with the SQL meaning, and a declared `scale` smaller than the value's own scale is widened so fractional digits are not lost.
+- **Behaviour change:** `DecimalParameter` now binds `DECIMAL(precision, scale)`, matching SQL: `precision` is the total number of digits and `scale` the number of fractional digits (earlier docs described them the other way round). Calls written for the old convention (`scale > precision`, e.g. `scale=10, precision=2`) still bind `DECIMAL(10,2)` but emit a `DeprecationWarning`; swap your arguments, as this will raise `ValueError` in a future release. A declared `scale` equal to or less than `precision` is now interpreted with the SQL meaning, and a declared `scale` smaller than the value's own scale is widened so fractional digits are not lost (up to the 38-digit DECIMAL maximum; a value needing more digits than that still has its excess fractional digits rounded).
 - Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
 
 # 4.8.0 (2026-10-24)
