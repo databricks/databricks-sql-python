@@ -215,6 +215,12 @@ class ResultSet(ABC):
         """
         if self._row_buffer_count() == 0:
             raw = fetch_raw(max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1))
+            # If convert() raises, this batch is dropped on purpose: the queue has
+            # already moved past it, and _next_row_index (advanced by fetch_raw)
+            # still equals the queue position. Rolling the index back would make it
+            # lag the queue and break Thrift's expected_row_start_offset check on
+            # the next fetch, and retrying convert() on the same data would just
+            # fail again.
             rows = convert(raw)
             if not rows:
                 return None
