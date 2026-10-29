@@ -604,11 +604,13 @@ class DecimalParameter(DbsqlParameterBase):
         If set, `scale` and `precision` must both be set. If neither is set, the value
         will be casted to the smallest possible DECIMAL type that can contain it.
 
-        When set, `precision` and `scale` declare a *minimum* DECIMAL(precision, scale)
-        type: if the value needs more fractional or integer digits than declared, the
-        bound type is widened to fit it (capped at precision 38) so no digits are lost.
-        The value is never rounded or truncated to a narrower declared type; round the
-        `Decimal` yourself (e.g. with `Decimal.quantize`) before binding if you need that.
+        When set, `precision` and `scale` declare a DECIMAL(precision, scale) type. If
+        the value has more fractional digits than `scale`, the bound scale (and so the
+        precision) is widened to fit them (capped at precision 38) so they are not lost;
+        the declared integer room (`precision - scale`) is kept, so a value with more
+        integer digits than that is still rejected by the server as out of range.
+        Round the `Decimal` yourself (e.g. with `Decimal.quantize`) before binding if
+        you need it narrowed to the declared scale.
 
         :value:
             The value to bind for this parameter. This will be casted to a DECIMAL.
@@ -630,9 +632,9 @@ class DecimalParameter(DbsqlParameterBase):
             (unless the value needs more than 38 digits in total; the excess fractional
             digits are then rounded by the server).
         :precision:
-            The minimum precision (total number of digits) of the number, between 1 and 38.
-            If the value has more integer digits than `precision - scale` allows, or its
-            scale is widened, the precision grows to fit it (up to 38).
+            The precision (total number of digits) of the number, between 1 and 38.
+            `precision - scale` integer digits are allowed; if the scale is widened to
+            fit the value, the precision grows by the same amount (up to 38).
         """
         self.value: decimal.Decimal = value
         self.name = name
@@ -645,7 +647,11 @@ class DecimalParameter(DbsqlParameterBase):
                 "as integers"
             )
 
-        if self.scale is not None and self.precision is not None and self.scale > self.precision:
+        if (
+            self.scale is not None
+            and self.precision is not None
+            and self.scale > self.precision
+        ):
             # Earlier releases documented these arguments the other way round
             # (scale = total digits, precision = fractional digits). A valid
             # DECIMAL can never have scale > precision, so this can only be a call
@@ -657,7 +663,9 @@ class DecimalParameter(DbsqlParameterBase):
                 "`precision` is the total number of digits and `scale` is the number of "
                 "digits after the decimal point, as in SQL DECIMAL(precision, scale). "
                 "Swap your arguments; this will raise ValueError in a future "
-                "release.".format(self.scale, self.precision, self.scale, self.precision),
+                "release.".format(
+                    self.scale, self.precision, self.scale, self.precision
+                ),
                 # FutureWarning (not DeprecationWarning) so end users see it by
                 # default, not only when the call originates from __main__.
                 FutureWarning,
@@ -692,24 +700,13 @@ class DecimalParameter(DbsqlParameterBase):
 
     def _cast_expr(self):
         if self.scale is not None and self.precision is not None:
-            precision, scale = self._effective_precision_and_scale(self.precision, self.scale)
-            if precision - scale > self.precision - self.scale:
-                # The value has more integer digits than the declared type allows.
-                # Earlier releases let the server reject this as out of range, so
-                # surface it above DEBUG for callers relying on the declared type.
-                logger.warning(
-                    "DecimalParameter value has more integer digits than declared "
-                    "DECIMAL(%d,%d) allows; it is bound as DECIMAL(%d,%d) instead of "
-                    "being rejected as out of range",
-                    self.precision,
-                    self.scale,
-                    precision,
-                    scale,
-                )
-            elif (precision, scale) != (self.precision, self.scale):
+            precision, scale = self._effective_precision_and_scale(
+                self.precision, self.scale
+            )
+            if (precision, scale) != (self.precision, self.scale):
                 logger.debug(
                     "DecimalParameter declared DECIMAL(%d,%d) is bound as DECIMAL(%d,%d) "
-                    "to fit the value's digits (precision capped at 38)",
+                    "to fit the value's fractional digits (precision capped at 38)",
                     self.precision,
                     self.scale,
                     precision,
@@ -723,15 +720,15 @@ class DecimalParameter(DbsqlParameterBase):
     MAX_PRECISION = 38
 
     def _effective_precision_and_scale(self, precision: int, scale: int):
-        """Widen a declared DECIMAL(precision, scale) so the bound value fits: the
-        value's own scale is authoritative over an under-declared target scale, and
-        the integer-digit room is widened to the value's integer digits when the
-        declared ``precision - scale`` is too small (so the declared precision is not
-        enforced as a range check). Extra integer room from the declared type is kept.
+        """Widen a declared DECIMAL(precision, scale) so the value's fractional digits
+        fit: the value's own scale is authoritative over an under-declared target
+        scale. The declared integer room (``precision - scale``) is never widened, so
+        a value with more integer digits is still rejected by the server as out of
+        range, as in earlier releases.
 
         Exception: the total is capped at MAX_PRECISION (38) digits. If the value
-        itself needs more than 38 digits (e.g. a scale over 38), the cast is clamped
-        and the server rounds away the fractional digits that do not fit.
+        needs more than that (e.g. a scale over 38), the cast is clamped and the
+        server rounds away the fractional digits that do not fit.
         """
         value = self.value
         if not isinstance(value, decimal.Decimal):
@@ -747,20 +744,22 @@ class DecimalParameter(DbsqlParameterBase):
             return precision, scale
 
         value_scale = max(-exponent, 0)
-        value_int_digits = max(len(digits) + exponent, 0)
+        declared_int_digits = precision - scale
+        # Integer room is never widened past the declared one: an overflowing value
+        # is left for the server to reject as out of range.
+        value_int_digits = min(max(len(digits) + exponent, 0), declared_int_digits)
 
         desired_scale = max(scale, value_scale)
-        desired_int_digits = max(precision - scale, value_int_digits)
 
         # Allocate the (at most MAX_PRECISION) digits by priority so that, when the
         # cap is hit, the value's own digits win over extra declared room
         # (similar to Spark's decimal precision adjustment):
         #   1. the value's integer digits, 2. the value's fractional digits,
         #   3. extra declared integer room, 4. extra declared fractional room.
-        int_digits = min(value_int_digits, self.MAX_PRECISION)
+        int_digits = value_int_digits
         effective_scale = min(value_scale, self.MAX_PRECISION - int_digits)
         remaining = self.MAX_PRECISION - int_digits - effective_scale
-        extra_int = min(desired_int_digits - int_digits, remaining)
+        extra_int = min(declared_int_digits - int_digits, remaining)
         int_digits += extra_int
         remaining -= extra_int
         effective_scale += min(desired_scale - effective_scale, remaining)

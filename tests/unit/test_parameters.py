@@ -114,26 +114,31 @@ def test_calculate_decimal_cast_string(value, expected):
         (Decimal("123"), 0, 10, "DECIMAL(10,0)"),
         # Value scale exceeds declared scale: scale widens, declared int room (8) is kept
         (Decimal("123.4567"), 2, 10, "DECIMAL(12,4)"),
-        # Value has more integer digits than declared precision - scale allows
-        (Decimal("123456789012.5"), 2, 10, "DECIMAL(14,2)"),
-        # Positive exponent: 1E+3 needs 4 integer digits, no fractional digits
-        (Decimal("1E+3"), 0, 2, "DECIMAL(4,0)"),
+        # Value has more integer digits than declared precision - scale allows:
+        # integer room is not widened, so the server rejects it as out of range
+        (Decimal("123456789012.5"), 2, 10, "DECIMAL(10,2)"),
+        # Positive exponent: 1E+3 needs 4 integer digits; declared room (2) is kept
+        (Decimal("1E+3"), 0, 2, "DECIMAL(2,0)"),
+        (Decimal("1E+3"), 0, 5, "DECIMAL(5,0)"),
         # Widened precision is capped at 38
         (Decimal("0.123456789012345678901234567890123456"), 2, 10, "DECIMAL(38,36)"),
         # Widened scale is capped at the (capped) precision
         (Decimal("0.1234567890123456789012345678901234567890"), 2, 10, "DECIMAL(38,38)"),
-        # When the cap is hit, the value's integer digits win and extra declared
-        # scale shrinks (31 int + 1 frac digits fit losslessly in DECIMAL(38,7))
-        (Decimal("1234567890123456789012345678901.5"), 8, 10, "DECIMAL(38,7)"),
-        # Value fills all 38 digits: declared extra scale is dropped entirely
-        (Decimal("1234567890123456789012345678901234567.8"), 8, 10, "DECIMAL(38,1)"),
+        # When the cap is hit, the value's fractional digits win over extra declared
+        # integer room (1 int + 5 frac digits; 32 of the 36 declared int digits kept)
+        (Decimal("1.12345"), 2, 38, "DECIMAL(38,5)"),
+        # The value's integer digits win over its fractional digits at the cap
+        # (36 int digits fill the declared room; the server rounds the excess scale)
+        (Decimal("123456789012345678901234567890123456.12345"), 2, 38, "DECIMAL(38,2)"),
+        # Integer overflow of the declared room is never widened, even near the cap
+        (Decimal("1234567890123456789012345678901.5"), 8, 10, "DECIMAL(10,8)"),
         # NaN / Infinity leave the declared type untouched
         (Decimal("NaN"), 2, 10, "DECIMAL(10,2)"),
         (Decimal("Infinity"), 2, 10, "DECIMAL(10,2)"),
         # Non-Decimal values are inspected via str(value), which is what is sent
         (1.5, 2, 10, "DECIMAL(10,2)"),
         (12.3456, 2, 10, "DECIMAL(12,4)"),
-        (123456789012, 0, 10, "DECIMAL(12,0)"),
+        (123456789012, 0, 10, "DECIMAL(10,0)"),
         ("123.4567", 2, 10, "DECIMAL(12,4)"),
         # Unparseable values fall back to the declared type
         ("not-a-number", 2, 10, "DECIMAL(10,2)"),
@@ -153,14 +158,12 @@ def test_decimal_widened_type_is_logged(caplog):
     assert "DECIMAL(10,2) is bound as DECIMAL(12,4)" in caplog.text
 
 
-def test_decimal_widened_integer_room_is_warned(caplog):
-    """Widening the integer room (no longer an out-of-range error) is logged at WARNING."""
+def test_decimal_integer_room_is_not_widened(caplog):
+    """Too many integer digits keep the declared type so the server range check applies."""
     p = DecimalParameter(Decimal("123456789012.5"), scale=2, precision=10)
-    with caplog.at_level("WARNING", logger="databricks.sql.parameters.native"):
-        assert p._cast_expr() == "DECIMAL(14,2)"
-    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
-    assert len(warnings) == 1
-    assert "DECIMAL(10,2) allows; it is bound as DECIMAL(14,2)" in warnings[0].getMessage()
+    with caplog.at_level("DEBUG", logger="databricks.sql.parameters.native"):
+        assert p._cast_expr() == "DECIMAL(10,2)"
+    assert "is bound as" not in caplog.text
 
 
 def test_decimal_widened_scale_only_is_not_warned(caplog):
