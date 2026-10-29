@@ -510,6 +510,26 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         )
         assert self._recursive_compare(result.col, data)
 
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_decimal_explicit_precision_scale_order(self, extra_params):
+        """PARAMQUERY-021 (a): a declared DECIMAL(10,2) target (precision=10, scale=2)
+        must be sent as DECIMAL(10,2), not DECIMAL(2,10), and the value round-trips."""
+        param = DecimalParameter(Decimal("123.45"), scale=2, precision=10)
+        with self.cursor(extra_params) as cursor:
+            result = cursor.execute("SELECT ? AS v", [param]).fetchone()
+
+        assert result.v == Decimal("123.45")
+
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_decimal_target_type_never_truncates_bound_scale(self, extra_params):
+        """PARAMQUERY-021 (c): the value's own scale (4) is authoritative over an
+        under-declared target scale (2): all four fractional digits must survive."""
+        param = DecimalParameter(Decimal("123.4567"), scale=2, precision=10)
+        with self.cursor(extra_params) as cursor:
+            result = cursor.execute("SELECT ? AS v", [param]).fetchone()
+
+        assert result.v == Decimal("123.4567")
+
 
 class TestInlineParameterSyntax(PySQLPytestTestCase):
     """The inline parameter approach uses pyformat markers"""
