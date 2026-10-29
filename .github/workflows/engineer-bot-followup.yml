@@ -150,7 +150,8 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
-          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
+          ENGINEER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           # NOTE: no live-warehouse connection env (DATABRICKS_SERVER_HOSTNAME /
           # DATABRICKS_HTTP_PATH / DATABRICKS_CATALOG / DATABRICKS_USER) is wired
