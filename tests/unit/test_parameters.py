@@ -264,6 +264,22 @@ def test_decimal_precision_zero_falls_back_to_inferred_type_with_warning(scale):
 
 
 @pytest.mark.parametrize(
+    "scale,match",
+    (
+        (-1, "scale must be >= 0, got -1"),
+        (500, "scale must be between 0 and 38, got 500"),
+    ),
+)
+def test_decimal_precision_zero_with_invalid_scale_raises(scale, match):
+    """An out-of-range scale is rejected even with precision=0, not hidden behind
+    the precision=0 migration warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        with pytest.raises(ValueError, match=match):
+            DecimalParameter(Decimal("1.5"), scale=scale, precision=0)
+
+
+@pytest.mark.parametrize(
     "value,precision,expected",
     (
         (Decimal("123.45"), 2, "DECIMAL(5,2)"),

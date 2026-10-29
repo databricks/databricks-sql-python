@@ -649,6 +649,20 @@ class DecimalParameter(DbsqlParameterBase):
                 "as integers"
             )
 
+        if self.scale is not None:
+            # Range-check scale before the precision=0 fallback below, so a clearly
+            # invalid scale is reported rather than hidden behind a migration warning.
+            if self.scale < 0:
+                raise ValueError(
+                    "DecimalParameter scale must be >= 0, got {}".format(self.scale)
+                )
+            if self.scale > self.MAX_PRECISION:
+                raise ValueError(
+                    "DecimalParameter scale must be between 0 and {}, got {}".format(
+                        self.MAX_PRECISION, self.scale
+                    )
+                )
+
         if self.precision == 0:
             # Earlier releases treated precision=0 as falsy, i.e. "unset", and inferred
             # the type from the value. Keep that behaviour for now (swapping e.g.
@@ -671,21 +685,11 @@ class DecimalParameter(DbsqlParameterBase):
             # Range-check the raw arguments *before* the legacy swap below, so a call
             # that is simply invalid (rather than written for the legacy convention)
             # gets an error naming the argument the caller actually passed, and no
-            # misleading migration warning.
-            if self.scale < 0:
-                raise ValueError(
-                    "DecimalParameter scale must be >= 0, got {}".format(self.scale)
-                )
+            # misleading migration warning. (scale was range-checked above.)
             if not 1 <= self.precision <= self.MAX_PRECISION:
                 raise ValueError(
                     "DecimalParameter precision must be between 1 and {}, got {}".format(
                         self.MAX_PRECISION, self.precision
-                    )
-                )
-            if self.scale > self.MAX_PRECISION:
-                raise ValueError(
-                    "DecimalParameter scale must be between 0 and {}, got {}".format(
-                        self.MAX_PRECISION, self.scale
                     )
                 )
 
