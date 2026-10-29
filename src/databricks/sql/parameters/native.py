@@ -600,6 +600,12 @@ class DecimalParameter(DbsqlParameterBase):
         If set, `scale` and `precision` must both be set. If neither is set, the value
         will be casted to the smallest possible DECIMAL type that can contain it.
 
+        When set, `precision` and `scale` declare a *minimum* DECIMAL(precision, scale)
+        type: if the value needs more fractional or integer digits than declared, the
+        bound type is widened to fit it (capped at precision 38) so no digits are lost.
+        The value is never rounded or truncated to a narrower declared type; round the
+        `Decimal` yourself (e.g. with `Decimal.quantize`) before binding if you need that.
+
         :value:
             The value to bind for this parameter. This will be casted to a DECIMAL.
         :name:
@@ -618,7 +624,9 @@ class DecimalParameter(DbsqlParameterBase):
             The number of digits to the right of the decimal point. If the value itself
             has more fractional digits, the value's scale is used so no digits are lost.
         :precision:
-            The maximum precision (total number of digits) of the number between 1 and 38.
+            The minimum precision (total number of digits) of the number, between 1 and 38.
+            If the value has more integer digits than `precision - scale` allows, or its
+            scale is widened, the precision grows to fit it (up to 38).
         """
         self.value: decimal.Decimal = value
         self.name = name
@@ -628,6 +636,18 @@ class DecimalParameter(DbsqlParameterBase):
         if not self.valid_scale_and_precision():
             raise ValueError(
                 "DecimalParameter requires both or none of scale and precision to be set"
+            )
+
+        if self.scale is not None and self.precision is not None and self.scale > self.precision:
+            # Earlier releases documented these arguments the other way round
+            # (scale = total digits, precision = fractional digits). Fail loudly
+            # instead of silently reinterpreting a call written that way.
+            raise ValueError(
+                "DecimalParameter scale ({}) must not exceed precision ({}). `precision` is "
+                "the total number of digits and `scale` is the number of digits after the "
+                "decimal point, as in SQL DECIMAL(precision, scale).".format(
+                    self.scale, self.precision
+                )
             )
 
     def valid_scale_and_precision(self):

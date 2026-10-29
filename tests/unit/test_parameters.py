@@ -112,12 +112,33 @@ def test_calculate_decimal_cast_string(value, expected):
     (
         (Decimal("123.45"), 2, 10, "DECIMAL(10,2)"),
         (Decimal("123"), 0, 10, "DECIMAL(10,0)"),
+        # Value scale exceeds declared scale: scale widens, declared int room (8) is kept
+        (Decimal("123.4567"), 2, 10, "DECIMAL(12,4)"),
+        # Value has more integer digits than declared precision - scale allows
+        (Decimal("123456789012.5"), 2, 10, "DECIMAL(14,2)"),
+        # Positive exponent: 1E+3 needs 4 integer digits, no fractional digits
+        (Decimal("1E+3"), 0, 2, "DECIMAL(4,0)"),
+        # Widened precision is capped at 38
+        (Decimal("0.123456789012345678901234567890123456"), 2, 10, "DECIMAL(38,36)"),
+        # Widened scale is capped at the (capped) precision
+        (Decimal("0.1234567890123456789012345678901234567890"), 2, 10, "DECIMAL(38,38)"),
+        # NaN / Infinity leave the declared type untouched
+        (Decimal("NaN"), 2, 10, "DECIMAL(10,2)"),
+        (Decimal("Infinity"), 2, 10, "DECIMAL(10,2)"),
+        # Non-Decimal values (no as_tuple) fall back to the declared type
+        (1.5, 2, 10, "DECIMAL(10,2)"),
     ),
 )
 def test_decimal_explicit_precision_scale_cast_string(value, scale, precision, expected):
     """PARAMQUERY-021: SQL DECIMAL type is DECIMAL(precision, scale)."""
     p = DecimalParameter(value, scale=scale, precision=precision)
     assert p._cast_expr() == expected
+
+
+def test_decimal_scale_greater_than_precision_rejected():
+    """Callers using the old (swapped) argument convention must fail loudly."""
+    with pytest.raises(ValueError, match="must not exceed precision"):
+        DecimalParameter(Decimal("12.3456"), scale=4, precision=2)
 
 
 class Primitive(Enum):
