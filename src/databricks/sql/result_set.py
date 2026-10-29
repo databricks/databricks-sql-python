@@ -202,8 +202,10 @@ class ResultSet(ABC):
     ) -> Optional[Row]:
         """Serve fetchone() from the row buffer, refilling in small batches.
 
-        Each refill fetches ``arraysize`` rows, capped at
-        ``_FETCHONE_BUFFER_MAX_ROWS``.
+        Each refill asks ``fetch_raw`` for up to ``arraysize`` rows, capped at
+        ``_FETCHONE_BUFFER_MAX_ROWS``. ``fetch_raw`` may return fewer (Thrift only
+        serves what its current queue holds, refilling it at most until one row is
+        available, so latency to the first row is unchanged).
 
         ``_next_row_index`` keeps counting rows handed to the caller: rows parked in
         the buffer are subtracted on refill and added back as they are taken. The
@@ -484,6 +486,26 @@ class ThriftResultSet(ResultSet):
 
         return concat_table_chunks(partial_result_chunks)
 
+    def _fetch_available_from_queue(self, size: int):
+        """Fetch up to ``size`` rows the queue already holds, for fetchone() refills.
+
+        Unlike ``_fetchmany_*_from_queue``, this does not keep calling the server
+        until ``size`` rows are collected: it only refills the queue while it is
+        empty, so fetchone() makes no more round-trips than it needs to return one
+        row (server pages can be smaller than ``size`` when they hit the byte limit).
+        Only called while the fetchone() row buffer is empty.
+        """
+        results = self.results.next_n_rows(size)
+        while (
+            results.num_rows == 0
+            and not self.has_been_closed_server_side
+            and self.has_more_rows
+        ):
+            self._fill_results_buffer()
+            results = self.results.next_n_rows(size)
+        self._next_row_index += results.num_rows
+        return results
+
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         buffered = self._row_buffer_take_raw()
@@ -553,9 +575,11 @@ class ThriftResultSet(ResultSet):
         """
         if isinstance(self.results, ColumnQueue):
             return self._fetchone_buffered(
-                self.fetchmany_columnar, self._convert_columnar_table
+                self._fetch_available_from_queue, self._convert_columnar_table
             )
-        return self._fetchone_buffered(self.fetchmany_arrow, self._convert_arrow_table)
+        return self._fetchone_buffered(
+            self._fetch_available_from_queue, self._convert_arrow_table
+        )
 
     def fetchall(self) -> List[Row]:
         """

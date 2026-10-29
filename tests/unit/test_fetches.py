@@ -95,7 +95,8 @@ class FetchTests(unittest.TestCase):
         return rs
 
     @staticmethod
-    def make_dummy_result_set_from_batch_list(batch_list):
+    def make_dummy_result_set_from_batch_list(batch_list, offsets=None):
+        """``offsets``, if given, records ``expected_row_start_offset`` per refill."""
         batch_index = 0
 
         def fetch_results(
@@ -110,6 +111,8 @@ class FetchTests(unittest.TestCase):
             chunk_id=0,
         ):
             nonlocal batch_index
+            if offsets is not None:
+                offsets.append(expected_row_start_offset)
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1
 
@@ -327,6 +330,67 @@ class FetchTests(unittest.TestCase):
         batch_list_2 = [[]]
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_2)
         self.assertEqual(dummy_result_set.fetchone(), None)
+
+    def test_mixed_fetches_across_pages_keep_order_and_refill_offsets(self):
+        # Issue #981: rows parked in the fetchone() buffer must not skew
+        # ``_next_row_index``, which Thrift sends as ``expected_row_start_offset``
+        # on every refill. Pages are 3 rows; fetchone() refills 2 rows at a time,
+        # so buffer refills and server page boundaries interleave.
+        batch_list = [[[0], [1], [2]], [[3], [4], [5]], [[6], [7], [8]], [[9]]]
+        offsets = []
+        rs = self.make_dummy_result_set_from_batch_list(batch_list, offsets=offsets)
+        rs.arraysize = 2
+        self.assertEqual(offsets, [0])
+
+        self.assertSequenceEqual(rs.fetchone(), [0])
+        self.assertEqual(rs.rownumber, 1)
+
+        # Drains the buffered row, the rest of page 0, then refills page 1.
+        table = rs.fetchmany_arrow(3)
+        self.assertEqual(table.column(0).to_pylist(), [1, 2, 3])
+        self.assertEqual(rs.rownumber, 4)
+        self.assertEqual(offsets, [0, 3])
+
+        self.assertSequenceEqual(rs.fetchone(), [4])
+        self.assertSequenceEqual(rs.fetchone(), [5])
+        self.assertEqual(rs.rownumber, 6)
+        self.assertEqual(offsets, [0, 3])
+
+        # Buffer empty and page 1 exhausted: the refill crosses into page 2.
+        self.assertSequenceEqual(rs.fetchone(), [6])
+        self.assertEqual(rs.rownumber, 7)
+        self.assertEqual(offsets, [0, 3, 6])
+
+        # Drains the buffered row [7], the rest of page 2, then page 3.
+        self.assertEqualRowValues(rs.fetchall(), [[7], [8], [9]])
+        self.assertEqual(rs.rownumber, 10)
+        self.assertEqual(offsets, [0, 3, 6, 9])
+
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(rs.rownumber, 10)
+        self.assertEqual(offsets, [0, 3, 6, 9])
+
+    def test_fetchone_refill_does_not_fetch_extra_pages(self):
+        # A refill must not make extra round-trips to fill ``arraysize`` when
+        # server pages are smaller (e.g. byte-limited): it serves what the current
+        # queue holds and only fetches a new page once the queue is empty.
+        batch_list = [[[0], [1]], [[2], [3]], [[4]]]
+        offsets = []
+        rs = self.make_dummy_result_set_from_batch_list(batch_list, offsets=offsets)
+        rs.arraysize = 100
+        self.assertEqual(offsets, [0])
+
+        self.assertSequenceEqual(rs.fetchone(), [0])
+        self.assertEqual(offsets, [0])
+        self.assertSequenceEqual(rs.fetchone(), [1])
+        self.assertEqual(offsets, [0])
+        self.assertSequenceEqual(rs.fetchone(), [2])
+        self.assertEqual(offsets, [0, 2])
+        self.assertEqual(rs.rownumber, 3)
+        self.assertEqualRowValues(rs.fetchall(), [[3], [4]])
+        self.assertEqual(offsets, [0, 2, 4])
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(rs.rownumber, 5)
 
     # Regression tests for fetchmany_arrow / fetchall_arrow handling of
     # the schemaless CloudFetch placeholder.

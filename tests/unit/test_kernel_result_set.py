@@ -43,7 +43,7 @@ class _FakeKernelHandle:
         self.closed = True
 
 
-def _make_rs(handle, *, disable_pandas=False) -> KernelResultSet:
+def _make_rs(handle, *, disable_pandas=False, arraysize=100) -> KernelResultSet:
     # The base ResultSet __init__ takes a `connection` ref it never
     # actually dereferences during these buffer tests, so a Mock is
     # fine.
@@ -55,7 +55,7 @@ def _make_rs(handle, *, disable_pandas=False) -> KernelResultSet:
         backend=backend,
         kernel_handle=handle,
         command_id=CommandId.from_sea_statement_id("smoke-test"),
-        arraysize=100,
+        arraysize=arraysize,
         buffer_size_bytes=1024,
     )
 
@@ -182,6 +182,69 @@ def test_fetchall_rows(int_schema):
     rs = _make_rs(handle)
     rows = rs.fetchall()
     assert [r[0] for r in rows] == [1, 2, 3]
+
+
+def _ten_rows_handle(int_schema):
+    # Batch boundaries (3/4/3) deliberately don't line up with arraysize=4
+    # so fetchone() refills span kernel batches.
+    return _FakeKernelHandle(
+        int_schema,
+        [
+            _batch(int_schema, [0, 1, 2]),
+            _batch(int_schema, [3, 4, 5, 6]),
+            _batch(int_schema, [7, 8, 9]),
+        ],
+    )
+
+
+def test_mixed_fetches_keep_order_and_rownumber(int_schema):
+    rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
+    assert rs.fetchone()[0] == 0
+    assert rs.fetchone()[0] == 1
+    assert rs.rownumber == 2
+    assert [r[0] for r in rs.fetchmany(3)] == [2, 3, 4]
+    assert rs.rownumber == 5
+    assert rs.fetchone()[0] == 5
+    assert rs.rownumber == 6
+    assert [r[0] for r in rs.fetchall()] == [6, 7, 8, 9]
+    assert rs.rownumber == 10
+    assert rs.fetchone() is None
+    assert rs.rownumber == 10
+
+
+def test_fetchone_then_fetchall_arrow_keeps_order(int_schema):
+    rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
+    assert rs.fetchone()[0] == 0
+    assert rs.rownumber == 1
+    table = rs.fetchall_arrow()
+    assert table.column(0).to_pylist() == list(range(1, 10))
+    assert rs.rownumber == 10
+
+
+def test_fetchone_then_fetchmany_arrow_keeps_order(int_schema):
+    rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
+    assert rs.fetchone()[0] == 0
+    # Served entirely from the fetchone() row buffer (3 rows left in it).
+    assert rs.fetchmany_arrow(2).column(0).to_pylist() == [1, 2]
+    assert rs.rownumber == 3
+    # Drains the last buffered row, then continues from the batch FIFO.
+    assert rs.fetchmany_arrow(3).column(0).to_pylist() == [3, 4, 5]
+    assert rs.rownumber == 6
+    assert rs.fetchmany_arrow(0).num_rows == 0
+    assert rs.rownumber == 6
+    assert rs.fetchmany_arrow(10).column(0).to_pylist() == [6, 7, 8, 9]
+    assert rs.rownumber == 10
+
+
+def test_fetchone_then_fetchmany_rows_spans_buffer(int_schema):
+    rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
+    assert rs.fetchone()[0] == 0
+    # 3 rows come from the row buffer, the rest from the batch FIFO.
+    assert [r[0] for r in rs.fetchmany(6)] == [1, 2, 3, 4, 5, 6]
+    assert rs.rownumber == 7
+    assert [r[0] for r in rs.fetchmany(10)] == [7, 8, 9]
+    assert rs.rownumber == 10
+    assert rs.fetchmany(1) == []
 
 
 def test_fetchmany_negative_raises(int_schema):
