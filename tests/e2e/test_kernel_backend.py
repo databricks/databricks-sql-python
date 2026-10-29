@@ -206,7 +206,9 @@ def _assert_rows_and_bound(rows, calls):
     assert len(rows) == _ROW_BUFFER_N
     assert [r[0] for r in rows] == list(range(_ROW_BUFFER_N))
     assert all(r[1] == str(r[0]) for r in rows)
-    bound = -(-_ROW_BUFFER_N // _ROW_BUFFER_ARRAYSIZE) + 2
+    # Server batch boundaries add short refills, so an exact ceil(N/arraysize)
+    # bound is layout-dependent. Only distinguish "a few" from "~N" (issue #981).
+    bound = _ROW_BUFFER_N // 10
     assert calls <= bound, (
         f"_convert_arrow_table called {calls} times for {_ROW_BUFFER_N} rows; "
         f"expected at most {bound} (issue #981)"

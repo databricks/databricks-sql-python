@@ -992,7 +992,10 @@ class TestPySQLCoreSuite(
         assert len(rows) == n
         assert [r[0] for r in rows] == list(range(n))
         assert all(r[1] == str(r[0]) for r in rows)
-        bound = -(-n // arraysize) + 2
+        # Refills are capped per server batch / CloudFetch chunk, so an exact
+        # ceil(n/arraysize) bound is layout-dependent. Only distinguish "a few"
+        # conversions from "~n" (one per row, issue #981).
+        bound = n // 10
         assert calls <= bound, (
             "row conversion called {} times for {} rows (arraysize={}); "
             "expected at most {} (issue #981)".format(calls, n, arraysize, bound)
