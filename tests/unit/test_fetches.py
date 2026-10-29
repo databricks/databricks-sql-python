@@ -600,6 +600,38 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rs._row_buffer_count(), 0)
         self.assertEqual(rs.fetchone()[0], 4)
 
+    def test_fetchone_systematic_convert_failure_stops_per_row_retries(self):
+        from unittest.mock import patch
+        from databricks.sql.result_set import _FETCHONE_FALLBACK_PROBE_ROWS
+
+        batch_error = ValueError("batch failure")
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            if len(calls) == 1:
+                raise batch_error
+            raise ValueError("row failure")
+
+        rs = self.make_columnar_result_set(50, arraysize=20)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            for i in range(20):
+                with self.assertRaises(ValueError) as ctx:
+                    rs.fetchone()
+                if i >= _FETCHONE_FALLBACK_PROBE_ROWS:
+                    self.assertIs(ctx.exception, batch_error)
+                self.assertEqual(rs.rownumber, i + 1)
+        # One batch attempt plus only the probe rows were converted individually.
+        self.assertEqual(len(calls), 1 + _FETCHONE_FALLBACK_PROBE_ROWS)
+        self.assertTrue(any("20 of 20 row(s)" in m for m in logs.output))
+        self.assertTrue(any("batch failure" in m for m in logs.output))
+        self.assertEqual(rs.fetchone()[0], 20)
+
     def test_fetchone_raw_converted_count_mismatch_fails_loudly(self):
         from unittest.mock import patch
         from databricks.sql.exc import InternalError

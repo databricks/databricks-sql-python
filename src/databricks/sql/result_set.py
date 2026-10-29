@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 # return one row.
 _FETCHONE_BUFFER_MAX_ROWS = 1000
 
+# After a fetchone() batch conversion fails, the batch is retried one row at a time.
+# If this many leading rows all fail too, the failure is treated as systematic: the
+# rest of the batch is not retried row by row (each would cost a separate
+# conversion) and those rows re-raise the original batch error instead.
+_FETCHONE_FALLBACK_PROBE_ROWS = 5
+
 
 class _FailedRow:
     """Placeholder in the fetchone() row buffer for a row that failed to convert."""
@@ -207,19 +213,29 @@ class ResultSet(ABC):
 
     @staticmethod
     def _convert_rows_individually(
-        raw: Any, convert: Callable[[Any], List[Row]]
+        raw: Any, convert: Callable[[Any], List[Row]], batch_error: Exception
     ) -> Optional[List[Any]]:
         """Convert ``raw`` row by row after a batch conversion failed.
 
         Rows that fail are returned as ``_FailedRow`` placeholders so the error is
-        raised only when that row is handed out. Returns None if ``raw`` has no rows
-        to split, in which case the caller re-raises the batch error.
+        raised only when that row is handed out. If the first
+        ``_FETCHONE_FALLBACK_PROBE_ROWS`` rows all fail, the failure is treated as
+        systematic and the remaining rows are parked with ``batch_error`` instead of
+        being converted one by one. Returns None if ``raw`` has no rows to split, in
+        which case the caller re-raises the batch error.
         """
         n = ResultSet._raw_row_count(raw)
         if not n:
             return None
         rows: List[Any] = []
+        systematic = False
         for i in range(n):
+            if i == _FETCHONE_FALLBACK_PROBE_ROWS and all(
+                isinstance(r, _FailedRow) for r in rows
+            ):
+                systematic = True
+                rows.extend(_FailedRow(batch_error) for _ in range(n - i))
+                break
             one = raw[i : i + 1] if isinstance(raw, list) else raw.slice(i, 1)
             try:
                 rows.extend(convert(one))
@@ -227,10 +243,14 @@ class ResultSet(ABC):
                 rows.append(_FailedRow(e))
         failed = sum(isinstance(r, _FailedRow) for r in rows)
         logger.warning(
-            "fetchone(): failed to convert %d of %d row(s) in a batch; each failing "
+            "fetchone(): failed to convert %d of %d row(s) in a batch%s; each failing "
             "row raises when fetched",
             failed,
             n,
+            " (first %d rows all failed, rest not retried)" % _FETCHONE_FALLBACK_PROBE_ROWS
+            if systematic
+            else "",
+            exc_info=batch_error,
         )
         return rows
 
@@ -270,13 +290,13 @@ class ResultSet(ABC):
             raw = fetch_raw(max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1))
             try:
                 rows = convert(raw)
-            except Exception:
+            except Exception as batch_error:
                 # The queue has already moved past this batch, so it can't be
                 # re-read. Fall back to converting it one row at a time so that,
                 # as before batching, only the row(s) that fail to convert are
                 # lost: each failing row is parked as a _FailedRow and re-raises
                 # its own error when it is reached.
-                fallback = self._convert_rows_individually(raw, convert)
+                fallback = self._convert_rows_individually(raw, convert, batch_error)
                 if fallback is None:
                     raise
                 rows = fallback
