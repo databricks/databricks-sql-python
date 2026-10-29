@@ -19,7 +19,7 @@ from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.result_set import ResultSet
-from databricks.sql.utils import CloudFetchQueue, concat_table_chunks
+from databricks.sql.utils import concat_table_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -193,14 +193,11 @@ class SeaResultSet(ResultSet):
         ``size`` rows, so a refill that starts near the end of the current chunk
         would block on the next download before returning a row that is already
         available. Cap the request at what the current chunk still holds (matching
-        Thrift's ``_cap_to_current_chunk`` and the kernel's ``_fetch_available``).
+        Thrift and the kernel's ``_fetch_available``) via the shared
+        ``ResultSet._cap_to_current_chunk``.
         Only called while the fetchone() row buffer is empty.
         """
-        if isinstance(self.results, CloudFetchQueue) and self.results.table:
-            available = self.results.table.num_rows - self.results.table_row_index
-            if available > 0:
-                size = min(size, available)
-        return self._fetch_raw_from_queue(size)
+        return self._fetch_raw_from_queue(self._cap_to_current_chunk(size))
 
     def _fetch_raw_with_buffer(self, size: Optional[int]) -> Any:
         """Fetch ``size`` (all if None) raw rows, draining the fetchone() buffer first."""

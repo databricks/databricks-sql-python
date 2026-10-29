@@ -651,6 +651,20 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
             with self.assertRaises(InternalError):
                 rs.fetchone()
 
+    def test_fetchone_empty_conversion_of_nonempty_chunk_fails_loudly(self):
+        from unittest.mock import patch
+        from databricks.sql.exc import InternalError
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            return_value=[],
+        ):
+            with self.assertRaises(InternalError):
+                rs.fetchone()
+
     @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
     def test_fetchone_then_fetchall_arrow_keeps_order(self):
         rs = self.make_columnar_result_set(10, arraysize=4)

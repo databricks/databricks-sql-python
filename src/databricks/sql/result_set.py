@@ -254,6 +254,18 @@ class ResultSet(ABC):
         )
         return rows
 
+    def _cap_to_current_chunk(self, size: int) -> int:
+        """Cap ``size`` at the rows left in the current CloudFetch chunk, if any.
+
+        Shared by the Thrift and SEA fetchone() refills so the CloudFetchQueue
+        internals (``table`` / ``table_row_index``) are read in one place.
+        """
+        if isinstance(self.results, CloudFetchQueue) and self.results.table:
+            available = self.results.table.num_rows - self.results.table_row_index
+            if available > 0:
+                return min(size, available)
+        return size
+
     def _row_buffer_take_raw(self, n: Optional[int] = None) -> Any:
         """Pop up to ``n`` (all if None) un-converted rows from the buffer.
 
@@ -300,8 +312,9 @@ class ResultSet(ABC):
                 if fallback is None:
                     raise
                 rows = fallback
-            if not rows:
-                return None
+            # Check for drift before the empty-result early return, so a converter
+            # that yields [] for a non-empty chunk raises instead of silently
+            # ending iteration and losing those rows.
             raw_count = self._raw_row_count(raw)
             if raw_count is not None and raw_count != len(rows):
                 # fetch_raw advanced _next_row_index (and the Thrift fetch offset)
@@ -312,6 +325,8 @@ class ResultSet(ABC):
                         len(rows), raw_count
                     )
                 )
+            if not rows:
+                return None
             self._row_buffer_raw = raw
             self._row_buffer_rows = rows
             self._row_buffer_pos = 0
@@ -605,14 +620,6 @@ class ThriftResultSet(ResultSet):
             results = self.results.next_n_rows(self._cap_to_current_chunk(size))
         self._next_row_index += results.num_rows
         return results
-
-    def _cap_to_current_chunk(self, size: int) -> int:
-        """Cap ``size`` at the rows left in the current CloudFetch chunk, if any."""
-        if isinstance(self.results, CloudFetchQueue) and self.results.table:
-            available = self.results.table.num_rows - self.results.table_row_index
-            if available > 0:
-                return min(size, available)
-        return size
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
