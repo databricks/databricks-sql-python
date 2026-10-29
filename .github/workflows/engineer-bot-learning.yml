@@ -106,8 +106,9 @@ jobs:
           # translate_endpoint's already-v2 early-return, which keeps the trailing
           # `invocations`, so the CLI appends `/v1/messages` →
           # `.../anthropic/invocations/v1/messages` → HTTP 400 (unsupported path).
-          # The effective model is set by the engine default (no retrospective.model).
-          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
+          # The engine adds the [1m] context suffix to the override.
+          ENGINEER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
           SINCE: ${{ inputs.since }}
