@@ -527,6 +527,24 @@ class TestSeaResultSet:
         assert [r.col2 for r in rows] == list(range(100))
         assert m.call_count <= 100 // 10 + 2
 
+    def test_json_row_fetches_keep_order_and_rownumber(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Mixed fetchone/fetchmany/fetchall ordering without any Arrow path."""
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.fetchone().col2 == 1
+        assert rs.rownumber == 2
+        assert [r.col2 for r in rs.fetchmany(3)] == [2, 3, 4]
+        assert rs.rownumber == 5
+        assert rs.fetchone().col2 == 5
+        assert rs.rownumber == 6
+        assert [r.col2 for r in rs.fetchall()] == [6, 7, 8, 9]
+        assert rs.rownumber == 10
+        assert rs.fetchone() is None
+
     @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_json_mixed_fetches_keep_order_and_rownumber(
         self, mock_connection, mock_sea_client, execute_response
