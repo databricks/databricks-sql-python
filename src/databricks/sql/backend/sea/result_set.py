@@ -19,7 +19,7 @@ from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.result_set import ResultSet
-from databricks.sql.utils import concat_table_chunks
+from databricks.sql.utils import CloudFetchQueue, concat_table_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,22 @@ class SeaResultSet(ResultSet):
         self._next_row_index += self._raw_num_rows(results)
         return results
 
+    def _fetch_available_from_queue(self, size: int) -> Any:
+        """Fetch up to ``size`` rows the queue already holds, for Arrow fetchone() refills.
+
+        On CloudFetch, ``next_n_rows`` keeps walking downloaded links until it has
+        ``size`` rows, so a refill that starts near the end of the current chunk
+        would block on the next download before returning a row that is already
+        available. Cap the request at what the current chunk still holds (matching
+        Thrift's ``_fetch_available_from_queue`` and the kernel's ``_fetch_available``).
+        Only called while the fetchone() row buffer is empty.
+        """
+        if isinstance(self.results, CloudFetchQueue) and self.results.table:
+            available = self.results.table.num_rows - self.results.table_row_index
+            if available > 0:
+                size = min(size, available)
+        return self._fetch_raw_from_queue(size)
+
     def _fetch_raw_with_buffer(self, size: Optional[int]) -> Any:
         """Fetch ``size`` (all if None) raw rows, draining the fetchone() buffer first."""
         buffered = self._row_buffer_take_raw(size)
@@ -247,7 +263,9 @@ class SeaResultSet(ResultSet):
 
         if isinstance(self.results, JsonQueue):
             return self._fetchone_buffered(self.fetchmany_json, self._create_json_table)
-        return self._fetchone_buffered(self.fetchmany_arrow, self._convert_arrow_table)
+        return self._fetchone_buffered(
+            self._fetch_available_from_queue, self._convert_arrow_table
+        )
 
     def fetchmany(self, size: int) -> List[Row]:
         """

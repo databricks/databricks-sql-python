@@ -534,21 +534,49 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rs.rownumber, 10)
         self.assertIsNone(rs.fetchone())
 
-    def test_fetchone_convert_failure_logs_dropped_rows_and_reraises(self):
+    def test_fetchone_convert_failure_loses_only_the_bad_row(self):
         from unittest.mock import patch
+
+        real_convert = ThriftResultSet._convert_columnar_table
+
+        def convert_failing_on_2(self_, table):
+            rows = real_convert(self_, table)
+            if any(r[0] == 2 for r in rows):
+                raise ValueError("bad value")
+            return rows
 
         rs = self.make_columnar_result_set(10, arraysize=4)
         with patch.object(
             ThriftResultSet,
             "_convert_columnar_table",
-            side_effect=ValueError("bad value"),
+            autospec=True,
+            side_effect=convert_failing_on_2,
         ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            self.assertEqual(rs.fetchone()[0], 0)
+            self.assertEqual(rs.fetchone()[0], 1)
             with self.assertRaises(ValueError):
                 rs.fetchone()
-        self.assertTrue(any("batch of 4 row(s)" in m for m in logs.output))
-        # The failed batch is dropped; the next fetch resumes after it.
+            # Only the failing row is lost; the rest of the batch is still served.
+            self.assertEqual(rs.rownumber, 3)
+            self.assertEqual(rs.fetchone()[0], 3)
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(4, 10)))
+        self.assertTrue(any("1 of 4 row(s)" in m for m in logs.output))
+        self.assertEqual(rs.rownumber, 10)
+
+    def test_fetchone_convert_failure_on_every_row_reraises_per_row(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(6, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=ValueError("bad value"),
+        ):
+            for expected_rownumber in range(1, 5):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+                self.assertEqual(rs.rownumber, expected_rownumber)
         self.assertEqual(rs._row_buffer_count(), 0)
-        self.assertEqual(rs.rownumber, 4)
         self.assertEqual(rs.fetchone()[0], 4)
 
     @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")

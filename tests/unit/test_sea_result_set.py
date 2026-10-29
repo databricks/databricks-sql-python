@@ -658,6 +658,43 @@ class TestSeaResultSet:
         assert table.column(1).to_pylist() == list(range(1, 10))
         assert rs.rownumber == 10
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_cloudfetch_fetchone_refill_capped_to_current_chunk(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """fetchone() must not block on the next link while the current chunk has rows."""
+        from databricks.sql.backend.sea.queue import SeaCloudFetchQueue
+
+        chunk = pyarrow.Table.from_pydict(
+            {
+                "col1": ["v{}".format(i) for i in range(10)],
+                "col2": list(range(10)),
+                "col3": [True] * 10,
+            }
+        )
+        queue = Mock(spec=SeaCloudFetchQueue)
+        queue.table = chunk
+        queue.table_row_index = 8
+        queue.next_n_rows.side_effect = lambda n: chunk.slice(8, n)
+        result_data = ResultData(data=None, external_links=[], row_count=10)
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=queue,
+        ):
+            rs = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=result_data,
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
+                buffer_size_bytes=1000,
+                arraysize=100,
+            )
+        assert rs.fetchone().col2 == 8
+        queue.next_n_rows.assert_called_once_with(2)
+        assert rs.fetchone().col2 == 9
+        assert rs.rownumber == 2
+
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response
     ):

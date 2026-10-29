@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 _FETCHONE_BUFFER_MAX_ROWS = 1000
 
 
+class _FailedRow:
+    """Placeholder in the fetchone() row buffer for a row that failed to convert."""
+
+    __slots__ = ("error",)
+
+    def __init__(self, error: Exception):
+        self.error = error
+
+
 class ResultSet(ABC):
     """
     Abstract base class for result sets returned by different backend implementations.
@@ -179,7 +188,44 @@ class ResultSet(ABC):
         start, length = self._row_buffer_advance(n)
         if self._row_buffer_count() == 0:
             self._row_buffer_clear()
-        return rows[start : start + length]
+        taken = rows[start : start + length]
+        for row in taken:
+            if isinstance(row, _FailedRow):
+                # The taken rows are consumed either way, matching how a failed
+                # conversion behaved before fetchone() buffering.
+                raise row.error
+        return taken
+
+    @staticmethod
+    def _convert_rows_individually(
+        raw: Any, convert: Callable[[Any], List[Row]]
+    ) -> Optional[List[Any]]:
+        """Convert ``raw`` row by row after a batch conversion failed.
+
+        Rows that fail are returned as ``_FailedRow`` placeholders so the error is
+        raised only when that row is handed out. Returns None if ``raw`` has no rows
+        to split, in which case the caller re-raises the batch error.
+        """
+        if raw is None:
+            return None
+        n = len(raw) if isinstance(raw, list) else getattr(raw, "num_rows", 0)
+        if not n:
+            return None
+        rows: List[Any] = []
+        for i in range(n):
+            one = raw[i : i + 1] if isinstance(raw, list) else raw.slice(i, 1)
+            try:
+                rows.extend(convert(one))
+            except Exception as e:
+                rows.append(_FailedRow(e))
+        failed = sum(isinstance(r, _FailedRow) for r in rows)
+        logger.warning(
+            "fetchone(): failed to convert %d of %d row(s) in a batch; each failing "
+            "row raises when fetched",
+            failed,
+            n,
+        )
+        return rows
 
     def _row_buffer_take_raw(self, n: Optional[int] = None) -> Any:
         """Pop up to ``n`` (all if None) un-converted rows from the buffer.
@@ -215,29 +261,18 @@ class ResultSet(ABC):
         """
         if self._row_buffer_count() == 0:
             raw = fetch_raw(max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1))
-            # If convert() raises, this batch is dropped on purpose: the queue has
-            # already moved past it, and _next_row_index (advanced by fetch_raw)
-            # still equals the queue position. Rolling the index back would make it
-            # lag the queue and break Thrift's expected_row_start_offset check on
-            # the next fetch, and retrying convert() on the same data would just
-            # fail again. A warning records how many rows were discarded so a
-            # caller that swallows the error and keeps fetching isn't silently
-            # short of rows.
             try:
                 rows = convert(raw)
             except Exception:
-                if raw is None:
-                    dropped = 0
-                elif isinstance(raw, list):
-                    dropped = len(raw)
-                else:
-                    dropped = getattr(raw, "num_rows", 0)
-                logger.warning(
-                    "fetchone(): failed to convert a batch of %d row(s); these rows "
-                    "are discarded and will not be returned by later fetches",
-                    dropped,
-                )
-                raise
+                # The queue has already moved past this batch, so it can't be
+                # re-read. Fall back to converting it one row at a time so that,
+                # as before batching, only the row(s) that fail to convert are
+                # lost: each failing row is parked as a _FailedRow and re-raises
+                # its own error when it is reached.
+                fallback = self._convert_rows_individually(raw, convert)
+                if fallback is None:
+                    raise
+                rows = fallback
             if not rows:
                 return None
             self._row_buffer_raw = raw
