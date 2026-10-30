@@ -725,18 +725,65 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
             "_convert_columnar_table",
             side_effect=ValueError("bad value"),
         ), self.assertLogs("databricks.sql.result_set", level="DEBUG") as logs:
-            # Three refill batches, every row failing the same way.
+            # One 4-row refill, then (ramp reset after an all-failing batch) eight
+            # 1-row refills, every row failing the same way.
             for _ in range(12):
                 with self.assertRaises(ValueError):
                     rs.fetchone()
         summaries = [
             r for r in logs.records if "failed to convert" in r.getMessage()
         ]
-        self.assertEqual(len(summaries), 3)
+        self.assertEqual(len(summaries), 9)
         self.assertEqual(
             [r.levelno for r in summaries],
-            [logging.WARNING, logging.DEBUG, logging.DEBUG],
+            [logging.WARNING] + [logging.DEBUG] * 8,
         )
+
+    def test_fetchone_all_failing_batch_resets_refill_ramp(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            raise ValueError("systemic failure")
+
+        rs = self.make_columnar_result_set(30, arraysize=10)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="DEBUG"):
+            for _ in range(15):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+        # First full refill is bisected (2 * 10 - 1 conversions); after that every
+        # refill is a single row costing exactly one conversion.
+        self.assertEqual(len(calls), 2 * 10 - 1 + 5)
+        self.assertEqual(calls[-5:], [1] * 5)
+        self.assertEqual(rs.rownumber, 15)
+
+    def test_fetchone_memory_error_is_not_bisected(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            raise MemoryError()
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ):
+            with self.assertRaises(MemoryError):
+                rs.fetchone()
+        self.assertEqual(calls, [4])
+        self.assertEqual(rs._row_buffer_count(), 0)
 
     def test_fetchone_convert_failure_on_every_row_bisects_to_single_rows(self):
         from unittest.mock import patch

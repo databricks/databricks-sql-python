@@ -41,6 +41,10 @@ _FETCHONE_BUFFER_MAX_ROWS = 1000
 _FETCHONE_BUFFER_INITIAL_ROWS = 1
 _FETCHONE_BUFFER_GROWTH_FACTOR = 10
 
+# Conversion errors that are not caused by row data. fetchone() re-raises these
+# straight away instead of bisecting the batch to find the failing row(s).
+_NON_DATA_CONVERSION_ERRORS = (MemoryError, RecursionError)
+
 
 class _FailedRow:
     """Placeholder in the fetchone() row buffer for a row that failed to convert."""
@@ -379,6 +383,10 @@ class ResultSet(ABC):
             raw = fetch_raw(size)
             try:
                 rows = convert(raw)
+            except _NON_DATA_CONVERSION_ERRORS:
+                # Resource / interpreter failures say nothing about individual
+                # rows; retrying smaller slices would only repeat (or worsen) them.
+                raise
             except Exception as batch_error:
                 # The queue has already moved past this batch, so it can't be
                 # re-read. Fall back to bisecting it down to single rows so that,
@@ -399,6 +407,12 @@ class ResultSet(ABC):
                     raise
                 self._fetchone_conversion_warned = True
                 rows = fallback
+                if all(isinstance(r, _FailedRow) for r in rows):
+                    # Every row failed: likely systemic (a column type or library
+                    # problem that hits each row). Restart the refill ramp so later
+                    # refills convert one row at a time, as before batching, rather
+                    # than paying a full ~2n-conversion bisection on every refill.
+                    self._fetchone_refill_rows = _FETCHONE_BUFFER_INITIAL_ROWS
             # Check for drift before the empty-result early return, so a converter
             # that yields [] for a non-empty chunk raises instead of silently
             # ending iteration and losing those rows.
