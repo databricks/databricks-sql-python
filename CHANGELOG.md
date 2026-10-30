@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Fix: iterating a cursor (`for row in cursor`) and calling `fetchone()` in a loop are now about as fast as `fetchall()`. They previously converted each row through pandas on its own, costing around 1 ms per row, which made SQLAlchemy result iteration very slow. Rows are now converted `arraysize` at a time and served from an internal buffer.
 - Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
 
 # 4.8.0 (2026-10-24)
