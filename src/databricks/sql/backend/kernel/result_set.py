@@ -209,9 +209,15 @@ class KernelResultSet(ResultSet):
         return self._take_buffered(min(size, self._buffered_rows()))
 
     @staticmethod
-    def _prepend_buffered(
+    def _concat_buffered_arrow(
         buffered: Optional[pyarrow.Table], rest: pyarrow.Table
     ) -> pyarrow.Table:
+        """Prepend rows drained from the fetchone() buffer to ``rest``.
+
+        Both tables are built against the result set's ``_schema``, so a plain
+        ``pyarrow.concat_tables`` suffices (no ColumnTable / schema
+        promotion handling as in ``ThriftResultSet._prepend_buffered``).
+        """
         if buffered is None:
             return rest
         if rest.num_rows == 0:
@@ -220,7 +226,7 @@ class KernelResultSet(ResultSet):
 
     def fetchall_arrow(self) -> pyarrow.Table:
         buffered = self._row_buffer_take_raw()
-        return self._prepend_buffered(buffered, self._drain())
+        return self._concat_buffered_arrow(buffered, self._drain())
 
     def fetchmany_arrow(self, size: int) -> pyarrow.Table:
         if size < 0:
@@ -229,7 +235,7 @@ class KernelResultSet(ResultSet):
         remaining = size - (buffered.num_rows if buffered is not None else 0)
         if buffered is not None and remaining == 0:
             return buffered
-        return self._prepend_buffered(
+        return self._concat_buffered_arrow(
             buffered, self._fetchmany_arrow_unbuffered(remaining)
         )
 
