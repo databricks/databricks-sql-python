@@ -28,6 +28,14 @@ from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
+# Records that may contain result data go to the non-propagating "unsafe" logger
+# (configured the same way in thrift_backend.py), so enabling DEBUG on
+# ``databricks.sql`` does not leak row values into logs.
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.propagate = False
+if not unsafe_logger.handlers:
+    unsafe_logger.addHandler(logging.NullHandler())
+
 # Upper bound on how many rows a fetchone() refill pulls and converts at once. The
 # refill uses ``arraysize`` but is capped here so a cursor with a large arraysize
 # (default 100000) doesn't materialise a full page just to return one row.
@@ -130,6 +138,10 @@ class ResultSet(ABC):
         # Size of the next fetchone() refill; grows on each refill (see
         # ``_FETCHONE_BUFFER_GROWTH_FACTOR``).
         self._fetchone_refill_rows = _FETCHONE_BUFFER_INITIAL_ROWS
+        # Set when a fetchone() refill chunk was read from the queue but lost
+        # before it could be buffered (e.g. KeyboardInterrupt / MemoryError during
+        # conversion). Later fetches raise instead of silently skipping those rows.
+        self._lost_rows_error: Optional[str] = None
 
     def __iter__(self):
         while True:
@@ -183,6 +195,11 @@ class ResultSet(ABC):
 
     # ----- fetchone() row buffer helpers -----
 
+    def _check_no_lost_rows(self) -> None:
+        """Raise if an earlier fetchone() refill lost rows (see ``_lost_rows_error``)."""
+        if self._lost_rows_error is not None:
+            raise InternalError(self._lost_rows_error)
+
     def _row_buffer_count(self) -> int:
         return len(self._row_buffer_rows) - self._row_buffer_pos
 
@@ -211,6 +228,7 @@ class ResultSet(ABC):
         all of its rows or raises), so ``rownumber`` stays aligned with what is
         left in the buffer.
         """
+        self._check_no_lost_rows()
         if self._row_buffer_count() == 0:
             return []
         rows = self._row_buffer_rows
@@ -304,7 +322,7 @@ class ResultSet(ABC):
         # One summary line, no traceback: the error itself still reaches the caller
         # when the failing row is fetched. Only the exception type is logged here,
         # since conversion error messages often quote the offending result value;
-        # the message and full traceback are only logged at DEBUG.
+        # the message and full traceback only go to the non-propagating unsafe logger.
         # ``log_level`` lets the caller log this at WARNING only once per result set.
         logger.log(
             log_level,
@@ -314,7 +332,7 @@ class ResultSet(ABC):
             n,
             type(batch_error).__name__,
         )
-        logger.debug(
+        unsafe_logger.debug(
             "fetchone(): batch conversion error: %s", batch_error, exc_info=batch_error
         )
         return rows
@@ -340,6 +358,7 @@ class ResultSet(ABC):
         Returns None when the buffer is empty, otherwise a slice of the raw chunk
         (same type as what the queue returned: Arrow table, ColumnTable or list).
         """
+        self._check_no_lost_rows()
         if self._row_buffer_count() == 0:
             return None
         raw = self._row_buffer_raw
@@ -377,7 +396,12 @@ class ResultSet(ABC):
         ``RecursionError``): the error is re-raised and the whole refill chunk
         (up to ``_FETCHONE_BUFFER_MAX_ROWS`` rows, still counted in ``rownumber``)
         is lost, so callers should not keep fetching from this result set.
+        The same applies to any ``BaseException`` (e.g. ``KeyboardInterrupt``)
+        raised during conversion. In all these cases every later fetch on this
+        result set raises ``InternalError`` rather than silently skipping the
+        lost rows.
         """
+        self._check_no_lost_rows()
         if self._row_buffer_count() == 0:
             cap = max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
             size = max(min(self._fetchone_refill_rows, cap), 1)
@@ -387,6 +411,20 @@ class ResultSet(ABC):
             self._fetchone_refill_rows = min(
                 size * _FETCHONE_BUFFER_GROWTH_FACTOR, _FETCHONE_BUFFER_MAX_ROWS
             )
+            # The queue (and rownumber) has already moved past ``raw``, but it is
+            # only buffered once conversion succeeds. Mark the result set as having
+            # lost rows until then, so any exception escaping below (including
+            # KeyboardInterrupt) makes later fetches fail loudly instead of
+            # resuming from the next chunk with a gap.
+            pending = self._raw_row_count(raw)
+            if pending != 0:
+                self._lost_rows_error = (
+                    "{} row(s) were lost because an earlier fetchone() failed while "
+                    "converting them; this result set can no longer be read "
+                    "consistently, re-execute the query".format(
+                        "Some" if pending is None else pending
+                    )
+                )
             try:
                 rows = convert(raw)
             except _NON_DATA_CONVERSION_ERRORS:
@@ -451,8 +489,8 @@ class ResultSet(ABC):
                 # by raw_count; the buffer must line up 1:1 with the raw chunk or
                 # rownumber and fetchmany_arrow slicing would silently drift.
                 # The raw chunk is not buffered, so its raw_count rows are lost
-                # (yet counted in rownumber): treat the result set as unusable
-                # after this error; later fetches resume from the next chunk.
+                # (yet counted in rownumber): the result set is unusable after
+                # this error and later fetches raise (see ``_lost_rows_error``).
                 raise InternalError(
                     "fetchone(): converted {} row(s) from a chunk of {} raw row(s)".format(
                         len(rows), raw_count
@@ -464,6 +502,8 @@ class ResultSet(ABC):
             self._row_buffer_rows = rows
             self._row_buffer_pos = 0
             self._next_row_index -= len(rows)
+            # ``raw`` is buffered now, so no rows were lost.
+            self._lost_rows_error = None
         return self._row_buffer_take_rows(1)[0]
 
     @property

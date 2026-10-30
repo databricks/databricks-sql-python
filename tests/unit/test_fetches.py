@@ -12,6 +12,7 @@ from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.utils import ArrowQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
+from databricks.sql.exc import InternalError
 
 
 class _StubArrowQueue:
@@ -789,6 +790,40 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
                 rs.fetchone()
         self.assertEqual(calls, [4])
         self.assertEqual(rs._row_buffer_count(), 0)
+        # The lost refill chunk must not be skipped silently on later fetches.
+        with self.assertRaises(InternalError):
+            rs.fetchone()
+
+    def test_fetchone_interrupted_conversion_poisons_later_fetches(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=KeyboardInterrupt(),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                rs.fetchone()
+        # Conversion works again, but the interrupted chunk is gone: every fetch
+        # must raise instead of resuming from the next chunk with a gap.
+        for fetch in (
+            rs.fetchone,
+            lambda: rs.fetchmany(2),
+            rs.fetchall,
+            lambda: rs.fetchmany_arrow(2),
+            rs.fetchall_arrow,
+        ):
+            with self.assertRaises(InternalError) as ctx:
+                fetch()
+            self.assertIn("4 row(s) were lost", str(ctx.exception))
+
+    def test_fetchone_successful_refill_does_not_poison(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        rows = [rs.fetchone() for _ in range(3)]
+        self.assertEqual([r[0] for r in rows], [0, 1, 2])
+        self.assertIsNone(rs._lost_rows_error)
+        self.assertEqual([r[0] for r in rs.fetchall()], list(range(3, 10)))
 
     def test_fetchone_convert_failure_on_every_row_bisects_to_single_rows(self):
         from unittest.mock import patch
