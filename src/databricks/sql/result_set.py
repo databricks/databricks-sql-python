@@ -41,15 +41,6 @@ _FETCHONE_BUFFER_MAX_ROWS = 1000
 _FETCHONE_BUFFER_INITIAL_ROWS = 1
 _FETCHONE_BUFFER_GROWTH_FACTOR = 10
 
-# After a fetchone() batch conversion fails, the batch is retried one row at a time.
-# If this many leading rows all fail too, with the same error type and message as
-# the batch, the failure is treated as systematic: the rest of the batch is not
-# retried row by row (each would cost a separate conversion) and those rows re-raise
-# the original batch error instead. Leading rows failing for other reasons do not
-# trigger the shortcut, so later good rows are still converted.
-_FETCHONE_FALLBACK_PROBE_ROWS = 5
-
-
 class _FailedRow:
     """Placeholder in the fetchone() row buffer for a row that failed to convert."""
 
@@ -57,8 +48,8 @@ class _FailedRow:
 
     def __init__(self, error: Exception):
         self.error = error
-        # Snapshot the conversion traceback. Systematic failures park the same
-        # exception instance in many rows; restoring this before each raise keeps
+        # Snapshot the conversion traceback. A converter may raise the same
+        # exception instance for many rows; restoring this before each raise keeps
         # its __traceback__ from growing (and pinning frames) on every fetchone().
         self.traceback = error.__traceback__
 
@@ -250,60 +241,50 @@ class ResultSet(ABC):
         batch_error: Exception,
         log_level: int = logging.WARNING,
     ) -> Optional[List[Any]]:
-        """Convert ``raw`` row by row after a batch conversion failed.
+        """Convert ``raw`` in smaller pieces after a batch conversion failed.
 
-        Rows that fail are returned as ``_FailedRow`` placeholders so the error is
-        raised only when that row is handed out. If the first
-        ``_FETCHONE_FALLBACK_PROBE_ROWS`` rows all fail with the same error as the
-        batch (same type and message), the failure is treated as systematic and the
-        remaining rows are parked with ``batch_error`` instead of being converted one
-        by one. Otherwise every row is tried individually. Returns None if ``raw``
-        has no rows to split, in which case the caller re-raises the batch error.
+        The failed batch is bisected: each failing range is split in half and the
+        halves are converted separately, down to single rows. Only rows that fail
+        on their own are returned as ``_FailedRow`` placeholders (raised when that
+        row is handed out); every row that converts is kept, so a failure is never
+        attributed to a row that was not itself tried. Cost is about
+        ``2 * k * log2(n)`` conversions for ``k`` bad rows, and at most ``2n``
+        when every row fails. Returns None if ``raw`` has no rows to split, in
+        which case the caller re-raises the batch error.
         """
         n = ResultSet._raw_row_count(raw)
         if not n:
             return None
 
-        def same_as_batch(r: Any) -> bool:
-            return (
-                isinstance(r, _FailedRow)
-                and type(r.error) is type(batch_error)
-                and str(r.error) == str(batch_error)
-            )
-
         rows: List[Any] = []
-        systematic = False
-        for i in range(n):
-            # Only skip the remaining per-row retries when every probe row failed
-            # with the same error as the batch; leading rows that fail for their
-            # own reasons must not cause later good rows to be dropped.
-            if i == _FETCHONE_FALLBACK_PROBE_ROWS and all(
-                same_as_batch(r) for r in rows
-            ):
-                systematic = True
-                rows.extend(_FailedRow(batch_error) for _ in range(n - i))
-                break
-            one = raw[i : i + 1] if isinstance(raw, list) else raw.slice(i, 1)
-            try:
-                rows.extend(convert(one))
-            except Exception as e:
-                rows.append(_FailedRow(e))
+
+        def convert_range(lo: int, hi: int, error: Optional[Exception]) -> None:
+            # ``error`` is the failure already seen for [lo, hi), if it was tried.
+            if error is None:
+                piece = raw[lo:hi] if isinstance(raw, list) else raw.slice(lo, hi - lo)
+                try:
+                    rows.extend(convert(piece))
+                    return
+                except Exception as e:
+                    error = e
+            if hi - lo == 1:
+                rows.append(_FailedRow(error))
+                return
+            mid = (lo + hi) // 2
+            convert_range(lo, mid, None)
+            convert_range(mid, hi, None)
+
+        convert_range(0, n, batch_error)
         failed = sum(isinstance(r, _FailedRow) for r in rows)
         # One summary line, no traceback: the error itself still reaches the caller
         # when the failing row is fetched. The full traceback is only logged at DEBUG.
         # ``log_level`` lets the caller log this at WARNING only once per result set.
         logger.log(
             log_level,
-            "fetchone(): failed to convert %d of %d row(s) in a batch%s; each failing "
+            "fetchone(): failed to convert %d of %d row(s) in a batch; each failing "
             "row raises when fetched (%s: %s)",
             failed,
             n,
-            (
-                " (first %d rows all failed, rest not retried)"
-                % _FETCHONE_FALLBACK_PROBE_ROWS
-                if systematic
-                else ""
-            ),
             type(batch_error).__name__,
             batch_error,
         )
@@ -379,7 +360,7 @@ class ResultSet(ABC):
                 rows = convert(raw)
             except Exception as batch_error:
                 # The queue has already moved past this batch, so it can't be
-                # re-read. Fall back to converting it one row at a time so that,
+                # re-read. Fall back to bisecting it down to single rows so that,
                 # as before batching, only the row(s) that fail to convert are
                 # lost: each failing row is parked as a _FailedRow and re-raises
                 # its own error when it is reached.
