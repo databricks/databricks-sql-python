@@ -390,6 +390,15 @@ class ResultSet(ABC):
                 # as before batching, only the row(s) that fail to convert are
                 # lost: each failing row is parked as a _FailedRow and re-raises
                 # its own error when it is reached.
+                # Why not just drop the batch and re-raise (as fetchmany does)?
+                # fetchone() used to convert one row at a time, so callers that
+                # catch a conversion error and keep iterating lost only that row.
+                # Dropping the whole refill would silently lose up to
+                # _FETCHONE_BUFFER_MAX_ROWS good rows per bad one, a behaviour
+                # change hidden behind a perf fix. Bisection keeps the old
+                # semantics; its ~2n-conversion worst case is bounded by the ramp
+                # reset below, and _FailedRow tracebacks are freed as they are
+                # consumed (or with the buffer).
                 # Warn once per result set; later failing batches (e.g. a column
                 # type that fails in every row) log at DEBUG to avoid a WARNING
                 # per refill for callers that catch and keep fetching.
