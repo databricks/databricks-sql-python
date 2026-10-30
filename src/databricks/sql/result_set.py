@@ -308,6 +308,10 @@ class ResultSet(ABC):
                 try:
                     rows.extend(convert(piece))
                     return
+                except _NON_DATA_CONVERSION_ERRORS:
+                    # Resource / interpreter failures are not row-specific: stop
+                    # bisecting and propagate, as the top-level refill does.
+                    raise
                 except Exception as e:
                     error = e
             if hi - lo == 1:

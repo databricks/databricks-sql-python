@@ -794,6 +794,34 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         with self.assertRaises(InternalError):
             rs.fetchone()
 
+    def test_fetchone_memory_error_during_bisection_stops_bisecting(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            if len(calls) == 1:
+                raise ValueError("bad value")
+            raise MemoryError()
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ):
+            with self.assertRaises(MemoryError):
+                rs.fetchone()
+        # The full batch fails with a data error, the first half hits MemoryError:
+        # bisection stops there instead of converting more slices.
+        self.assertEqual(calls, [4, 2])
+        self.assertEqual(rs._row_buffer_count(), 0)
+        # The lost refill chunk must not be skipped silently on later fetches.
+        with self.assertRaises(InternalError):
+            rs.fetchone()
+
     def test_fetchone_interrupted_conversion_poisons_later_fetches(self):
         from unittest.mock import patch
 
