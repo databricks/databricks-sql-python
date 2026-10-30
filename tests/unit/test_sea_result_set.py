@@ -308,6 +308,29 @@ class TestSeaResultSet:
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
+    @pytest.mark.parametrize("fetch_after_close", ["fetchall", "fetchmany_arrow"])
+    def test_close_drops_fetchone_row_buffer(
+        self, result_set_with_data, fetch_after_close
+    ):
+        """Rows parked in the fetchone() buffer must not survive close()."""
+        if fetch_after_close == "fetchmany_arrow" and pyarrow is None:
+            pytest.skip("PyArrow is not installed")
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs = result_set_with_data
+        # Warm refill pulls all 5 rows into the buffer, emptying the queue, so any
+        # row returned after close() could only come from a stale buffer.
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        assert rs.fetchone()[0] == "value1"
+        assert rs._row_buffer_count() == 4
+        rs.close()
+        assert rs._row_buffer_count() == 0
+        if fetch_after_close == "fetchall":
+            assert rs.fetchall() == []
+        else:
+            assert rs.fetchmany_arrow(10).num_rows == 0
+        assert rs.fetchone() is None
+
     def test_convert_json_types(self, result_set_with_data, sample_data):
         """Test the _convert_json_types method."""
         # Call _convert_json_types
@@ -690,6 +713,10 @@ class TestSeaResultSet:
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
+        # Skip the adaptive refill ramp so the chunk cap, not the ramp, bounds it.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
         assert rs.fetchone().col2 == 8
         queue.next_n_rows.assert_called_once_with(2)
         assert rs.fetchone().col2 == 9

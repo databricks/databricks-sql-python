@@ -370,6 +370,25 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(rs.rownumber, 10)
         self.assertEqual(offsets, [0, 3, 6, 9])
 
+    def test_close_drops_fetchone_row_buffer(self):
+        # Rows parked in the fetchone() buffer must not survive close(). The warm
+        # refill pulls every row into the buffer, so the queue itself is empty and
+        # any row returned after close() could only come from a stale buffer.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        for fetch_after_close in (
+            lambda rs: rs.fetchall(),
+            lambda rs: rs.fetchmany_arrow(10).to_pylist(),
+        ):
+            rs = self.make_dummy_result_set_from_initial_results([[1], [2], [3], [4]])
+            rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+            self.assertSequenceEqual(rs.fetchone(), [1])
+            self.assertEqual(rs._row_buffer_count(), 3)
+            rs.close()
+            self.assertEqual(rs._row_buffer_count(), 0)
+            self.assertEqual(fetch_after_close(rs), [])
+            self.assertIsNone(rs.fetchone())
+
     def test_fetchone_refill_does_not_fetch_extra_pages(self):
         # A refill must not make extra round-trips to fill ``arraysize`` when
         # server pages are smaller (e.g. byte-limited): it serves what the current
@@ -408,6 +427,10 @@ class FetchTests(unittest.TestCase):
             description=[("col0", "integer", None, None, None, None, None)],
         )
         rs.arraysize = 100
+        # Skip the adaptive refill ramp so the chunk cap, not the ramp, bounds it.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
 
         self.assertSequenceEqual(rs.fetchone(), [8])
         queue.next_n_rows.assert_called_once_with(2)
@@ -482,13 +505,21 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
     rows in batches (not one row at a time) while keeping order and rownumber."""
 
     @staticmethod
-    def make_columnar_result_set(n_rows, arraysize):
+    def make_columnar_result_set(n_rows, arraysize, warm=True):
+        """Build a result set over ``n_rows`` columnar rows.
+
+        With ``warm`` (the default) the adaptive fetchone() refill ramp is skipped,
+        so every refill is ``min(arraysize, _FETCHONE_BUFFER_MAX_ROWS)`` rows and the
+        batch-boundary assertions below stay simple. Pass ``warm=False`` to test
+        the ramp itself.
+        """
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
         from databricks.sql.utils import ColumnQueue, ColumnTable
 
         table = ColumnTable([list(range(n_rows))], ["col0"])
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results.return_value = (ColumnQueue(table), False, 0)
-        return ThriftResultSet(
+        rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
                 command_id=None,
@@ -501,6 +532,9 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
             thrift_client=mock_thrift_backend,
             arraysize=arraysize,
         )
+        if warm:
+            rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        return rs
 
     @staticmethod
     def _count_conversions():
@@ -542,6 +576,40 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(rs.rownumber, 1)
         self.assertEqual([r[0] for r in rs.fetchall()], list(range(1, n_rows)))
         self.assertEqual(rs.rownumber, n_rows)
+
+    def test_first_fetchone_converts_a_single_row(self):
+        # A lone fetchone() (SQLAlchemy .first()/.scalar(), EXISTS probes) must not
+        # pull and convert a whole batch: the first refill is a single row.
+        rs = self.make_columnar_result_set(5000, arraysize=100000, warm=False)
+        with self._count_conversions() as m:
+            self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(m.call_count, 1)
+        self.assertEqual(m.call_args[0][1].num_rows, 1)
+        self.assertEqual(rs._row_buffer_count(), 0)
+        self.assertEqual(rs.rownumber, 1)
+
+    def test_fetchone_refill_size_ramps_up_to_cap(self):
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        n_rows = 1 + 10 + 100 + _FETCHONE_BUFFER_MAX_ROWS * 2
+        rs = self.make_columnar_result_set(n_rows, arraysize=100000, warm=False)
+        with self._count_conversions() as m:
+            rows = [r[0] for r in rs]
+        self.assertEqual(rows, list(range(n_rows)))
+        sizes = [c[0][1].num_rows for c in m.call_args_list]
+        self.assertEqual(
+            sizes[:5],
+            [1, 10, 100, _FETCHONE_BUFFER_MAX_ROWS, _FETCHONE_BUFFER_MAX_ROWS],
+        )
+        self.assertEqual(rs.rownumber, n_rows)
+
+    def test_fetchone_refill_ramp_is_capped_by_arraysize(self):
+        rs = self.make_columnar_result_set(10, arraysize=4, warm=False)
+        with self._count_conversions() as m:
+            rows = [r[0] for r in rs]
+        self.assertEqual(rows, list(range(10)))
+        sizes = [c[0][1].num_rows for c in m.call_args_list]
+        self.assertEqual(sizes[:4], [1, 4, 4, 1])
 
     def test_mixed_fetches_keep_order_and_rownumber(self):
         rs = self.make_columnar_result_set(10, arraysize=4)

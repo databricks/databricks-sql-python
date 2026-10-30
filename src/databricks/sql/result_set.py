@@ -29,10 +29,17 @@ from databricks.sql.telemetry.models.event import StatementType
 logger = logging.getLogger(__name__)
 
 # Upper bound on how many rows a fetchone() refill pulls and converts at once. The
-# refill uses ``arraysize`` but is capped here so the first fetchone() on a cursor
-# with a large arraysize (default 100000) doesn't materialise a full page just to
-# return one row.
+# refill uses ``arraysize`` but is capped here so a cursor with a large arraysize
+# (default 100000) doesn't materialise a full page just to return one row.
 _FETCHONE_BUFFER_MAX_ROWS = 1000
+
+# fetchone() refills grow geometrically from this size (1 -> 10 -> 100 -> ...) up to
+# min(arraysize, _FETCHONE_BUFFER_MAX_ROWS). The first refill converts a single row,
+# so a lone fetchone() (e.g. SQLAlchemy ``.first()`` / ``.scalar()`` or an EXISTS
+# probe) costs the same as before batching, while iteration loops quickly reach the
+# full batch size.
+_FETCHONE_BUFFER_INITIAL_ROWS = 1
+_FETCHONE_BUFFER_GROWTH_FACTOR = 10
 
 # After a fetchone() batch conversion fails, the batch is retried one row at a time.
 # If this many leading rows all fail too, with the same error type and message as
@@ -124,6 +131,9 @@ class ResultSet(ABC):
         self._row_buffer_pos = 0
         # Set once a fetchone() conversion failure has been logged at WARNING.
         self._fetchone_conversion_warned = False
+        # Size of the next fetchone() refill; grows on each refill (see
+        # ``_FETCHONE_BUFFER_GROWTH_FACTOR``).
+        self._fetchone_refill_rows = _FETCHONE_BUFFER_INITIAL_ROWS
 
     def __iter__(self):
         while True:
@@ -336,8 +346,11 @@ class ResultSet(ABC):
     ) -> Optional[Row]:
         """Serve fetchone() from the row buffer, refilling in small batches.
 
-        Each refill asks ``fetch_raw`` for up to ``arraysize`` rows, capped at
-        ``_FETCHONE_BUFFER_MAX_ROWS``. ``fetch_raw`` may return fewer (Thrift and the
+        Refill sizes start at ``_FETCHONE_BUFFER_INITIAL_ROWS`` and grow by
+        ``_FETCHONE_BUFFER_GROWTH_FACTOR`` on each refill, capped at ``arraysize``
+        and ``_FETCHONE_BUFFER_MAX_ROWS``, so a single fetchone() converts only one
+        row while iteration settles into full batches. ``fetch_raw`` may return
+        fewer (Thrift and the
         kernel backend only serve what is already buffered, refilling at most until
         one row is available, so latency to the first row is unchanged).
 
@@ -346,9 +359,22 @@ class ResultSet(ABC):
         queue is only read again once the buffer is empty, so at that point the
         index equals the queue position again (Thrift relies on that for
         ``expected_row_start_offset``).
+
+        If conversion yields a different number of rows than the raw chunk held,
+        ``InternalError`` is raised and that whole chunk is dropped (the queue and
+        ``rownumber`` have already moved past it). The result set should be
+        considered unusable after that error.
         """
         if self._row_buffer_count() == 0:
-            raw = fetch_raw(max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1))
+            cap = max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
+            target = getattr(
+                self, "_fetchone_refill_rows", _FETCHONE_BUFFER_INITIAL_ROWS
+            )
+            size = max(min(target, cap), 1)
+            self._fetchone_refill_rows = min(
+                size * _FETCHONE_BUFFER_GROWTH_FACTOR, _FETCHONE_BUFFER_MAX_ROWS
+            )
+            raw = fetch_raw(size)
             try:
                 rows = convert(raw)
             except Exception as batch_error:
@@ -379,6 +405,9 @@ class ResultSet(ABC):
                 # fetch_raw advanced _next_row_index (and the Thrift fetch offset)
                 # by raw_count; the buffer must line up 1:1 with the raw chunk or
                 # rownumber and fetchmany_arrow slicing would silently drift.
+                # The raw chunk is not buffered, so its raw_count rows are lost
+                # (yet counted in rownumber): treat the result set as unusable
+                # after this error; later fetches resume from the next chunk.
                 raise InternalError(
                     "fetchone(): converted {} row(s) from a chunk of {} raw row(s)".format(
                         len(rows), raw_count
