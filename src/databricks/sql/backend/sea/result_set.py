@@ -279,15 +279,13 @@ class SeaResultSet(ResultSet):
 
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-        buffered = self._row_buffer_take_rows(size)
-        remaining = size - len(buffered)
-        if buffered and remaining == 0:
-            return buffered
         if isinstance(self.results, JsonQueue):
-            rest = self._create_json_table(self.fetchmany_json(remaining))
-        else:
-            rest = self._convert_arrow_table(self.fetchmany_arrow(remaining))
-        return buffered + rest if buffered else rest
+            return self._fetch_rows_with_buffer(
+                size, lambda n: self._create_json_table(self.fetchmany_json(n))
+            )
+        return self._fetch_rows_with_buffer(
+            size, lambda n: self._convert_arrow_table(self.fetchmany_arrow(n))
+        )
 
     def fetchall(self) -> List[Row]:
         """
@@ -297,9 +295,10 @@ class SeaResultSet(ResultSet):
             List of Row objects containing all remaining rows
         """
 
-        buffered = self._row_buffer_take_rows()
         if isinstance(self.results, JsonQueue):
-            rest = self._create_json_table(self.fetchall_json())
-        else:
-            rest = self._convert_arrow_table(self.fetchall_arrow())
-        return buffered + rest if buffered else rest
+            return self._fetch_rows_with_buffer(
+                None, lambda _: self._create_json_table(self.fetchall_json())
+            )
+        return self._fetch_rows_with_buffer(
+            None, lambda _: self._convert_arrow_table(self.fetchall_arrow())
+        )

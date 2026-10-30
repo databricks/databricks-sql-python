@@ -41,6 +41,7 @@ _FETCHONE_BUFFER_MAX_ROWS = 1000
 _FETCHONE_BUFFER_INITIAL_ROWS = 1
 _FETCHONE_BUFFER_GROWTH_FACTOR = 10
 
+
 class _FailedRow:
     """Placeholder in the fetchone() row buffer for a row that failed to convert."""
 
@@ -225,6 +226,26 @@ class ResultSet(ABC):
         if failed is not None:
             raise failed.error.with_traceback(failed.traceback)
         return rows[start : start + length]
+
+    def _fetch_rows_with_buffer(
+        self,
+        size: Optional[int],
+        fetch_rest: Callable[[Optional[int]], List[Row]],
+    ) -> List[Row]:
+        """Return ``size`` rows (all if None), draining the fetchone() buffer first.
+
+        Every row-level fetchmany()/fetchall() goes through here, so rows the
+        fetchone() buffer already holds are always returned before newly fetched
+        ones. ``fetch_rest(n)`` must fetch up to ``n`` (all if None) rows
+        while bypassing the buffer. It is not called when the buffer already
+        covers ``size``.
+        """
+        buffered = self._row_buffer_take_rows(size)
+        remaining = None if size is None else size - len(buffered)
+        if buffered and remaining == 0:
+            return buffered
+        rest = fetch_rest(remaining)
+        return buffered + rest if buffered else rest
 
     @staticmethod
     def _raw_row_count(raw: Any) -> Optional[int]:
@@ -774,12 +795,13 @@ class ThriftResultSet(ResultSet):
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-        buffered = self._row_buffer_take_rows()
         if isinstance(self.results, ColumnQueue):
-            rest = self._convert_columnar_table(self.fetchall_columnar())
-        else:
-            rest = self._convert_arrow_table(self.fetchall_arrow())
-        return buffered + rest if buffered else rest
+            return self._fetch_rows_with_buffer(
+                None, lambda _: self._convert_columnar_table(self.fetchall_columnar())
+            )
+        return self._fetch_rows_with_buffer(
+            None, lambda _: self._convert_arrow_table(self.fetchall_arrow())
+        )
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -789,15 +811,13 @@ class ThriftResultSet(ResultSet):
         """
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-        buffered = self._row_buffer_take_rows(size)
-        remaining = size - len(buffered)
-        if buffered and remaining == 0:
-            return buffered
         if isinstance(self.results, ColumnQueue):
-            rest = self._convert_columnar_table(self.fetchmany_columnar(remaining))
-        else:
-            rest = self._convert_arrow_table(self.fetchmany_arrow(remaining))
-        return buffered + rest if buffered else rest
+            return self._fetch_rows_with_buffer(
+                size, lambda n: self._convert_columnar_table(self.fetchmany_columnar(n))
+            )
+        return self._fetch_rows_with_buffer(
+            size, lambda n: self._convert_arrow_table(self.fetchmany_arrow(n))
+        )
 
     @staticmethod
     def _get_schema_description(table_schema_message):

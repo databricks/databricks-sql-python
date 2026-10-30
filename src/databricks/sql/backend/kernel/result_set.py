@@ -245,17 +245,15 @@ class KernelResultSet(ResultSet):
     def fetchmany(self, size: int) -> List[Row]:
         if size < 0:
             raise ValueError(f"fetchmany size must be >= 0, got {size}")
-        buffered = self._row_buffer_take_rows(size)
-        remaining = size - len(buffered)
-        if remaining == 0:
-            return buffered
-        rest = self._convert_arrow_table(self._fetchmany_arrow_unbuffered(remaining))
-        return buffered + rest if buffered else rest
+        return self._fetch_rows_with_buffer(
+            size,
+            lambda n: self._convert_arrow_table(self._fetchmany_arrow_unbuffered(n)),
+        )
 
     def fetchall(self) -> List[Row]:
-        buffered = self._row_buffer_take_rows()
-        rest = self._convert_arrow_table(self._drain())
-        return buffered + rest if buffered else rest
+        return self._fetch_rows_with_buffer(
+            None, lambda _: self._convert_arrow_table(self._drain())
+        )
 
     def close(self) -> None:
         """Close the underlying kernel handle and notify the backend.

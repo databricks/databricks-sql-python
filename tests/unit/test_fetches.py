@@ -777,6 +777,43 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertTrue(any("batch failure" in m for m in logs.output))
         self.assertEqual(rs.fetchone()[0], 20)
 
+    def test_fetchone_all_failing_max_batch_conversion_count_is_bounded(self):
+        """Document the worst-case cost of bisecting a full all-failing refill.
+
+        When every row fails (a systemic converter / type problem), bisection tries
+        every node of the tree: exactly ``2n - 1`` conversions for an ``n``-row
+        refill, i.e. about 2x the one-conversion-per-row cost of fetchone() before
+        batching. Short-circuiting on "same exception type in both halves" is
+        deliberately not done, since it would drop good rows that share the error
+        type (see test_fetchone_same_message_bad_rows_do_not_drop_later_good_rows).
+        """
+        from unittest.mock import patch
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        n = _FETCHONE_BUFFER_MAX_ROWS
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            raise ValueError("systemic failure")
+
+        rs = self.make_columnar_result_set(n, arraysize=n)
+        # Skip the adaptive refill ramp so the first refill is a full batch.
+        rs._fetchone_refill_rows = n
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING"):
+            with self.assertRaises(ValueError):
+                rs.fetchone()
+        self.assertEqual(calls[0], n)
+        self.assertEqual(len(calls), 2 * n - 1)
+        # Total rows converted across all attempts is O(n log n), not O(n^2).
+        self.assertLessEqual(sum(calls), n * (n - 1).bit_length() + n)
+        self.assertEqual(rs._row_buffer_count(), n - 1)
+
     def test_fetchone_same_message_bad_rows_do_not_drop_later_good_rows(self):
         from unittest.mock import patch
 
