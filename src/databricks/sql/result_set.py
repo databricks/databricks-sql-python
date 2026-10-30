@@ -381,10 +381,12 @@ class ResultSet(ABC):
         if self._row_buffer_count() == 0:
             cap = max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
             size = max(min(self._fetchone_refill_rows, cap), 1)
+            raw = fetch_raw(size)
+            # Grow the ramp only once the fetch succeeded, so a transient fetch
+            # error (and a retried fetchone()) does not skip a ramp step.
             self._fetchone_refill_rows = min(
                 size * _FETCHONE_BUFFER_GROWTH_FACTOR, _FETCHONE_BUFFER_MAX_ROWS
             )
-            raw = fetch_raw(size)
             try:
                 rows = convert(raw)
             except _NON_DATA_CONVERSION_ERRORS:
@@ -436,7 +438,15 @@ class ResultSet(ABC):
             # that yields [] for a non-empty chunk raises instead of silently
             # ending iteration and losing those rows.
             raw_count = self._raw_row_count(raw)
-            if raw_count is not None and raw_count != len(rows):
+            if raw_count is None:
+                # Every real queue type (Arrow Table, ColumnTable, list) has a row
+                # count, so an unknown chunk type is itself a bug. Fail loudly
+                # rather than skip the drift check and risk rownumber misalignment.
+                raise InternalError(
+                    "fetchone(): cannot determine the row count of a raw chunk of "
+                    "type {}".format(type(raw).__name__)
+                )
+            if raw_count != len(rows):
                 # fetch_raw advanced _next_row_index (and the Thrift fetch offset)
                 # by raw_count; the buffer must line up 1:1 with the raw chunk or
                 # rownumber and fetchmany_arrow slicing would silently drift.

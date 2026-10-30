@@ -869,6 +869,30 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertLessEqual(sum(calls), n * (n - 1).bit_length() + n)
         self.assertEqual(rs._row_buffer_count(), n - 1)
 
+    def test_fetchone_failed_fetch_does_not_advance_refill_ramp(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(100, arraysize=100, warm=False)
+        initial = rs._fetchone_refill_rows
+        real_next_n_rows = rs.results.next_n_rows
+        with patch.object(
+            rs.results,
+            "next_n_rows",
+            side_effect=[RuntimeError("transient"), real_next_n_rows],
+        ):
+            with self.assertRaises(RuntimeError):
+                rs.fetchone()
+        # The failed fetch must not grow the ramp, so a retry refills the same size.
+        self.assertEqual(rs._fetchone_refill_rows, initial)
+        sizes = []
+        with patch.object(
+            rs.results,
+            "next_n_rows",
+            side_effect=lambda n: sizes.append(n) or real_next_n_rows(n),
+        ):
+            self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(sizes, [initial])
+
     def test_fetchone_same_message_bad_rows_do_not_drop_later_good_rows(self):
         from unittest.mock import patch
 
@@ -961,6 +985,29 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         ):
             with self.assertRaises(InternalError):
                 rs.fetchone()
+
+    def test_fetchone_unknown_raw_chunk_type_fails_loudly(self):
+        from unittest.mock import patch
+        from databricks.sql.exc import InternalError
+
+        class _NoRowCount:
+            pass
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_fetch_available_from_queue",
+            autospec=True,
+            return_value=_NoRowCount(),
+        ), patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            return_value=[("x",)],
+        ):
+            with self.assertRaises(InternalError) as ctx:
+                rs.fetchone()
+        self.assertIn("_NoRowCount", str(ctx.exception))
 
     @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
     def test_fetchone_then_fetchall_arrow_keeps_order(self):
