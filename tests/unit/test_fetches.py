@@ -738,6 +738,11 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
             [r.levelno for r in summaries],
             [logging.WARNING] + [logging.DEBUG] * 8,
         )
+        # The error message may quote result data, so it must stay out of WARNING.
+        for r in logs.records:
+            if r.levelno >= logging.WARNING:
+                self.assertNotIn("bad value", r.getMessage())
+                self.assertIn("ValueError", r.getMessage())
 
     def test_fetchone_all_failing_batch_resets_refill_ramp(self):
         from unittest.mock import patch
@@ -821,7 +826,10 @@ class ColumnarFetchoneBufferTests(unittest.TestCase):
         self.assertEqual(len(calls), 2 * 20 - 1)
         self.assertEqual(sum(1 for c in calls if c == 1), 20)
         self.assertTrue(any("20 of 20 row(s)" in m for m in logs.output))
-        self.assertTrue(any("batch failure" in m for m in logs.output))
+        # Only the exception type is logged at WARNING; the message (which may quote
+        # result data) is kept out of it.
+        self.assertTrue(any("(ValueError)" in m for m in logs.output))
+        self.assertFalse(any("batch failure" in m for m in logs.output))
         self.assertEqual(rs.fetchone()[0], 20)
 
     def test_fetchone_all_failing_max_batch_conversion_count_is_bounded(self):

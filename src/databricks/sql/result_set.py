@@ -302,18 +302,21 @@ class ResultSet(ABC):
         convert_range(0, n, batch_error)
         failed = sum(isinstance(r, _FailedRow) for r in rows)
         # One summary line, no traceback: the error itself still reaches the caller
-        # when the failing row is fetched. The full traceback is only logged at DEBUG.
+        # when the failing row is fetched. Only the exception type is logged here,
+        # since conversion error messages often quote the offending result value;
+        # the message and full traceback are only logged at DEBUG.
         # ``log_level`` lets the caller log this at WARNING only once per result set.
         logger.log(
             log_level,
             "fetchone(): failed to convert %d of %d row(s) in a batch; each failing "
-            "row raises when fetched (%s: %s)",
+            "row raises when fetched (%s)",
             failed,
             n,
             type(batch_error).__name__,
-            batch_error,
         )
-        logger.debug("fetchone(): batch conversion error", exc_info=batch_error)
+        logger.debug(
+            "fetchone(): batch conversion error: %s", batch_error, exc_info=batch_error
+        )
         return rows
 
     def _cap_to_current_chunk(self, size: int) -> int:
@@ -369,7 +372,11 @@ class ResultSet(ABC):
         If conversion yields a different number of rows than the raw chunk held,
         ``InternalError`` is raised and that whole chunk is dropped (the queue and
         ``rownumber`` have already moved past it). The result set should be
-        considered unusable after that error.
+        considered unusable after that error. The same holds when conversion
+        raises one of ``_NON_DATA_CONVERSION_ERRORS`` (e.g. ``MemoryError``,
+        ``RecursionError``): the error is re-raised and the whole refill chunk
+        (up to ``_FETCHONE_BUFFER_MAX_ROWS`` rows, still counted in ``rownumber``)
+        is lost, so callers should not keep fetching from this result set.
         """
         if self._row_buffer_count() == 0:
             cap = max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
@@ -383,6 +390,9 @@ class ResultSet(ABC):
             except _NON_DATA_CONVERSION_ERRORS:
                 # Resource / interpreter failures say nothing about individual
                 # rows; retrying smaller slices would only repeat (or worsen) them.
+                # The queue has already moved past ``raw`` and it is not buffered,
+                # so the whole refill chunk is lost: as with the drift error below,
+                # the result set is unusable after this.
                 raise
             except Exception as batch_error:
                 # The queue has already moved past this batch, so it can't be
