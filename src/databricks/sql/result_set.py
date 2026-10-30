@@ -373,10 +373,7 @@ class ResultSet(ABC):
         """
         if self._row_buffer_count() == 0:
             cap = max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
-            target = getattr(
-                self, "_fetchone_refill_rows", _FETCHONE_BUFFER_INITIAL_ROWS
-            )
-            size = max(min(target, cap), 1)
+            size = max(min(self._fetchone_refill_rows, cap), 1)
             self._fetchone_refill_rows = min(
                 size * _FETCHONE_BUFFER_GROWTH_FACTOR, _FETCHONE_BUFFER_MAX_ROWS
             )
@@ -396,12 +393,15 @@ class ResultSet(ABC):
                 # Warn once per result set; later failing batches (e.g. a column
                 # type that fails in every row) log at DEBUG to avoid a WARNING
                 # per refill for callers that catch and keep fetching.
-                warned = getattr(self, "_fetchone_conversion_warned", False)
                 fallback = self._convert_rows_individually(
                     raw,
                     convert,
                     batch_error,
-                    log_level=logging.DEBUG if warned else logging.WARNING,
+                    log_level=(
+                        logging.DEBUG
+                        if self._fetchone_conversion_warned
+                        else logging.WARNING
+                    ),
                 )
                 if fallback is None:
                     raise

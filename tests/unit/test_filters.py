@@ -16,9 +16,9 @@ class TestResultSetFilter(unittest.TestCase):
         # Create a mock SeaResultSet
         self.mock_sea_result_set = MagicMock()
 
-        # Set up the remaining_rows method on the results attribute
+        # Set up fetchall_json, which the filters use to read all remaining rows
         self.mock_sea_result_set.results = MagicMock()
-        self.mock_sea_result_set.results.remaining_rows.return_value = [
+        self.mock_sea_result_set.fetchall_json.return_value = [
             ["catalog1", "schema1", "table1", "owner1", "2023-01-01", "TABLE", ""],
             ["catalog1", "schema1", "table2", "owner1", "2023-01-01", "VIEW", ""],
             [
