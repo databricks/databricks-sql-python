@@ -8,6 +8,7 @@ import pandas
 
 try:
     import pyarrow
+    import pyarrow.compute
 except ImportError:
     pyarrow = None
 
@@ -130,6 +131,19 @@ class ResultSet(ABC):
         )
 
         res = df.to_numpy(na_value=None, dtype="object")
+
+        # The nullable float dtypes turn IEEE NaN into NA, which would make it
+        # indistinguishable from SQL NULL, so restore NaN values from Arrow.
+        for i, field in enumerate(table_renamed.schema):
+            if not pyarrow.types.is_floating(field.type):
+                continue
+            nan_mask = pyarrow.compute.is_nan(table_renamed.column(i))
+            if not pyarrow.compute.any(nan_mask).as_py():
+                continue
+            if nan_mask.null_count:
+                nan_mask = nan_mask.fill_null(False)
+            res[nan_mask.to_numpy(), i] = float("nan")
+
         return [ResultRow(*v) for v in res]
 
     @property
