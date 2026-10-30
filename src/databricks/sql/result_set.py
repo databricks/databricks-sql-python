@@ -563,8 +563,10 @@ class ResultSet(ABC):
             if isinstance(e.args[1], CursorAlreadyClosedError):
                 logger.info("Operation was canceled by a prior request")
         finally:
-            # Drop rows parked by fetchone() so post-close fetches return nothing.
+            # Drop rows parked by fetchone() (and any lost-rows poison) so
+            # post-close fetches return nothing.
             self._row_buffer_clear()
+            self._lost_rows_error = None
             self.has_been_closed_server_side = True
             self.status = CommandState.CLOSED
 

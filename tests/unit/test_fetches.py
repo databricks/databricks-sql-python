@@ -390,6 +390,23 @@ class FetchTests(unittest.TestCase):
             self.assertEqual(fetch_after_close(rs), [])
             self.assertIsNone(rs.fetchone())
 
+    def test_close_clears_lost_rows_error(self):
+        # A result set poisoned by a lost fetchone() refill must behave like any
+        # other closed result set: post-close fetches return nothing, not raise.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs = self.make_dummy_result_set_from_initial_results([[1], [2], [3]])
+        # Warm refill pulls every row into the buffer, so the queue is empty.
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        self.assertSequenceEqual(rs.fetchone(), [1])
+        rs._lost_rows_error = "lost"
+        with self.assertRaises(InternalError):
+            rs.fetchone()
+        rs.close()
+        self.assertIsNone(rs._lost_rows_error)
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(rs.fetchall(), [])
+
     def test_fetchone_refill_does_not_fetch_extra_pages(self):
         # A refill must not make extra round-trips to fill ``arraysize`` when
         # server pages are smaller (e.g. byte-limited): it serves what the current

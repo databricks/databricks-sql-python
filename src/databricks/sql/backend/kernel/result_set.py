@@ -273,9 +273,10 @@ class KernelResultSet(ResultSet):
         connection-close would otherwise issue a kernel call into an
         already-disposed session.
         """
-        # Drop rows parked by fetchone() so post-close fetches return
-        # nothing, matching the cleared batch FIFO below.
+        # Drop rows parked by fetchone() (and any lost-rows poison) so
+        # post-close fetches return nothing, matching the cleared batch FIFO below.
         self._row_buffer_clear()
+        self._lost_rows_error = None
         if self._kernel_handle is None:
             return
         if not self.connection.open:

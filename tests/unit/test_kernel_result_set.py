@@ -288,6 +288,16 @@ def test_close_drops_fetchone_row_buffer(int_schema):
     assert rs.fetchall() == []
 
 
+def test_close_clears_lost_rows_error(int_schema):
+    # A poisoned result set must return nothing after close(), not keep raising.
+    rs = _make_rs(_ten_rows_handle(int_schema), arraysize=4)
+    rs._lost_rows_error = "lost"
+    rs.close()
+    assert rs._lost_rows_error is None
+    assert rs.fetchone() is None
+    assert rs.fetchall() == []
+
+
 def test_empty_stream(int_schema):
     rs = _make_rs(_FakeKernelHandle(int_schema, []))
     assert rs.fetchone() is None
