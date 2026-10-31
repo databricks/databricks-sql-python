@@ -12,6 +12,7 @@ from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.utils import ArrowQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
+from databricks.sql.exc import InternalError
 
 
 class _StubArrowQueue:
@@ -95,7 +96,8 @@ class FetchTests(unittest.TestCase):
         return rs
 
     @staticmethod
-    def make_dummy_result_set_from_batch_list(batch_list):
+    def make_dummy_result_set_from_batch_list(batch_list, offsets=None):
+        """``offsets``, if given, records ``expected_row_start_offset`` per refill."""
         batch_index = 0
 
         def fetch_results(
@@ -110,6 +112,8 @@ class FetchTests(unittest.TestCase):
             chunk_id=0,
         ):
             nonlocal batch_index
+            if offsets is not None:
+                offsets.append(expected_row_start_offset)
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1
 
@@ -328,6 +332,129 @@ class FetchTests(unittest.TestCase):
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_2)
         self.assertEqual(dummy_result_set.fetchone(), None)
 
+    def test_mixed_fetches_across_pages_keep_order_and_refill_offsets(self):
+        # Issue #981: rows parked in the fetchone() buffer must not skew
+        # ``_next_row_index``, which Thrift sends as ``expected_row_start_offset``
+        # on every refill. Pages are 3 rows; fetchone() refills 2 rows at a time,
+        # so buffer refills and server page boundaries interleave.
+        batch_list = [[[0], [1], [2]], [[3], [4], [5]], [[6], [7], [8]], [[9]]]
+        offsets = []
+        rs = self.make_dummy_result_set_from_batch_list(batch_list, offsets=offsets)
+        rs.arraysize = 2
+        self.assertEqual(offsets, [0])
+
+        self.assertSequenceEqual(rs.fetchone(), [0])
+        self.assertEqual(rs.rownumber, 1)
+
+        # Drains the buffered row, the rest of page 0, then refills page 1.
+        table = rs.fetchmany_arrow(3)
+        self.assertEqual(table.column(0).to_pylist(), [1, 2, 3])
+        self.assertEqual(rs.rownumber, 4)
+        self.assertEqual(offsets, [0, 3])
+
+        self.assertSequenceEqual(rs.fetchone(), [4])
+        self.assertSequenceEqual(rs.fetchone(), [5])
+        self.assertEqual(rs.rownumber, 6)
+        self.assertEqual(offsets, [0, 3])
+
+        # Buffer empty and page 1 exhausted: the refill crosses into page 2.
+        self.assertSequenceEqual(rs.fetchone(), [6])
+        self.assertEqual(rs.rownumber, 7)
+        self.assertEqual(offsets, [0, 3, 6])
+
+        # Drains the buffered row [7], the rest of page 2, then page 3.
+        self.assertEqualRowValues(rs.fetchall(), [[7], [8], [9]])
+        self.assertEqual(rs.rownumber, 10)
+        self.assertEqual(offsets, [0, 3, 6, 9])
+
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(rs.rownumber, 10)
+        self.assertEqual(offsets, [0, 3, 6, 9])
+
+    def test_close_drops_fetchone_row_buffer(self):
+        # Rows parked in the fetchone() buffer must not survive close(). The warm
+        # refill pulls every row into the buffer, so the queue itself is empty and
+        # any row returned after close() could only come from a stale buffer.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        for fetch_after_close in (
+            lambda rs: rs.fetchall(),
+            lambda rs: rs.fetchmany_arrow(10).to_pylist(),
+        ):
+            rs = self.make_dummy_result_set_from_initial_results([[1], [2], [3], [4]])
+            rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+            self.assertSequenceEqual(rs.fetchone(), [1])
+            self.assertEqual(rs._row_buffer_count(), 3)
+            rs.close()
+            self.assertEqual(rs._row_buffer_count(), 0)
+            self.assertEqual(fetch_after_close(rs), [])
+            self.assertIsNone(rs.fetchone())
+
+    def test_close_clears_lost_rows_error(self):
+        # A result set poisoned by a lost fetchone() refill must behave like any
+        # other closed result set: post-close fetches return nothing, not raise.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs = self.make_dummy_result_set_from_initial_results([[1], [2], [3]])
+        # Warm refill pulls every row into the buffer, so the queue is empty.
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        self.assertSequenceEqual(rs.fetchone(), [1])
+        rs._lost_rows_error = "lost"
+        with self.assertRaises(InternalError):
+            rs.fetchone()
+        rs.close()
+        self.assertIsNone(rs._lost_rows_error)
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(rs.fetchall(), [])
+
+    def test_fetchone_refill_does_not_fetch_extra_pages(self):
+        # A refill must not make extra round-trips to fill ``arraysize`` when
+        # server pages are smaller (e.g. byte-limited): it serves what the current
+        # queue holds and only fetches a new page once the queue is empty.
+        batch_list = [[[0], [1]], [[2], [3]], [[4]]]
+        offsets = []
+        rs = self.make_dummy_result_set_from_batch_list(batch_list, offsets=offsets)
+        rs.arraysize = 100
+        self.assertEqual(offsets, [0])
+
+        self.assertSequenceEqual(rs.fetchone(), [0])
+        self.assertEqual(offsets, [0])
+        self.assertSequenceEqual(rs.fetchone(), [1])
+        self.assertEqual(offsets, [0])
+        self.assertSequenceEqual(rs.fetchone(), [2])
+        self.assertEqual(offsets, [0, 2])
+        self.assertEqual(rs.rownumber, 3)
+        self.assertEqualRowValues(rs.fetchall(), [[3], [4]])
+        self.assertEqual(offsets, [0, 2, 4])
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(rs.rownumber, 5)
+
+    def test_cloudfetch_fetchone_refill_capped_to_current_chunk(self):
+        # The fetchone() refill is capped at the rows left in the current CloudFetch
+        # chunk, so one refill never spans several files. (This only bounds the
+        # batch size; the mock queue does not model advancing to the next file.)
+        from databricks.sql.utils import ThriftCloudFetchQueue
+
+        _, chunk = self.make_arrow_table([[i] for i in range(10)])
+        queue = Mock(spec=ThriftCloudFetchQueue)
+        queue.table = chunk
+        queue.table_row_index = 8
+        queue.next_n_rows.side_effect = lambda n: chunk.slice(8, n)
+        rs = self.make_dummy_result_set_from_queue_list(
+            [queue],
+            description=[("col0", "integer", None, None, None, None, None)],
+        )
+        rs.arraysize = 100
+        # Skip the adaptive refill ramp so the chunk cap, not the ramp, bounds it.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+
+        self.assertSequenceEqual(rs.fetchone(), [8])
+        queue.next_n_rows.assert_called_once_with(2)
+        self.assertSequenceEqual(rs.fetchone(), [9])
+        self.assertEqual(rs.rownumber, 2)
+
     # Regression tests for fetchmany_arrow / fetchall_arrow handling of
     # the schemaless CloudFetch placeholder.
     def test_fetchall_arrow_drops_mismatched_empty_placeholder(self):
@@ -389,6 +516,587 @@ class FetchTests(unittest.TestCase):
 
         self.assertIsInstance(result, pa.Table)
         self.assertEqual(result.num_rows, 0)
+
+
+class ColumnarFetchoneBufferTests(unittest.TestCase):
+    """Issue #981: fetchone/iteration on the Thrift ColumnQueue path must convert
+    rows in batches (not one row at a time) while keeping order and rownumber."""
+
+    @staticmethod
+    def make_columnar_result_set(n_rows, arraysize, warm=True):
+        """Build a result set over ``n_rows`` columnar rows.
+
+        With ``warm`` (the default) the adaptive fetchone() refill ramp is skipped,
+        so every refill is ``min(arraysize, _FETCHONE_BUFFER_MAX_ROWS)`` rows and the
+        batch-boundary assertions below stay simple. Pass ``warm=False`` to test
+        the ramp itself.
+        """
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+        from databricks.sql.utils import ColumnQueue, ColumnTable
+
+        table = ColumnTable([list(range(n_rows))], ["col0"])
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
+        mock_thrift_backend.fetch_results.return_value = (ColumnQueue(table), False, 0)
+        rs = ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=None,
+                status=None,
+                has_been_closed_server_side=True,
+                description=[("col0", "integer", None, None, None, None, None)],
+                lz4_compressed=False,
+                is_staging_operation=False,
+            ),
+            thrift_client=mock_thrift_backend,
+            arraysize=arraysize,
+        )
+        if warm:
+            rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        return rs
+
+    @staticmethod
+    def _count_conversions():
+        from unittest.mock import patch
+
+        return patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=ThriftResultSet._convert_columnar_table,
+        )
+
+    def test_iteration_converts_in_batches(self):
+        rs = self.make_columnar_result_set(100, arraysize=10)
+        with self._count_conversions() as m:
+            rows = [r[0] for r in rs]
+        self.assertEqual(rows, list(range(100)))
+        self.assertLessEqual(m.call_count, 100 // 10 + 2)
+
+    def test_fetchone_loop_converts_in_batches(self):
+        rs = self.make_columnar_result_set(100, arraysize=10)
+        rows = []
+        with self._count_conversions() as m:
+            while True:
+                row = rs.fetchone()
+                if row is None:
+                    break
+                rows.append(row[0])
+        self.assertEqual(rows, list(range(100)))
+        self.assertLessEqual(m.call_count, 100 // 10 + 2)
+
+    def test_fetchone_refill_is_capped_for_large_arraysize(self):
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        n_rows = _FETCHONE_BUFFER_MAX_ROWS * 3
+        rs = self.make_columnar_result_set(n_rows, arraysize=100000)
+        self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(rs._row_buffer_count(), _FETCHONE_BUFFER_MAX_ROWS - 1)
+        self.assertEqual(rs.rownumber, 1)
+        self.assertEqual([r[0] for r in rs.fetchall()], list(range(1, n_rows)))
+        self.assertEqual(rs.rownumber, n_rows)
+
+    def test_first_fetchone_converts_a_single_row(self):
+        # A lone fetchone() (SQLAlchemy .first()/.scalar(), EXISTS probes) must not
+        # pull and convert a whole batch: the first refill is a single row.
+        rs = self.make_columnar_result_set(5000, arraysize=100000, warm=False)
+        with self._count_conversions() as m:
+            self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(m.call_count, 1)
+        self.assertEqual(m.call_args[0][1].num_rows, 1)
+        self.assertEqual(rs._row_buffer_count(), 0)
+        self.assertEqual(rs.rownumber, 1)
+
+    def test_fetchone_refill_size_ramps_up_to_cap(self):
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        n_rows = 1 + 10 + 100 + _FETCHONE_BUFFER_MAX_ROWS * 2
+        rs = self.make_columnar_result_set(n_rows, arraysize=100000, warm=False)
+        with self._count_conversions() as m:
+            rows = [r[0] for r in rs]
+        self.assertEqual(rows, list(range(n_rows)))
+        sizes = [c[0][1].num_rows for c in m.call_args_list]
+        self.assertEqual(
+            sizes[:5],
+            [1, 10, 100, _FETCHONE_BUFFER_MAX_ROWS, _FETCHONE_BUFFER_MAX_ROWS],
+        )
+        self.assertEqual(rs.rownumber, n_rows)
+
+    def test_fetchone_refill_ramp_is_capped_by_arraysize(self):
+        rs = self.make_columnar_result_set(10, arraysize=4, warm=False)
+        with self._count_conversions() as m:
+            rows = [r[0] for r in rs]
+        self.assertEqual(rows, list(range(10)))
+        sizes = [c[0][1].num_rows for c in m.call_args_list]
+        self.assertEqual(sizes[:4], [1, 4, 4, 1])
+
+    def test_mixed_fetches_keep_order_and_rownumber(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(rs.fetchone()[0], 1)
+        self.assertEqual(rs.rownumber, 2)
+        self.assertEqual([r[0] for r in rs.fetchmany(3)], [2, 3, 4])
+        self.assertEqual(rs.rownumber, 5)
+        self.assertEqual(rs.fetchone()[0], 5)
+        self.assertEqual(rs.rownumber, 6)
+        self.assertEqual([r[0] for r in rs.fetchall()], [6, 7, 8, 9])
+        self.assertEqual(rs.rownumber, 10)
+        self.assertIsNone(rs.fetchone())
+
+    def test_fetchone_convert_failure_loses_only_the_bad_row(self):
+        from unittest.mock import patch
+
+        real_convert = ThriftResultSet._convert_columnar_table
+
+        def convert_failing_on_2(self_, table):
+            rows = real_convert(self_, table)
+            if any(r[0] == 2 for r in rows):
+                raise ValueError("bad value")
+            return rows
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert_failing_on_2,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            self.assertEqual(rs.fetchone()[0], 0)
+            self.assertEqual(rs.fetchone()[0], 1)
+            with self.assertRaises(ValueError):
+                rs.fetchone()
+            # Only the failing row is lost; the rest of the batch is still served.
+            self.assertEqual(rs.rownumber, 3)
+            self.assertEqual(rs.fetchone()[0], 3)
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(4, 10)))
+        self.assertTrue(any("1 of 4 row(s)" in m for m in logs.output))
+        self.assertEqual(rs.rownumber, 10)
+
+    def _patch_convert_failing_on_2(self):
+        from unittest.mock import patch
+
+        real_convert = ThriftResultSet._convert_columnar_table
+
+        def convert_failing_on_2(self_, table):
+            rows = real_convert(self_, table)
+            if any(r[0] == 2 for r in rows):
+                raise ValueError("bad value")
+            return rows
+
+        return patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert_failing_on_2,
+        )
+
+    def test_fetchmany_over_failed_buffered_row_keeps_rows_after_it(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with self._patch_convert_failing_on_2(), self.assertLogs(
+            "databricks.sql.result_set", level="WARNING"
+        ):
+            # Buffer now holds rows 1, 2 (failed), 3.
+            self.assertEqual(rs.fetchone()[0], 0)
+            with self.assertRaises(ValueError):
+                rs.fetchmany(3)
+            # Consumed up to and including the failed row; row 3 stays buffered.
+            self.assertEqual(rs.rownumber, 3)
+            self.assertEqual(rs._row_buffer_count(), 1)
+            self.assertEqual([r[0] for r in rs.fetchmany(3)], [3, 4, 5])
+            self.assertEqual([r[0] for r in rs.fetchall()], [6, 7, 8, 9])
+        self.assertEqual(rs.rownumber, 10)
+
+    def test_fetchall_over_failed_buffered_row_keeps_rows_after_it(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with self._patch_convert_failing_on_2(), self.assertLogs(
+            "databricks.sql.result_set", level="WARNING"
+        ):
+            self.assertEqual(rs.fetchone()[0], 0)
+            with self.assertRaises(ValueError):
+                rs.fetchall()
+            self.assertEqual(rs.rownumber, 3)
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(3, 10)))
+        self.assertEqual(rs.rownumber, 10)
+
+    def test_fetchone_convert_failure_on_every_row_reraises_per_row(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(6, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=ValueError("bad value"),
+        ):
+            for expected_rownumber in range(1, 5):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+                self.assertEqual(rs.rownumber, expected_rownumber)
+        self.assertEqual(rs._row_buffer_count(), 0)
+        self.assertEqual(rs.fetchone()[0], 4)
+
+    def test_fetchone_convert_failure_warns_once_per_result_set(self):
+        import logging
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(12, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=ValueError("bad value"),
+        ), self.assertLogs("databricks.sql.result_set", level="DEBUG") as logs:
+            # One 4-row refill, then (ramp reset after an all-failing batch) eight
+            # 1-row refills, every row failing the same way.
+            for _ in range(12):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+        summaries = [
+            r for r in logs.records if "failed to convert" in r.getMessage()
+        ]
+        self.assertEqual(len(summaries), 9)
+        self.assertEqual(
+            [r.levelno for r in summaries],
+            [logging.WARNING] + [logging.DEBUG] * 8,
+        )
+        # The error message may quote result data, so it must stay out of WARNING.
+        for r in logs.records:
+            if r.levelno >= logging.WARNING:
+                self.assertNotIn("bad value", r.getMessage())
+                self.assertIn("ValueError", r.getMessage())
+
+    def test_fetchone_all_failing_batch_resets_refill_ramp(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            raise ValueError("systemic failure")
+
+        rs = self.make_columnar_result_set(30, arraysize=10)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="DEBUG"):
+            for _ in range(15):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+        # First full refill is bisected (2 * 10 - 1 conversions); after that every
+        # refill is a single row costing exactly one conversion.
+        self.assertEqual(len(calls), 2 * 10 - 1 + 5)
+        self.assertEqual(calls[-5:], [1] * 5)
+        self.assertEqual(rs.rownumber, 15)
+
+    def test_fetchone_memory_error_is_not_bisected(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            raise MemoryError()
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ):
+            with self.assertRaises(MemoryError):
+                rs.fetchone()
+        self.assertEqual(calls, [4])
+        self.assertEqual(rs._row_buffer_count(), 0)
+        # The lost refill chunk must not be skipped silently on later fetches.
+        with self.assertRaises(InternalError):
+            rs.fetchone()
+
+    def test_fetchone_memory_error_during_bisection_stops_bisecting(self):
+        from unittest.mock import patch
+
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            if len(calls) == 1:
+                raise ValueError("bad value")
+            raise MemoryError()
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ):
+            with self.assertRaises(MemoryError):
+                rs.fetchone()
+        # The full batch fails with a data error, the first half hits MemoryError:
+        # bisection stops there instead of converting more slices.
+        self.assertEqual(calls, [4, 2])
+        self.assertEqual(rs._row_buffer_count(), 0)
+        # The lost refill chunk must not be skipped silently on later fetches.
+        with self.assertRaises(InternalError):
+            rs.fetchone()
+
+    def test_fetchone_interrupted_conversion_poisons_later_fetches(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            side_effect=KeyboardInterrupt(),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                rs.fetchone()
+        # Conversion works again, but the interrupted chunk is gone: every fetch
+        # must raise instead of resuming from the next chunk with a gap.
+        for fetch in (
+            rs.fetchone,
+            lambda: rs.fetchmany(2),
+            rs.fetchall,
+            lambda: rs.fetchmany_arrow(2),
+            rs.fetchall_arrow,
+        ):
+            with self.assertRaises(InternalError) as ctx:
+                fetch()
+            self.assertIn("4 row(s) were lost", str(ctx.exception))
+
+    def test_fetchone_successful_refill_does_not_poison(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        rows = [rs.fetchone() for _ in range(3)]
+        self.assertEqual([r[0] for r in rows], [0, 1, 2])
+        self.assertIsNone(rs._lost_rows_error)
+        self.assertEqual([r[0] for r in rs.fetchall()], list(range(3, 10)))
+
+    def test_fetchone_convert_failure_on_every_row_bisects_to_single_rows(self):
+        from unittest.mock import patch
+
+        shared_error = ValueError("batch failure")
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            # The converter re-raises one shared exception instance for every row.
+            raise shared_error
+
+        rs = self.make_columnar_result_set(50, arraysize=20)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            tb_depths = []
+            for i in range(20):
+                with self.assertRaises(ValueError) as ctx:
+                    rs.fetchone()
+                self.assertIs(ctx.exception, shared_error)
+                tb, depth = ctx.exception.__traceback__, 0
+                while tb is not None:
+                    tb, depth = tb.tb_next, depth + 1
+                tb_depths.append(depth)
+                self.assertEqual(rs.rownumber, i + 1)
+            # Re-raising a shared error must not grow its traceback per row.
+            self.assertEqual(len(set(tb_depths)), 1)
+        # Bisection of an all-failing batch of 20 tries every node of the tree once:
+        # 2 * 20 - 1 conversions (including the initial batch attempt).
+        self.assertEqual(calls[0], 20)
+        self.assertEqual(len(calls), 2 * 20 - 1)
+        self.assertEqual(sum(1 for c in calls if c == 1), 20)
+        self.assertTrue(any("20 of 20 row(s)" in m for m in logs.output))
+        # Only the exception type is logged at WARNING; the message (which may quote
+        # result data) is kept out of it.
+        self.assertTrue(any("(ValueError)" in m for m in logs.output))
+        self.assertFalse(any("batch failure" in m for m in logs.output))
+        self.assertEqual(rs.fetchone()[0], 20)
+
+    def test_fetchone_all_failing_max_batch_conversion_count_is_bounded(self):
+        """Document the worst-case cost of bisecting a full all-failing refill.
+
+        When every row fails (a systemic converter / type problem), bisection tries
+        every node of the tree: exactly ``2n - 1`` conversions for an ``n``-row
+        refill, i.e. about 2x the one-conversion-per-row cost of fetchone() before
+        batching. Short-circuiting on "same exception type in both halves" is
+        deliberately not done, since it would drop good rows that share the error
+        type (see test_fetchone_same_message_bad_rows_do_not_drop_later_good_rows).
+        """
+        from unittest.mock import patch
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        n = _FETCHONE_BUFFER_MAX_ROWS
+        calls = []
+
+        def convert(self_, table):
+            calls.append(table.num_rows)
+            raise ValueError("systemic failure")
+
+        rs = self.make_columnar_result_set(n, arraysize=n)
+        # Skip the adaptive refill ramp so the first refill is a full batch.
+        rs._fetchone_refill_rows = n
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING"):
+            with self.assertRaises(ValueError):
+                rs.fetchone()
+        self.assertEqual(calls[0], n)
+        self.assertEqual(len(calls), 2 * n - 1)
+        # Total rows converted across all attempts is O(n log n), not O(n^2).
+        self.assertLessEqual(sum(calls), n * (n - 1).bit_length() + n)
+        self.assertEqual(rs._row_buffer_count(), n - 1)
+
+    def test_fetchone_failed_fetch_does_not_advance_refill_ramp(self):
+        from unittest.mock import patch
+
+        rs = self.make_columnar_result_set(100, arraysize=100, warm=False)
+        initial = rs._fetchone_refill_rows
+        real_next_n_rows = rs.results.next_n_rows
+        with patch.object(
+            rs.results,
+            "next_n_rows",
+            side_effect=[RuntimeError("transient"), real_next_n_rows],
+        ):
+            with self.assertRaises(RuntimeError):
+                rs.fetchone()
+        # The failed fetch must not grow the ramp, so a retry refills the same size.
+        self.assertEqual(rs._fetchone_refill_rows, initial)
+        sizes = []
+        with patch.object(
+            rs.results,
+            "next_n_rows",
+            side_effect=lambda n: sizes.append(n) or real_next_n_rows(n),
+        ):
+            self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(sizes, [initial])
+
+    def test_fetchone_same_message_bad_rows_do_not_drop_later_good_rows(self):
+        from unittest.mock import patch
+
+        real_convert = ThriftResultSet._convert_columnar_table
+        # Enough leading bad rows, all failing with the same message as the batch
+        # (e.g. "year 0 is out of range"), to look like a systematic failure.
+        n_bad = 8
+
+        def convert(self_, table):
+            rows = real_convert(self_, table)
+            if any(r[0] < n_bad for r in rows):
+                raise ValueError("year 0 is out of range")
+            return rows
+
+        rs = self.make_columnar_result_set(20, arraysize=20)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            for _ in range(n_bad):
+                with self.assertRaises(ValueError):
+                    rs.fetchone()
+            # Every row after the bad run still converts and is served.
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(n_bad, 20)))
+        self.assertTrue(any("{} of 20 row(s)".format(n_bad) in m for m in logs.output))
+        self.assertEqual(rs.rownumber, 20)
+
+    def test_fetchone_leading_bad_rows_do_not_drop_later_good_rows(self):
+        from unittest.mock import patch
+
+        real_convert = ThriftResultSet._convert_columnar_table
+        n_bad = 6
+
+        def convert(self_, table):
+            rows = real_convert(self_, table)
+            bad = [r[0] for r in rows if r[0] < n_bad]
+            if bad:
+                # Each bad row fails with its own message, unlike the batch error.
+                raise ValueError("bad value in row {}".format(bad[0]))
+            return rows
+
+        rs = self.make_columnar_result_set(20, arraysize=20)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert,
+        ), self.assertLogs("databricks.sql.result_set", level="WARNING") as logs:
+            for i in range(n_bad):
+                with self.assertRaises(ValueError) as ctx:
+                    rs.fetchone()
+                self.assertEqual(str(ctx.exception), "bad value in row {}".format(i))
+            # Rows after the leading bad run still convert and are served.
+            self.assertEqual([r[0] for r in rs.fetchall()], list(range(n_bad, 20)))
+        self.assertTrue(any("{} of 20 row(s)".format(n_bad) in m for m in logs.output))
+        self.assertFalse(any("rest not retried" in m for m in logs.output))
+        self.assertEqual(rs.rownumber, 20)
+
+    def test_fetchone_raw_converted_count_mismatch_fails_loudly(self):
+        from unittest.mock import patch
+        from databricks.sql.exc import InternalError
+
+        real_convert = ThriftResultSet._convert_columnar_table
+
+        def convert_dropping_a_row(self_, table):
+            return real_convert(self_, table)[:-1]
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            side_effect=convert_dropping_a_row,
+        ):
+            with self.assertRaises(InternalError):
+                rs.fetchone()
+
+    def test_fetchone_empty_conversion_of_nonempty_chunk_fails_loudly(self):
+        from unittest.mock import patch
+        from databricks.sql.exc import InternalError
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            return_value=[],
+        ):
+            with self.assertRaises(InternalError):
+                rs.fetchone()
+
+    def test_fetchone_unknown_raw_chunk_type_fails_loudly(self):
+        from unittest.mock import patch
+        from databricks.sql.exc import InternalError
+
+        class _NoRowCount:
+            pass
+
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        with patch.object(
+            ThriftResultSet,
+            "_fetch_available_from_queue",
+            autospec=True,
+            return_value=_NoRowCount(),
+        ), patch.object(
+            ThriftResultSet,
+            "_convert_columnar_table",
+            autospec=True,
+            return_value=[("x",)],
+        ):
+            with self.assertRaises(InternalError) as ctx:
+                rs.fetchone()
+        self.assertIn("_NoRowCount", str(ctx.exception))
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_fetchone_then_fetchall_arrow_keeps_order(self):
+        rs = self.make_columnar_result_set(10, arraysize=4)
+        self.assertEqual(rs.fetchone()[0], 0)
+        self.assertEqual(rs.rownumber, 1)
+        table = rs.fetchall_arrow()
+        self.assertEqual(table.column(0).to_pylist(), list(range(1, 10)))
+        self.assertEqual(rs.rownumber, 10)
 
 
 if __name__ == "__main__":
