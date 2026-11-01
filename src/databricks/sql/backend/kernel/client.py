@@ -128,6 +128,16 @@ def _is_not_found(exc: BaseException) -> bool:
     )
 
 
+def _async_statement_reader(owner: Any) -> Any:
+    reader = getattr(owner, "reader", None)
+    if not callable(reader):
+        raise NotSupportedError(
+            "Independent async reads require a newer databricks-sql-kernel "
+            "wheel that exposes ExecutedAsyncStatement.reader()."
+        )
+    return reader()
+
+
 def _catalog_or_none(value: Optional[str]) -> Optional[str]:
     """Map supported all-catalog wildcards to the kernel's unset filter."""
     if value is None or value in ("%", "*"):
@@ -336,13 +346,13 @@ class KernelDatabricksClient(DatabricksClient):
         # ``get_execution_result`` use this owning handle before result
         # streaming starts so kernel async statement telemetry is
         # finalized on the original ``ExecuteStatementAsync`` telemetry
-        # object, then fall back to attach-by-id for re-fetch /
-        # cross-process cases.
+        # object, then use derived readers for re-fetch and attach-by-id
+        # for cross-process cases.
         self._async_handles: Dict[str, Any] = {}
         self._async_result_stream_started: Set[str] = set()
         # Async ids whose owning-handle ``status()`` poll is currently in
         # flight. A second concurrent poll of the same id (before result
-        # streaming is claimed) is routed to the attach-by-id fallback so
+        # streaming is claimed) is routed to a reader derived from the owner so
         # it gets a fresh kernel handle instead of racing ``status()`` on
         # the shared owning handle. Guarded by ``_async_handles_lock``;
         # each entry is transient (added before the poll, discarded in a
@@ -796,12 +806,10 @@ class KernelDatabricksClient(DatabricksClient):
         # connection (including a fresh cursor resuming the id) resolves
         # the same owning handle until result streaming is claimed — see
         # the concurrency note below for the limits that places on
-        # concurrent polling. Once result streaming has been claimed, or
-        # when this connector genuinely never held the handle (a
-        # cross-process / restarted-process resume), re-attach to the
-        # statement by id. SEA keys GetStatementStatus purely on the id,
-        # so a statement the connector no longer holds a handle for is
-        # still queryable. CLOSED comes straight from the server: after a
+        # concurrent polling. Once result streaming has been claimed,
+        # derive a reader from the retained owner. If this connector never
+        # held the owner (a cross-process / restarted-process resume),
+        # attach by statement id. CLOSED comes straight from the server: after a
         # statement is closed (DELETE) the server still returns 200
         # state=CLOSED until the result TTL elapses.
         if self._kernel_session is None:
@@ -815,26 +823,29 @@ class KernelDatabricksClient(DatabricksClient):
         # undefined, we reserve the owning handle for the first poller via
         # _async_status_in_flight: a second concurrent poll of the same id (before
         # result streaming is claimed) sees the id already in flight and falls
-        # through to the attach-by-id path, getting its own fresh kernel handle —
-        # preserving the pre-change behaviour where every caller re-attached by id
-        # and status() ran on distinct objects. The reservation is transient
+        # through to a reader derived from the owner. The reservation is transient
         # (discarded in the finally below), so serial polls still take the
         # telemetry-preserving owning-handle path.
         with self._async_handles_lock:
+            owner = self._async_handles.get(command_id.guid)
             handle = (
                 None
                 if (
                     command_id.guid in self._async_result_stream_started
                     or command_id.guid in self._async_status_in_flight
                 )
-                else self._async_handles.get(command_id.guid)
+                else owner
             )
             reserved_owning_handle = handle is not None
             if reserved_owning_handle:
                 self._async_status_in_flight.add(command_id.guid)
         try:
             if handle is None:
-                handle = self._kernel_session.attach_async_statement(command_id.guid)
+                handle = (
+                    _async_statement_reader(owner)
+                    if owner is not None
+                    else self._kernel_session.attach_async_statement(command_id.guid)
+                )
             state, failure = handle.status()
         except Exception as exc:
             if _is_not_found(exc):
@@ -861,7 +872,7 @@ class KernelDatabricksClient(DatabricksClient):
         finally:
             # Release the owning-handle reservation once this poll's
             # status() has completed (or raised). Only the reserver clears
-            # it, so a concurrent poll that fell through to attach-by-id
+            # it, so a concurrent poll that used a derived reader
             # never touches another poller's reservation.
             if reserved_owning_handle:
                 with self._async_handles_lock:
@@ -894,7 +905,7 @@ class KernelDatabricksClient(DatabricksClient):
         # handles intentionally use no-op telemetry, so always
         # re-attaching loses the SEA async statement row when the result
         # is drained. After the owning result stream has been started,
-        # attach by id for re-fetch. This preserves the Thrift-parity
+        # derive a reader for re-fetch. This preserves the Thrift-parity
         # behavior where results remain re-callable until explicit close.
         #
         # Concurrency: the owning handle is shared, and ``await_result()``
@@ -902,35 +913,39 @@ class KernelDatabricksClient(DatabricksClient):
         # handle a concurrent ``get_query_state`` poll is already using
         # for ``status()``. Mirror that method's guard here — if a status
         # poll has the owning handle reserved (guid in
-        # ``_async_status_in_flight``), fall through to attach-by-id and
-        # get a fresh kernel handle, exactly as an in-flight peer poll
+        # ``_async_status_in_flight``), derive an independent reader,
+        # exactly as an in-flight peer poll
         # does. In the normal serial flow (poll to terminal, then fetch)
         # the reservation is already discarded, so the fetch still takes
         # the telemetry-preserving owning-handle path.
         #
-        # If this process does not hold the owning handle (fresh cursor,
-        # restarted process, already re-fetched, or a concurrent poll
-        # holds it), ``attach_async_statement`` issues a
+        # If this connection does not hold the owning handle,
+        # ``attach_async_statement`` issues a
         # GetStatementStatus to seed the handle; a 404 (unknown / aged-out
         # id) surfaces as a NotFound KernelError mapped to
         # ``ProgrammingError`` below via ``_wrap_kernel_exception``.
         if self._kernel_session is None:
             raise InterfaceError("get_execution_result requires an open session.")
         with self._async_handles_lock:
+            owner = self._async_handles.get(command_id.guid)
             handle = (
                 None
                 if (
                     command_id.guid in self._async_result_stream_started
                     or command_id.guid in self._async_status_in_flight
                 )
-                else self._async_handles.get(command_id.guid)
+                else owner
             )
             uses_owning_handle = handle is not None
             if uses_owning_handle:
                 self._async_result_stream_started.add(command_id.guid)
         try:
             if handle is None:
-                handle = self._kernel_session.attach_async_statement(command_id.guid)
+                handle = (
+                    _async_statement_reader(owner)
+                    if owner is not None
+                    else self._kernel_session.attach_async_statement(command_id.guid)
+                )
             stream = handle.await_result()
         except Exception as exc:
             if uses_owning_handle:
@@ -946,7 +961,7 @@ class KernelDatabricksClient(DatabricksClient):
         # owning handle's result stream has been started (and may be
         # partially consumed); re-awaiting that same handle on a retry is
         # not safe. Leaving the marker set routes any retry through the
-        # attach-by-id fallback, which re-materialises a fresh stream.
+        # reader fallback, which re-materialises a fresh stream.
         # The trade-off is that such a retry loses the async-statement
         # telemetry — an accepted, narrow gap limited to the case where
         # result-set construction fails after a successful await.

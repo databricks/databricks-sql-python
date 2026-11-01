@@ -116,7 +116,8 @@ jobs:
           PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
           HEAD_SHA: ${{ steps.inputs.outputs.head_sha }}
           DRY_RUN: ${{ steps.inputs.outputs.dry_run }}
-          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
+          REVIEWER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
           # The reviewer's repo-specific ADDITIVE guidance, read from the TRUSTED
