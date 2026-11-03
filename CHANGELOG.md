@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Include the available SQL statement ID in Thrift failure telemetry so errors can be correlated with the failed statement.
 - Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
 
 # 4.8.0 (2026-10-24)
