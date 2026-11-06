@@ -39,12 +39,16 @@ class TestSession:
     def test_removed_sea_backend_rejected_before_connecting(
         self, mock_session, mock_http_client, use_kernel
     ):
-        with pytest.raises(
-            ValueError, match="SEA backend has been removed.*use_kernel=True"
-        ):
-            databricks.sql.connect(
-                **self.DUMMY_CONNECTION_ARGS, use_sea=True, use_kernel=use_kernel
-            )
+        gc.collect()
+        with patch("sys.unraisablehook") as unraisable_hook:
+            with pytest.raises(
+                ValueError, match="SEA backend has been removed.*use_kernel=True"
+            ):
+                databricks.sql.connect(
+                    **self.DUMMY_CONNECTION_ARGS, use_sea=True, use_kernel=use_kernel
+                )
+            gc.collect()
+            unraisable_hook.assert_not_called()
         mock_session.assert_not_called()
         mock_http_client.assert_not_called()
 
@@ -56,12 +60,12 @@ class TestSession:
             ({"use_sea": False}, None),
             ({"use_hybrid_disposition": False}, None),
             ({"use_hybrid_disposition": True}, "use_hybrid_disposition"),
-            ({"max_connections": 10}, "Use '_pool_maxsize' instead."),
-            ({"max_connections": 0}, "Use '_pool_maxsize' instead."),
-            ({"max_connections": None}, "Use '_pool_maxsize' instead."),
+            ({"max_connections": 10}, "max_connections"),
+            ({"max_connections": 0}, "max_connections"),
+            ({"max_connections": None}, "max_connections"),
             (
                 {"max_connections": 10, "_pool_maxsize": 42},
-                "Use '_pool_maxsize' instead.",
+                "max_connections",
             ),
         ],
     )
@@ -93,6 +97,9 @@ class TestSession:
         if expected_warning:
             assert len(messages) == 1
             assert expected_warning in messages[0]
+            if expected_warning == "max_connections":
+                assert "On kernel >= 1.1.0, use '_pool_maxsize'" in messages[0]
+                assert "does not configure the Thrift query transport" in messages[0]
         else:
             assert messages == []
 

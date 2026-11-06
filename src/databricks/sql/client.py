@@ -383,7 +383,8 @@ class Connection:
             kwargs.pop("max_connections")
             logger.warning(
                 "Parameter 'max_connections' was removed with the SEA backend "
-                "and is ignored. Use '_pool_maxsize' instead."
+                "and is ignored. On kernel >= 1.1.0, use '_pool_maxsize' for the "
+                "kernel HTTP pool; it does not configure the Thrift query transport."
             )
 
         logger.debug(
