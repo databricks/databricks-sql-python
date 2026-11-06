@@ -3,6 +3,7 @@ import unittest, pytest, decimal
 from typing import Any, Dict
 from unittest.mock import patch
 from databricks.sql.parameters.native import dbsql_parameter_from_primitive
+from databricks.sql.exc import ProgrammingError
 from databricks.sql.types import Row
 
 from databricks.sql.utils import (
@@ -437,7 +438,7 @@ class TestInClauseSequenceRendering(object):
         self, query, params
     ):
         with patch.object(
-            ParamEscaper, "_sequence_markers_following_in", side_effect=AssertionError
+            ParamEscaper, "_markers_following_in", side_effect=AssertionError
         ) as probe:
             assert pe.render_inline(query, params) == inject_parameters(
                 query, pe.escape_args(params)
@@ -445,8 +446,8 @@ class TestInClauseSequenceRendering(object):
         probe.assert_not_called()
 
     def test_probe_shaped_string_value_is_not_a_probe(self):
-        """Real values are substituted while probing, so a string value that contains a probe-like
-        token must not make another marker render as a list."""
+        """A string value that contains a probe-like token must not make another marker render as
+        a list."""
         query = "INSERT INTO t VALUES (%(note)s, %(tags)s)"
         params = {"note": "x IN \x000000000000000000:1\x00", "tags": ["a"]}
         assert pe.render_inline(query, params) == (
@@ -475,6 +476,83 @@ class TestInClauseSequenceRendering(object):
         with pytest.raises(error, match=message):
             inject_parameters(query, pe.escape_args(params))
         with pytest.raises(error, match=message):
+            pe.render_inline(query, params)
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "set, sorted",
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                {"ids": {3, 1, 2}},
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+            ),
+            (
+                "frozenset, positional, NOT IN",
+                "SELECT * FROM t WHERE x NOT IN %s",
+                (frozenset({2, 1}),),
+                "SELECT * FROM t WHERE x NOT IN (1,2)",
+            ),
+            (
+                "dict keys",
+                "SELECT * FROM t WHERE name IN %(names)s",
+                {"names": {"b": 1, "a": 2}.keys()},
+                "SELECT * FROM t WHERE name IN ('a','b')",
+            ),
+            (
+                "items that do not compare are sorted by repr",
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                {"ids": {None, 1}},
+                "SELECT * FROM t WHERE x IN (1,NULL)",
+            ),
+            (
+                "set of tuples renders sorted rows",
+                "SELECT * FROM t WHERE (a, b) IN %(pairs)s",
+                {"pairs": {(2, "b"), (1, "a")}},
+                "SELECT * FROM t WHERE (a, b) IN ((1,'a'),(2,'b'))",
+            ),
+            (
+                "same set after IN twice",
+                "SELECT * FROM t WHERE x IN %(ids)s OR y IN %(ids)s",
+                {"ids": {2, 1}},
+                "SELECT * FROM t WHERE x IN (1,2) OR y IN (1,2)",
+            ),
+            (
+                "set next to an array elsewhere",
+                "SELECT %(tags)s AS tags FROM t WHERE x IN %(ids)s",
+                {"tags": ["a"], "ids": {1}},
+                "SELECT ARRAY('a') AS tags FROM t WHERE x IN (1)",
+            ),
+        ),
+    )
+    def test_set_after_in_renders_as_sorted_list(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params"),
+        (
+            (
+                "set at a marker not after IN",
+                "INSERT INTO t VALUES (%(s)s)",
+                {"s": {1}},
+            ),
+            (
+                "set used after IN and elsewhere",
+                "SELECT %(ids)s FROM t WHERE x IN %(ids)s",
+                {"ids": {1}},
+            ),
+            ("unused set", "SELECT * FROM t WHERE x = %(a)s", {"a": 1, "s": {1}}),
+            ("set after IN in caller-written parentheses", "SELECT 1 IN (%s)", ({1},)),
+            ("set inside a list", "SELECT * FROM t WHERE x IN %(v)s", {"v": [{1}]}),
+            ("set at a %d marker after IN", "SELECT * FROM t WHERE x IN %d", ({1},)),
+            ("set in an operation that does not format", "SELECT %s, %s", ({1},)),
+            ("set in an IN that ends a line comment", "SELECT -- IN\n %s", ({1},)),
+        ),
+    )
+    def test_set_elsewhere_raises_as_before(self, label, query, params):
+        with pytest.raises(ProgrammingError, match="Unsupported object"):
+            inject_parameters(query, pe.escape_args(params))
+        with pytest.raises(ProgrammingError, match="Unsupported object"):
             pe.render_inline(query, params)
 
 

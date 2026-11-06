@@ -17,7 +17,7 @@ import datetime
 import decimal
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
-from collections.abc import Mapping
+from collections.abc import Mapping, Set as AbstractSet
 from decimal import Decimal
 from enum import Enum
 import re
@@ -597,6 +597,40 @@ def _renders_as_array(value: Any) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, str)
 
 
+def _is_set(value: Any) -> bool:
+    """Whether `value` is a set, frozenset or dict key view. A set has no order, so it can only
+    render as an IN list, never as an ARRAY."""
+    return isinstance(value, AbstractSet)
+
+
+def _in_list_items(value: Any) -> Any:
+    """Return the items to render for an IN list, with a set's items sorted so the SQL text is
+    the same on every run."""
+    if not _is_set(value):
+        return value
+    try:
+        return sorted(value)
+    except TypeError:
+        # The items do not compare with each other, for example None and an int.
+        return sorted(value, key=repr)
+
+
+class _InListOnly:
+    """Stands in for an escaped set, which can only be rendered as an IN list.
+
+    `render_inline` rejects a set at any other marker before formatting. Raising here as well
+    keeps an unescaped set from ever reaching the SQL text.
+    """
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    def __str__(self) -> str:
+        raise ProgrammingError("Unsupported object {}".format(self.value))
+
+    __repr__ = __str__
+
+
 class _MarkerProbe:
     """Formats as a token that identifies the marker it was substituted into."""
 
@@ -635,13 +669,29 @@ class _NumberedLookups:
     __repr__ = __str__
 
 
+def _reject_sets_outside_in_lists(
+    parameters: Any, in_list_markers: Set[int], marker_keys: Dict[int, Any]
+) -> None:
+    """Raise the error `escape_args` raises for a set, unless the set is used and every marker
+    it fills renders as an IN list."""
+    items = (
+        parameters.items() if isinstance(parameters, dict) else enumerate(parameters)
+    )
+    for key, value in items:
+        if not _is_set(value):
+            continue
+        markers = {index for index, k in marker_keys.items() if k == key}
+        if not markers or not markers <= in_list_markers:
+            raise ProgrammingError("Unsupported object {}".format(value))
+
+
 def _format_markers(
     operation: str, escaped: Any, value_for: Callable[[int, Any], Any]
 ) -> str:
     """%-format `operation`, taking the value of marker n from `value_for(n, key)`.
 
-    `escaped` is the output of `ParamEscaper.escape_args`. `key` is the marker's name when it is a
-    dict and the marker's position otherwise.
+    `escaped` holds the escaped parameter values. `key` is the marker's name when it is a dict and
+    the marker's position otherwise.
     """
     values: Any
     if isinstance(escaped, dict):
@@ -674,42 +724,67 @@ class ParamEscaper:
         The choice is made per marker, so a parameter used both after IN and elsewhere keeps its
         ARRAY rendering at the other markers. Inside the list, tuples render as rows and lists as
         ARRAY literals.
+
+        A set (or frozenset, or dict key view) is accepted only where every marker it fills
+        directly follows IN, and its items are sorted. Anywhere else it raises the same
+        `ProgrammingError` as `escape_args`, because a set has no order to put into an ARRAY.
         """
-        escaped = self.escape_args(parameters)
+        escaped = self._escape_values(parameters)
         values = parameters.values() if isinstance(parameters, dict) else parameters
-        if not any(_renders_as_array(value) for value in values):
-            # Only a sequence can render as an IN list, so without one render exactly as before.
+        if not any(_renders_as_array(value) or _is_set(value) for value in values):
+            # Only a sequence or a set can render as an IN list, so without one render exactly
+            # as before.
             return inject_parameters(operation, escaped)
 
-        in_list_markers = self._sequence_markers_following_in(
+        in_list_markers, marker_keys = self._markers_following_in(
             operation, parameters, escaped
         )
+        _reject_sets_outside_in_lists(parameters, in_list_markers, marker_keys)
 
         def render_marker(index: int, key: Any) -> Any:
             if index in in_list_markers:
-                return self.escape_in_list(parameters[key])
+                return self.escape_in_list(_in_list_items(parameters[key]))
             return escaped[key]
 
         return _format_markers(operation, escaped, render_marker)
 
-    def _sequence_markers_following_in(
+    def _escape_values(self, parameters):
+        """Escape like `escape_args`, except that a set becomes an `_InListOnly` placeholder
+        instead of raising, so `render_inline` can decide where it is allowed."""
+
+        def escape(value: Any) -> Any:
+            return _InListOnly(value) if _is_set(value) else self.escape_item(value)
+
+        if isinstance(parameters, dict):
+            return {k: escape(v) for k, v in parameters.items()}
+        elif isinstance(parameters, (list, tuple)):
+            return tuple(escape(x) for x in parameters)
+        else:
+            raise ProgrammingError("Unsupported param format: {}".format(parameters))
+
+    def _markers_following_in(
         self, operation: str, parameters, escaped
-    ) -> Set[int]:
-        """Return the numbers of the markers that directly follow IN and receive a sequence.
+    ) -> Tuple[Set[int], Dict[int, Any]]:
+        """Return the numbers of the markers that directly follow IN and receive a sequence or a
+        set, and the parameter key that each marker number refers to.
 
         Markers are numbered as `_format_markers` numbers them. To find them, the operation is
         formatted once through the same %-formatting as the real substitution, so `%%` and
-        positional markers line up exactly. Each sequence value is replaced by a probe token.
-        Numbers keep their value, so markers such as `%d` still format, and escaped strings are
-        replaced by an empty string literal, so the text of a value cannot change the result.
+        positional markers line up exactly. Each sequence or set value is replaced by a probe
+        token. Numbers keep their value, so markers such as `%d` still format, and escaped strings
+        are replaced by an empty string literal, so the text of a value cannot change the result.
+        If the operation does not format, both results are empty.
         """
         # The nonce stops text that only looks like a probe token from being taken for one.
         nonce = secrets.token_hex(8)
+        marker_keys: Dict[int, Any] = {}
 
         def probe_marker(index: int, key: Any) -> Any:
             # A missing name raises KeyError here, as it does when rendering.
             escaped_value = escaped[key]
-            if _renders_as_array(parameters[key]):
+            marker_keys[index] = key
+            value = parameters[key]
+            if _renders_as_array(value) or _is_set(value):
                 return _MarkerProbe(nonce, index)
             # Replace text with '' so the content of a value cannot change the result. A string
             # of two or more characters formats under exactly the markers '' does. A one-character
@@ -723,14 +798,16 @@ class ParamEscaper:
         except (KeyError, TypeError, ValueError):
             # Rendering raises the same error: a probe only replaces a sequence, and a marker that
             # cannot format a probe (such as %d) cannot format the sequence's ARRAY string either.
-            return set()
+            # A set gets the ProgrammingError escape_args raises, since none of its markers count.
+            return set(), {}
 
-        return {
+        in_list_markers = {
             int(match.group(2))
             for match in _IN_MARKER_PROBE.finditer(probed_operation)
             if match.group(1) == nonce
             and not _in_ends_line_comment(probed_operation, match)
         }
+        return in_list_markers, marker_keys
 
     def escape_in_list(self, item):
         return "(" + ",".join(map(str, map(self._escape_in_list_element, item))) + ")"

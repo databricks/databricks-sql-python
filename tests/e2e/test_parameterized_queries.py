@@ -577,6 +577,12 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 {"pairs": [(1, "a"), (2, "x"), (3, "c")]},
                 [1, 3],
             ),
+            (
+                # A set is accepted directly after IN and rendered sorted.
+                "SELECT id FROM range(5) WHERE id NOT IN %(ids)s ORDER BY id",
+                {"ids": {4, 0, 2}},
+                [1, 3],
+            ),
         ],
     )
     def test_inline_sequence_in_clause(self, query, params, expected_ids):
