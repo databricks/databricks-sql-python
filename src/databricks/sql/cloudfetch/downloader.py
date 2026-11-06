@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     # Imported for type annotations only. ``from __future__ import annotations``
     # makes every annotation a string, so this import is never evaluated at
     # runtime -- which keeps the (Apache Thrift) ``thrift`` package out of the
-    # cloud-fetch code path used by the SEA and kernel backends. See the
+    # cloud-fetch code path used by the kernel backend. See the
     # ``test_lazy_thrift_import`` regression test.
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 

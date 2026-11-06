@@ -474,7 +474,7 @@ def kernel_auth_kwargs(
         return kwargs
 
     # 5. Custom credentials_provider — the connector's primary M2M path
-    #    on Thrift/SEA, but unusable on the kernel: it's an opaque token
+    #    on Thrift, but unusable on the kernel: it's an opaque token
     #    source with no extractable client_id/secret, so the kernel
     #    can't own the token lifecycle. Point the caller at the raw
     #    M2M kwargs instead.

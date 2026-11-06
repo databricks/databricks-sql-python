@@ -685,7 +685,7 @@ class TestTelemetryEventModels:
         
         params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
-            mode=DatabricksClientType.SEA,
+            mode=DatabricksClientType.THRIFT,
             host_info=host_info,
             auth_mech=AuthMech.OAUTH,
             auth_flow=AuthFlow.BROWSER_BASED_AUTHENTICATION,
@@ -702,7 +702,6 @@ class TestTelemetryEventModels:
             use_system_trust_store=True,
             enable_arrow=True,
             enable_direct_results=True,
-            enable_sea_hybrid_results=True,
             http_connection_pool_size=100,
             rows_fetched_per_block=100000,
             async_poll_interval_millis=2000,
@@ -718,7 +717,7 @@ class TestTelemetryEventModels:
         
         # Verify all new fields are in JSON
         assert json_dict["http_path"] == "/sql/1.0/warehouses/abc123"
-        assert json_dict["mode"] == "SEA"
+        assert json_dict["mode"] == "THRIFT"
         assert json_dict["host_info"]["host_url"] == "workspace.databricks.com"
         assert json_dict["auth_mech"] == "OAUTH"
         assert json_dict["auth_flow"] == "BROWSER_BASED_AUTHENTICATION"
@@ -735,7 +734,6 @@ class TestTelemetryEventModels:
         assert json_dict["use_system_trust_store"] is True
         assert json_dict["enable_arrow"] is True
         assert json_dict["enable_direct_results"] is True
-        assert json_dict["enable_sea_hybrid_results"] is True
         assert json_dict["http_connection_pool_size"] == 100
         assert json_dict["rows_fetched_per_block"] == 100000
         assert json_dict["async_poll_interval_millis"] == 2000
@@ -804,7 +802,7 @@ class TestTelemetryEventModels:
         
         connection_params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
-            mode=DatabricksClientType.SEA,
+            mode=DatabricksClientType.THRIFT,
             host_info=host_info,
             auth_mech=AuthMech.OAUTH,
             use_proxy=True,
@@ -864,7 +862,7 @@ class TestTelemetryEventModels:
         
         params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
-            mode=DatabricksClientType.SEA,
+            mode=DatabricksClientType.THRIFT,
             host_info=host_info,
             # All optional fields left as None
         )
@@ -894,7 +892,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = True
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
@@ -919,7 +916,7 @@ class TestConnectionParameterTelemetry:
             
             # Verify fields are populated
             assert driver_params.http_path == "/sql/1.0/warehouses/test"
-            assert driver_params.mode == DatabricksClientType.SEA
+            assert driver_params.mode == DatabricksClientType.THRIFT
             assert driver_params.host_info.host_url == "workspace.databricks.com"
             assert driver_params.host_info.port == 443
 
@@ -930,7 +927,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = False
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.azuredatabricks.net"
         mock_session.return_value = mock_session_instance
@@ -960,7 +956,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = True
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
@@ -1005,7 +1000,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = federated_pat
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = False
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
@@ -1033,7 +1027,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = True
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance

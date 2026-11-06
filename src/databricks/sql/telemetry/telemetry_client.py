@@ -757,7 +757,7 @@ class TelemetryClientFactory:
         )
         telemetry_client._driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
-            mode=DatabricksClientType.THRIFT,  # TODO: Add SEA mode
+            mode=DatabricksClientType.THRIFT,
             host_info=HostDetails(host_url=host_url, port=port),
         )
         telemetry_client._user_agent = user_agent

@@ -169,7 +169,7 @@ class TestKernelAuthKwargs:
 
     def test_external_credentials_provider_raises_not_supported(self):
         """A user-supplied ``credentials_provider`` is the connector's
-        primary M2M path on Thrift/SEA, but it's an opaque token source
+        primary M2M path on Thrift, but it's an opaque token source
         with no extractable raw creds — the kernel can't own the token
         lifecycle, so the bridge rejects it and points at the
         ``oauth_client_id`` / ``oauth_client_secret`` M2M kwargs."""

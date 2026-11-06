@@ -106,13 +106,11 @@ up whatever it needs.
 == HOW TO WORK (bug-fix flow) ==
 
 0. **Pick the BACKEND the bug is on — reproduce on that one.** The connector has
-   three backends and a bug on one won't reproduce on another. Choose from the
+   two backends and a bug on one won't reproduce on another. Choose from the
    issue:
    - **kernel** (`use_kernel=True`) — only if the issue is specifically about the
      Rust kernel / `use_kernel`. Repro in `tests/e2e/test_kernel_backend.py` and run
      it alone (it needs the real wheel; see the `-m "not realkernel"` note above).
-   - **SEA** (`use_sea=True`) — if the issue implicates SEA, or the area is
-     backend-parametrized (add the `{"use_sea": True}` param case).
    - **Thrift** (the default, no kwarg) — everything else; this is the common case.
    See CONTRIBUTING.md → "Backends and test tiers" for the full matrix (selection
    kwarg + where each backend's tests live).

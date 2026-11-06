@@ -421,8 +421,8 @@ class ClientTestSuite(unittest.TestCase):
     def test_cancel_command_will_issue_warning_for_cancel_with_no_executing_command(
         self, logger_instance
     ):
-        # Backends like Thrift/SEA set active_command_id before blocking
-        # and do NOT define ``cancel_running_cursor``. Use ``spec`` so the
+        # Thrift sets active_command_id before blocking and does not
+        # define ``cancel_running_cursor``. Use ``spec`` so the
         # mock doesn't auto-advertise that opt-in hook (a bare ``Mock()``
         # returns a truthy Mock for any attribute).
         mock_thrift_backend = Mock(spec=["cancel_command"])

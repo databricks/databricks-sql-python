@@ -38,7 +38,6 @@ from databricks.sql.backend.kernel.auth_bridge import kernel_auth_kwargs
 from databricks.sql.backend.kernel.result_set import KernelResultSet
 from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
 from databricks.sql.backend.types import (
-    BackendType,
     CommandId,
     CommandState,
     SessionId,
@@ -491,13 +490,14 @@ class KernelDatabricksClient(DatabricksClient):
             # the secret, so drop ours.
             self._auth_options.pop("oauth_client_secret", None)
 
-        # Use the kernel's real server-issued session id, not a
-        # synthetic UUID. Matches what the native SEA backend does.
+        # Use the kernel's real server-issued session id.
         # ``session_id`` is a PyO3 attribute access — also wrapped so
         # any conversion error surfaces as a mapped PEP 249 exception
         # instead of bubbling raw from the boundary.
         try:
-            session_id = SessionId.from_sea_session_id(self._kernel_session.session_id)
+            session_id = SessionId.from_kernel_session_id(
+                self._kernel_session.session_id
+            )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
         self._session_id = session_id
@@ -609,7 +609,7 @@ class KernelDatabricksClient(DatabricksClient):
                     bind_tspark_params(stmt, parameters)
                 if async_op:
                     async_exec = stmt.submit()
-                    command_id = CommandId.from_sea_statement_id(
+                    command_id = CommandId.from_kernel_statement_id(
                         async_exec.statement_id
                     )
                     cursor.active_command_id = command_id
@@ -664,7 +664,7 @@ class KernelDatabricksClient(DatabricksClient):
                         canceller.statement_id() if canceller is not None else None
                     )
                     if stmt_id:
-                        cursor.active_command_id = CommandId.from_sea_statement_id(
+                        cursor.active_command_id = CommandId.from_kernel_statement_id(
                             stmt_id
                         )
                 except Exception:
@@ -683,7 +683,7 @@ class KernelDatabricksClient(DatabricksClient):
                 except Exception:
                     pass
 
-        command_id = CommandId.from_sea_statement_id(executed.statement_id)
+        command_id = CommandId.from_kernel_statement_id(executed.statement_id)
         # Surface the affected-row count for DML (INSERT/UPDATE/DELETE/
         # MERGE) as ``cursor.rowcount`` instead of the hardcoded ``-1``.
         # ``num_modified_rows`` is ``None`` for SELECT (and warehouses
@@ -1009,7 +1009,7 @@ class KernelDatabricksClient(DatabricksClient):
         consumes ``cursor.query_id`` downstream (telemetry, log
         ingestion) sees a UUID-shaped string rather than a
         connector-internal magic prefix it cannot parse."""
-        return CommandId.from_sea_statement_id(uuid.uuid4().hex)
+        return CommandId.from_kernel_statement_id(uuid.uuid4().hex)
 
     def get_catalogs(
         self,

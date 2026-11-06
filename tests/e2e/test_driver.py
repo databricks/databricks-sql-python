@@ -139,16 +139,15 @@ class PySQLPytestTestCase:
 
 
 class TestPySQLLargeWideResultSet(PySQLPytestTestCase):
-    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
     @pytest.mark.parametrize("lz4_compression", [False, True])
-    def test_query_with_large_wide_result_set(self, extra_params, lz4_compression):
+    def test_query_with_large_wide_result_set(self, lz4_compression):
         resultSize = 100 * 1000 * 1000  # 100 MB
         width = 8192  # B
         rows = resultSize // width
         cols = width // 36
         fetchmany_size = 10 * 1024 * 1024 // width
         self.arraysize = 1000
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.connection.lz4_compression = lz4_compression
             uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
             cursor.execute(
@@ -163,14 +162,13 @@ class TestPySQLLargeWideResultSet(PySQLPytestTestCase):
 
 
 class TestPySQLLargeNarrowResultSet(PySQLPytestTestCase):
-    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
-    def test_query_with_large_narrow_result_set(self, extra_params):
+    def test_query_with_large_narrow_result_set(self):
         resultSize = 100 * 1000 * 1000  # 100 MB
         width = 8  # sizeof(long)
         rows = resultSize / width
         fetchmany_size = 10 * 1024 * 1024 // width
         self.arraysize = 10000000
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
             for row_id, row in enumerate(
                 fetch_rows(self, cursor, rows, fetchmany_size)
@@ -179,8 +177,7 @@ class TestPySQLLargeNarrowResultSet(PySQLPytestTestCase):
 
 
 class TestPySQLLongRunningQuery(PySQLPytestTestCase):
-    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
-    def test_long_running_query(self, extra_params):
+    def test_long_running_query(self):
         """Incrementally increase query size until it takes at least 1 minute,
         and asserts that the query completes successfully.
         """
@@ -191,19 +188,15 @@ class TestPySQLLongRunningQuery(PySQLPytestTestCase):
         duration = -1
         scale0 = 10000
         scale_factor = 50
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             while duration < min_duration:
                 assert scale_factor < 4096, "Detected infinite loop"
                 start = time.time()
-                cursor.execute(
-                    """SELECT count(*)
+                cursor.execute("""SELECT count(*)
                         FROM RANGE({scale}) x
                         JOIN RANGE({scale0}) y
                         ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%"
-                        """.format(
-                        scale=scale_factor * scale0, scale0=scale0
-                    )
-                )
+                        """.format(scale=scale_factor * scale0, scale0=scale0))
                 (n,) = cursor.fetchone()
                 assert n == 0
                 duration = time.time() - start
@@ -248,19 +241,10 @@ class TestPySQLCloudFetch(PySQLPytestTestCase):
 
 
 class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_execute_async__long_running(self, extra_params):
+    def test_execute_async__long_running(self):
 
         long_running_query = "SELECT COUNT(*) FROM RANGE(10000 * 16) x JOIN RANGE(10000) y ON FROM_UNIXTIME(x.id * y.id, 'yyyy-MM-dd') LIKE '%not%a%date%'"
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.execute_async(long_running_query)
 
             ## Polling after every POLLING_INTERVAL seconds
@@ -273,21 +257,10 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert result[0].asDict() == {"count(1)": 0}
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_execute_async__small_result(self, extra_params):
+    def test_execute_async__small_result(self):
         small_result_query = "SELECT 1"
 
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.execute_async(small_result_query)
 
             ## Fake sleep for 5 secs
@@ -303,16 +276,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert result[0].asDict() == {"1": 1}
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_execute_async__large_result(self, extra_params):
+    def test_execute_async__large_result(self):
         x_dimension = 1000
         y_dimension = 1000
         large_result_query = f"""
@@ -326,7 +290,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
                     RANGE({y_dimension}) y
             """
 
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.execute_async(large_result_query)
 
             ## Fake sleep for 5 secs
@@ -426,22 +390,8 @@ class TestPySQLCoreSuite(
                 cursor.execute("CREATE TABLE IF NOT EXISTS TABLE table_234234234")
             assert "table_234234234" in str(cm.value)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_create_table_will_return_empty_result_set(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_create_table_will_return_empty_result_set(self):
+        with self.cursor({}) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             try:
                 cursor.execute(
@@ -697,24 +647,10 @@ class TestPySQLCoreSuite(
             ]
 
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_get_arrow(self, extra_params):
+    def test_get_arrow(self):
         # These tests are quite light weight as the arrow fetch methods are used internally
         # by everything else
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.execute("SELECT * FROM range(10)")
             table_1 = cursor.fetchmany_arrow(1).to_pydict()
             assert table_1 == OrderedDict([("id", [0])])
@@ -722,20 +658,9 @@ class TestPySQLCoreSuite(
             table_2 = cursor.fetchall_arrow().to_pydict()
             assert table_2 == OrderedDict([("id", [1, 2, 3, 4, 5, 6, 7, 8, 9])])
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_unicode(self, extra_params):
+    def test_unicode(self):
         unicode_str = "数据砖"
-        with self.cursor(extra_params) as cursor:
+        with self.cursor({}) as cursor:
             cursor.execute("SELECT '{}'".format(unicode_str))
             results = cursor.fetchall()
             assert len(results) == 1 and len(results[0]) == 1
@@ -773,22 +698,8 @@ class TestPySQLCoreSuite(
             assert len(cursor.fetchall()) == 3
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_can_execute_command_after_failure(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_can_execute_command_after_failure(self):
+        with self.cursor({}) as cursor:
             with pytest.raises(DatabaseError):
                 cursor.execute("this is a sytnax error")
 
@@ -798,22 +709,8 @@ class TestPySQLCoreSuite(
             self.assertEqualRowValues(res, [[1]])
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_can_execute_command_after_success(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_can_execute_command_after_success(self):
+        with self.cursor({}) as cursor:
             cursor.execute("SELECT 1;")
             cursor.execute("SELECT 2;")
 
@@ -825,22 +722,8 @@ class TestPySQLCoreSuite(
         return query
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_fetchone(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_fetchone(self):
+        with self.cursor({}) as cursor:
             query = self.generate_multi_row_query()
             cursor.execute(query)
 
@@ -851,19 +734,8 @@ class TestPySQLCoreSuite(
             assert cursor.fetchone() == None
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_fetchall(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_fetchall(self):
+        with self.cursor({}) as cursor:
             query = self.generate_multi_row_query()
             cursor.execute(query)
 
@@ -872,22 +744,8 @@ class TestPySQLCoreSuite(
             assert cursor.fetchone() == None
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_fetchmany_when_stride_fits(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_fetchmany_when_stride_fits(self):
+        with self.cursor({}) as cursor:
             query = "SELECT * FROM range(4)"
             cursor.execute(query)
 
@@ -895,22 +753,8 @@ class TestPySQLCoreSuite(
             self.assertEqualRowValues(cursor.fetchmany(2), [[2], [3]])
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_fetchmany_in_excess(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_fetchmany_in_excess(self):
+        with self.cursor({}) as cursor:
             query = "SELECT * FROM range(4)"
             cursor.execute(query)
 
@@ -918,22 +762,8 @@ class TestPySQLCoreSuite(
             self.assertEqualRowValues(cursor.fetchmany(3), [[3]])
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_iterator_api(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_iterator_api(self):
+        with self.cursor({}) as cursor:
             query = "SELECT * FROM range(4)"
             cursor.execute(query)
 
@@ -1006,28 +836,13 @@ class TestPySQLCoreSuite(
                 ), "timestamp {} did not match {}".format(timestamp, expected)
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_multi_timestamps_arrow(self, extra_params):
+    def test_multi_timestamps_arrow(self):
         with self.cursor(
             {
                 "session_configuration": {
                     "ansi_mode": False,
                     "query_tags": "test:multi-timestamps,driver:python",
                 },
-                **extra_params,
             }
         ) as cursor:
             query, expected = self.multi_query()

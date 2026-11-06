@@ -81,7 +81,7 @@ if TYPE_CHECKING:
     # annotations``). ``get_protocol_version`` and ``_prepare_native_parameters``
     # are typed with these Thrift-generated types, but the Thrift backend and
     # its result set are imported lazily (only on the Thrift connect path), so
-    # importing this module -- and connecting with the SEA or kernel backend --
+    # importing this module -- and connecting with the kernel backend --
     # never imports the Apache Thrift ``thrift`` package. See
     # ``test_lazy_thrift_import``.
     from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -127,7 +127,7 @@ def __getattr__(name: str) -> Any:
     ``from databricks.sql.client import <name>`` keeps working for any existing
     caller -- and the ``patch("databricks.sql.client.ThriftDatabricksClient")``
     test seam is preserved -- without importing the Apache Thrift ``thrift``
-    package at module load, which is what keeps the SEA/kernel connect path
+    package at module load, which is what keeps the kernel connect path
     Thrift-free (see ``test_lazy_thrift_import``).
     """
     if name == "ThriftDatabricksClient":
@@ -164,15 +164,6 @@ class Connection:
         Connect to a Databricks SQL endpoint or a Databricks cluster.
 
         Parameters:
-            :param use_sea: `bool`, optional (default is False)
-                Use the native pure-Python SEA backend instead of
-                the Thrift backend.
-
-                Deprecated and incomplete — this backend has feature
-                gaps (e.g. it does not support positional ``?``
-                parameter binding) and is slated for removal. For a
-                SEA-native connection use ``use_kernel=True`` instead,
-                which is the supported path.
             :param use_kernel: `bool`, optional (default is False)
                 Route the connection through the Rust kernel
                 (``databricks-sql-kernel`` via PyO3), a SEA-native
@@ -183,16 +174,16 @@ class Connection:
                 is a no-op and ``use_kernel=True`` raises a clear
                 ``ImportError``. Supports PAT, OAuth M2M, and OAuth
                 U2M auth, and native (positional and named) parameter
-                binding. Mutually exclusive with ``use_sea``.
+                binding.
 
                 Telemetry note: on the kernel path telemetry is
                 strictly opt-in. An explicit ``enable_telemetry=True``
                 turns telemetry on unconditionally; it is NOT gated by
                 the server-side ``enableTelemetryForPythonDriver``
-                feature flag that applies on the Thrift/SEA paths. When
+                feature flag that applies on the Thrift path. When
                 ``enable_telemetry`` is unset the kernel owns the enable
                 decision. This is an intentional divergence from the
-                Thrift/SEA paths, where an explicit ``True`` can still
+                Thrift path, where an explicit ``True`` can still
                 be suppressed by the feature flag.
             :param enable_geospatial_support: `bool`, optional (default is False)
                 Kernel backend only. Controls the public representation of
@@ -201,8 +192,6 @@ class Connection:
                 strings (for example ``"SRID=4326;POINT(1 2)"``). The
                 conversion is local to the kernel/driver and this option is
                 never sent to the SQL Execution API.
-            :param use_hybrid_disposition: `bool`, optional (default is False)
-                Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
             :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
                 or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
@@ -378,6 +367,26 @@ class Connection:
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
+        if kwargs.pop("use_sea", False):
+            raise ValueError(
+                "The SEA backend has been removed. Use use_kernel=True and "
+                "install 'databricks-sql-connector[kernel]'."
+            )
+
+        if kwargs.pop("use_hybrid_disposition", False):
+            logger.warning(
+                "Parameter 'use_hybrid_disposition' was removed with the SEA "
+                "backend and is ignored."
+            )
+
+        if "max_connections" in kwargs:
+            kwargs.pop("max_connections")
+            logger.warning(
+                "Parameter 'max_connections' was removed with the SEA backend "
+                "and is ignored. On kernel >= 1.1.0, use '_pool_maxsize' for the "
+                "kernel HTTP pool; it does not configure the Thrift query transport."
+            )
+
         logger.debug(
             "Connection.__init__(server_hostname=%s, http_path=%s)",
             server_hostname,
@@ -499,11 +508,7 @@ class Connection:
 
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
-            mode=(
-                DatabricksClientType.SEA
-                if self.session.use_sea
-                else DatabricksClientType.THRIFT
-            ),
+            mode=DatabricksClientType.THRIFT,
             host_info=HostDetails(host_url=server_hostname, port=self.session.port),
             auth_mech=TelemetryHelper.get_auth_mechanism(self.session.auth_provider),
             auth_flow=TelemetryHelper.get_auth_flow(self.session.auth_provider),
@@ -520,7 +525,6 @@ class Connection:
             use_system_trust_store=True,  # Python uses system SSL by default
             enable_arrow=pyarrow is not None,
             enable_direct_results=True,  # Always enabled in Python
-            enable_sea_hybrid_results=kwargs.get("use_hybrid_disposition", False),
             http_connection_pool_size=kwargs.get("pool_maxsize", None),
             rows_fetched_per_block=DEFAULT_ARRAY_SIZE,
             async_poll_interval_millis=2000,  # Default polling interval
@@ -551,10 +555,9 @@ class Connection:
         when a Reyden / Real-Time warehouse rejects the default Thrift protocol.
 
         Reyden warehouses reject a Thrift ``OpenSession`` (SQLSTATE ``KP001``);
-        the kernel (SEA) backend is the supported path. Auto-recovery applies
-        only when the caller did not pick a backend explicitly (neither
-        ``use_kernel`` nor ``use_sea``). On a rejection the warehouse is
-        remembered so later connections skip the doomed Thrift attempt.
+        the kernel backend is the supported path. Auto-recovery applies only
+        when the caller did not set ``use_kernel=True``. On a rejection the
+        warehouse is remembered so later connections skip the Thrift attempt.
         """
 
         def build_session(session_kwargs: dict) -> Session:
@@ -598,10 +601,7 @@ class Connection:
 
         # An explicit backend choice is always honored — auto-recovery engages
         # only on the default (Thrift) path.
-        explicit_backend = kwargs.get("use_kernel", False) or kwargs.get(
-            "use_sea", False
-        )
-        if explicit_backend:
+        if kwargs.get("use_kernel", False):
             return build_session(kwargs)
 
         warehouse_id = extract_warehouse_id(http_path)
@@ -671,7 +671,7 @@ class Connection:
         self.close()
 
     def __del__(self):
-        if self.open:
+        if hasattr(self, "session") and self.open:
             logger.debug(
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
@@ -1954,9 +1954,7 @@ class Cursor:
         # backend) may still have a server statement in flight. Such a
         # backend exposes ``cancel_running_cursor(cursor)`` -> bool to
         # cancel it; it returns True if something was actually
-        # cancelled. Opt-in via getattr so the Thrift / SEA backends
-        # (which set ``active_command_id`` before blocking) are
-        # unaffected.
+        # cancelled. Thrift sets ``active_command_id`` before blocking.
         cancel_running_cursor = getattr(self.backend, "cancel_running_cursor", None)
         if cancel_running_cursor is not None and cancel_running_cursor(self):
             return

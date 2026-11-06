@@ -33,6 +33,76 @@ class TestSession:
         "enable_telemetry": False,
     }
 
+    @pytest.mark.parametrize("use_kernel", [False, True])
+    @patch("databricks.sql.client.UnifiedHttpClient")
+    @patch("databricks.sql.client.Session")
+    def test_removed_sea_backend_rejected_before_connecting(
+        self, mock_session, mock_http_client, use_kernel
+    ):
+        gc.collect()
+        with patch("sys.unraisablehook") as unraisable_hook:
+            with pytest.raises(
+                ValueError, match="SEA backend has been removed.*use_kernel=True"
+            ):
+                databricks.sql.connect(
+                    **self.DUMMY_CONNECTION_ARGS, use_sea=True, use_kernel=use_kernel
+                )
+            gc.collect()
+            unraisable_hook.assert_not_called()
+        mock_session.assert_not_called()
+        mock_http_client.assert_not_called()
+
+    @pytest.mark.parametrize("use_kernel", [False, True])
+    @pytest.mark.parametrize(
+        "options, expected_warning",
+        [
+            ({}, None),
+            ({"use_sea": False}, None),
+            ({"use_hybrid_disposition": False}, None),
+            ({"use_hybrid_disposition": True}, "use_hybrid_disposition"),
+            ({"max_connections": 10}, "max_connections"),
+            ({"max_connections": 0}, "max_connections"),
+            ({"max_connections": None}, "max_connections"),
+            (
+                {"max_connections": 10, "_pool_maxsize": 42},
+                "max_connections",
+            ),
+        ],
+    )
+    @patch("databricks.sql.session.Session._create_backend")
+    def test_removed_backend_options_warn_and_are_not_forwarded(
+        self, mock_create_backend, options, expected_warning, use_kernel, caplog
+    ):
+        backend_type = BackendType.KERNEL if use_kernel else BackendType.THRIFT
+        mock_create_backend.return_value.open_session.return_value = SessionId(
+            backend_type, "session-id"
+        )
+        with caplog.at_level("WARNING", logger="databricks.sql.client"):
+            with databricks.sql.connect(
+                **self.DUMMY_CONNECTION_ARGS, use_kernel=use_kernel, **options
+            ):
+                pass
+        forwarded = mock_create_backend.call_args.args[-1]
+        assert (
+            not {"use_sea", "use_hybrid_disposition", "max_connections"}
+            & forwarded.keys()
+        )
+        if "_pool_maxsize" in options:
+            assert forwarded["_pool_maxsize"] == options["_pool_maxsize"]
+        messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "databricks.sql.client"
+        ]
+        if expected_warning:
+            assert len(messages) == 1
+            assert expected_warning in messages[0]
+            if expected_warning == "max_connections":
+                assert "On kernel >= 1.1.0, use '_pool_maxsize'" in messages[0]
+                assert "does not configure the Thrift query transport" in messages[0]
+        else:
+            assert messages == []
+
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
@@ -469,7 +539,7 @@ class TestKernelTransportOptionsThreading:
         ):
             instance = mock_kernel_client.return_value
             instance.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
 
             conn = databricks.sql.connect(
@@ -537,7 +607,7 @@ class TestKernelTransportOptionsThreading:
         ):
             instance = mock_kernel_client.return_value
             instance.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
 
             conn = databricks.sql.connect(
@@ -586,7 +656,7 @@ class TestKernelTransportOptionsThreading:
         ):
             instance = mock_kernel_client.return_value
             instance.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
 
             conn = databricks.sql.connect(
@@ -632,7 +702,7 @@ class TestKernelTelemetryOptionsThreading:
         ):
             instance = mock_kernel_client.return_value
             instance.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
 
             conn = databricks.sql.connect(
@@ -674,7 +744,7 @@ class TestKernelTelemetryOptionsThreading:
         ):
             instance = mock_kernel_client.return_value
             instance.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
 
             conn = databricks.sql.connect(
@@ -719,7 +789,7 @@ class TestKernelUserAgentForwarding:
         ):
             instance = mock_kernel_client.return_value
             instance.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
 
             conn = databricks.sql.connect(
@@ -782,7 +852,7 @@ class TestUseKernelRoutesThroughRealWheel:
         with patch.object(
             KernelDatabricksClient,
             "open_session",
-            return_value=SessionId(BackendType.SEA, "sess-id", None),
+            return_value=SessionId(BackendType.KERNEL, "sess-id", None),
         ):
             conn = databricks.sql.connect(
                 server_hostname="foo.cloud.databricks.com",
@@ -857,7 +927,7 @@ class TestReydenThriftFallback:
             "databricks.sql.backend.kernel.client.KernelDatabricksClient"
         ) as mock_kernel:
             mock_kernel.return_value.open_session.return_value = SessionId(
-                BackendType.SEA, "sess-id", None
+                BackendType.KERNEL, "sess-id", None
             )
             yield mock_kernel
 
@@ -959,15 +1029,6 @@ class TestReydenThriftFallback:
         with pytest.raises(DatabaseError) as excinfo:
             self._connect()
         assert not isinstance(excinfo.value, ReydenThriftUnsupportedError)
-
-    @patch("%s.session.SeaDatabricksClient" % PACKAGE)
-    def test_explicit_use_sea_not_recovered(self, mock_sea):
-        # An explicit backend choice is always honored — even the (contrived)
-        # case of SEA surfacing the marker must not trigger Thrift→kernel
-        # recovery.
-        mock_sea.return_value.open_session.side_effect = self._reject()
-        with pytest.raises(ReydenThriftUnsupportedError):
-            self._connect(use_sea=True)
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
     def test_kernel_retry_failure_chains_both_errors(self, mock_thrift):

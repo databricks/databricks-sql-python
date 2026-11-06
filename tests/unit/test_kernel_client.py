@@ -290,7 +290,7 @@ def test_no_open_session_guards_raise_interface_error():
 
     # The async-state methods attach to the kernel session by id; they
     # must also guard a closed/absent session before the kernel call.
-    cid = CommandId.from_sea_statement_id("any-id")
+    cid = CommandId.from_kernel_statement_id("any-id")
     with pytest.raises(InterfaceError):
         c.get_query_state(cid)
     with pytest.raises(InterfaceError):
@@ -1076,13 +1076,13 @@ def test_cancel_command_tolerant_when_handle_missing():
     """``cancel_command`` is documented to be a no-op when there's
     no tracked async handle (matches Thrift's tolerance)."""
     c = _make_client()
-    fake_command_id = CommandId.from_sea_statement_id("not-tracked")
+    fake_command_id = CommandId.from_kernel_statement_id("not-tracked")
     c.cancel_command(fake_command_id)  # must not raise
 
 
 def test_close_command_tolerant_when_handle_missing():
     c = _make_client()
-    fake_command_id = CommandId.from_sea_statement_id("not-tracked")
+    fake_command_id = CommandId.from_kernel_statement_id("not-tracked")
     c.close_command(fake_command_id)  # must not raise
 
 
@@ -1112,7 +1112,7 @@ def test_get_query_state_returns_succeeded_when_server_404s():
     polling loop terminates cleanly."""
     c = _make_client()
     _attach_returns(c, status_error=_FakeKernelError(code="NotFound"))
-    cid = CommandId.from_sea_statement_id("sync-only")
+    cid = CommandId.from_kernel_statement_id("sync-only")
     assert c.get_query_state(cid) == CommandState.SUCCEEDED
 
 
@@ -1121,7 +1121,7 @@ def test_independent_async_read_requires_reader_api(read_result):
     c = _make_client()
     c._kernel_session = MagicMock()
     owner = MagicMock(spec=["status", "await_result"])
-    cid = CommandId.from_sea_statement_id("tracked-async")
+    cid = CommandId.from_kernel_statement_id("tracked-async")
     c._async_handles[cid.guid] = owner
     c._async_result_stream_started.add(cid.guid)
 
@@ -1142,7 +1142,7 @@ def test_get_query_state_returns_closed_from_server():
     closed-state bookkeeping."""
     c = _make_client()
     _attach_returns(c, status=("Closed", None))
-    cid = CommandId.from_sea_statement_id("closed-async")
+    cid = CommandId.from_kernel_statement_id("closed-async")
     assert c.get_query_state(cid) == CommandState.CLOSED
 
 
@@ -1152,7 +1152,7 @@ def test_get_query_state_propagates_non_not_found_error():
     PEP 249 exception so the caller can retry / surface it."""
     c = _make_client()
     _attach_returns(c, status_error=_FakeKernelError(code="Unavailable"))
-    cid = CommandId.from_sea_statement_id("flaky")
+    cid = CommandId.from_kernel_statement_id("flaky")
     with pytest.raises(DatabaseError):
         c.get_query_state(cid)
 
@@ -1165,7 +1165,7 @@ def test_get_query_state_uses_retained_owning_handle_before_result_stream():
     c._kernel_session = MagicMock()
     handle = MagicMock()
     handle.status.return_value = ("Running", None)
-    cid = CommandId.from_sea_statement_id("async-status-owning")
+    cid = CommandId.from_kernel_statement_id("async-status-owning")
     c._async_handles[cid.guid] = handle
 
     assert c.get_query_state(cid) == CommandState.RUNNING
@@ -1187,7 +1187,7 @@ def test_get_query_state_concurrent_poll_uses_reader():
     reader = MagicMock()
     reader.status.return_value = ("Running", None)
     owning_handle.reader.return_value = reader
-    cid = CommandId.from_sea_statement_id("async-status-concurrent")
+    cid = CommandId.from_kernel_statement_id("async-status-concurrent")
     c._async_handles[cid.guid] = owning_handle
 
     # Simulate the first poll being mid-flight: its reservation is set.
@@ -1221,7 +1221,7 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader = MagicMock()
     reader.status.return_value = ("Succeeded", None)
     owning_handle.reader.return_value = reader
-    cid = CommandId.from_sea_statement_id("async-status-attached")
+    cid = CommandId.from_kernel_statement_id("async-status-attached")
     c._async_handles[cid.guid] = owning_handle
     c._async_result_stream_started.add(cid.guid)
 
@@ -1246,7 +1246,7 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
     cursor.row_limit = 5
-    cid = CommandId.from_sea_statement_id("async-1")
+    cid = CommandId.from_kernel_statement_id("async-1")
     c._async_handles[cid.guid] = handle
 
     rs = c.get_execution_result(cid, cursor=cursor)
@@ -1267,7 +1267,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-    cid = CommandId.from_sea_statement_id("async-1")
+    cid = CommandId.from_kernel_statement_id("async-1")
 
     rs = c.get_execution_result(cid, cursor=cursor)
 
@@ -1284,7 +1284,7 @@ def test_get_execution_result_owning_handle_failure_can_retry_owning_handle():
     c._kernel_session = MagicMock()
     handle = MagicMock()
     handle.await_result.side_effect = _FakeKernelError(code="Unavailable")
-    cid = CommandId.from_sea_statement_id("async-retry-owning")
+    cid = CommandId.from_kernel_statement_id("async-retry-owning")
     c._async_handles[cid.guid] = handle
 
     with pytest.raises(OperationalError):
@@ -1309,7 +1309,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     owning_stream.arrow_schema.side_effect = _FakeKernelError(code="Internal")
     owning_handle = MagicMock()
     owning_handle.await_result.return_value = owning_stream
-    cid = CommandId.from_sea_statement_id("async-construct-fail")
+    cid = CommandId.from_kernel_statement_id("async-construct-fail")
     c._async_handles[cid.guid] = owning_handle
 
     with pytest.raises(DatabaseError):
@@ -1346,7 +1346,7 @@ def test_get_execution_result_maps_not_found_to_programming_error():
     mapped PEP 249 exception rather than a raw error."""
     c = _make_client()
     _attach_returns(c, status_error=_FakeKernelError(code="NotFound"))
-    cid = CommandId.from_sea_statement_id("gone")
+    cid = CommandId.from_kernel_statement_id("gone")
     with pytest.raises(DatabaseError):
         c.get_execution_result(cid, cursor=MagicMock())
 
@@ -1355,7 +1355,7 @@ def test_cancel_command_reraises_kernel_error():
     c = _make_client()
     fake_handle = MagicMock()
     fake_handle.cancel.side_effect = _FakeKernelError(code="Unavailable")
-    cid = CommandId.from_sea_statement_id("abc")
+    cid = CommandId.from_kernel_statement_id("abc")
     c._async_handles[cid.guid] = fake_handle
     with pytest.raises(OperationalError):
         c.cancel_command(cid)
@@ -1365,7 +1365,7 @@ def test_close_command_reraises_kernel_error():
     c = _make_client()
     fake_handle = MagicMock()
     fake_handle.close.side_effect = _FakeKernelError(code="Internal")
-    cid = CommandId.from_sea_statement_id("abc")
+    cid = CommandId.from_kernel_statement_id("abc")
     c._async_handles[cid.guid] = fake_handle
     with pytest.raises(DatabaseError):
         c.close_command(cid)
@@ -1379,7 +1379,7 @@ def test_get_query_state_raises_on_failed_state_with_failure():
     _attach_returns(
         c, status=("Failed", _FakeKernelError(code="SqlError", message="bad"))
     )
-    cid = CommandId.from_sea_statement_id("abc")
+    cid = CommandId.from_kernel_statement_id("abc")
     with pytest.raises(DatabaseError, match="bad"):
         c.get_query_state(cid)
 
@@ -1395,7 +1395,7 @@ def test_get_query_state_handles_non_baseexception_failure():
     # ``failure`` is a plain dict (not BaseException) — simulates a
     # kernel binding that exposes the failure as a structured value.
     _attach_returns(c, status=("Failed", {"code": "Internal", "msg": "weird"}))
-    cid = CommandId.from_sea_statement_id("xyz")
+    cid = CommandId.from_kernel_statement_id("xyz")
     # Must surface as a PEP 249 exception (OperationalError via the
     # wrap helper's fallback path), not TypeError.
     with pytest.raises(OperationalError):
@@ -1405,7 +1405,7 @@ def test_get_query_state_handles_non_baseexception_failure():
 def test_get_query_state_returns_state_when_no_failure():
     c = _make_client()
     _attach_returns(c, status=("Running", None))
-    cid = CommandId.from_sea_statement_id("abc")
+    cid = CommandId.from_kernel_statement_id("abc")
     assert c.get_query_state(cid) == CommandState.RUNNING
 
 
@@ -1457,7 +1457,7 @@ def test_close_session_closes_and_drops_swept_handles():
     server."""
     c = _make_client()
     handle = MagicMock()
-    cid = CommandId.from_sea_statement_id("xyz")
+    cid = CommandId.from_kernel_statement_id("xyz")
     c._async_handles[cid.guid] = handle
     c._kernel_session = MagicMock()
     c.close_session(MagicMock())
@@ -1479,7 +1479,7 @@ def test_get_query_state_returns_closed_after_close_command():
     c = _make_client()
     c._kernel_session = MagicMock()
     handle = MagicMock()
-    cid = CommandId.from_sea_statement_id("async-1")
+    cid = CommandId.from_kernel_statement_id("async-1")
     c._async_handles[cid.guid] = handle
     c.close_command(cid)
     assert handle.close.called
@@ -1584,7 +1584,7 @@ def test_get_execution_result_is_re_callable():
     reader = MagicMock()
     reader.await_result.return_value = fake_stream
     owning_handle.reader.return_value = reader
-    cid = CommandId.from_sea_statement_id("async-recall-twice")
+    cid = CommandId.from_kernel_statement_id("async-recall-twice")
     c._async_handles[cid.guid] = owning_handle
     cursor = MagicMock()
     cursor.arraysize = 100
