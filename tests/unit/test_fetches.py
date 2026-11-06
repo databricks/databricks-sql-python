@@ -1,6 +1,6 @@
 import unittest
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 try:
     import pyarrow as pa
@@ -9,7 +9,7 @@ except ImportError:
 
 import databricks.sql.client as client
 from databricks.sql.backend.types import ExecuteResponse
-from databricks.sql.utils import ArrowQueue
+from databricks.sql.utils import ArrowQueue, ColumnQueue, ColumnTable
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
 
@@ -327,6 +327,141 @@ class FetchTests(unittest.TestCase):
         batch_list_2 = [[]]
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_2)
         self.assertEqual(dummy_result_set.fetchone(), None)
+
+    def make_batched_result_set(self, batch_list, arraysize):
+        rs = self.make_dummy_result_set_from_batch_list(batch_list)
+        rs.arraysize = arraysize
+        return rs
+
+    def test_fetchone_converts_once_per_batch_not_once_per_row(self):
+        rs = self.make_batched_result_set(
+            [[[i] for i in range(10)], [[i] for i in range(10, 20)]], arraysize=10
+        )
+        with patch.object(
+            rs, "_convert_arrow_table", wraps=rs._convert_arrow_table
+        ) as convert:
+            rows = [rs.fetchone() for _ in range(20)]
+            self.assertIsNone(rs.fetchone())
+
+        self.assertEqualRowValues(rows, [[i] for i in range(20)])
+        # Two full batches plus the final empty fetch, instead of one per row.
+        self.assertEqual(convert.call_count, 3)
+
+    def test_fetchmany_serves_rows_buffered_by_fetchone_without_reconverting(self):
+        rs = self.make_batched_result_set([[[i] for i in range(10)]], arraysize=10)
+        with patch.object(
+            rs, "_convert_arrow_table", wraps=rs._convert_arrow_table
+        ) as convert:
+            self.assertSequenceEqual(rs.fetchone(), [0])
+            self.assertEqualRowValues(rs.fetchmany(9), [[i] for i in range(1, 10)])
+
+        self.assertEqual(convert.call_count, 1)
+
+    def test_iteration_with_zero_arraysize_still_returns_all_rows(self):
+        rs = self.make_batched_result_set([[[1], [2], [3]]], arraysize=0)
+        self.assertEqualRowValues(list(rs), [[1], [2], [3]])
+
+    def test_iteration_yields_every_row_once_across_batches(self):
+        rs = self.make_batched_result_set(
+            [[[1], [2]], [[3]], [[4], [5], [6]]], arraysize=2
+        )
+        self.assertEqualRowValues(list(rs), [[1], [2], [3], [4], [5], [6]])
+        self.assertEqual(rs.rownumber, 6)
+        self.assertIsNone(rs.fetchone())
+
+    def test_fetchone_then_fetchall_returns_remaining_rows_in_order(self):
+        rs = self.make_batched_result_set(
+            [[[1], [2], [3], [4]], [[5], [6], [7]]], arraysize=3
+        )
+        self.assertSequenceEqual(rs.fetchone(), [1])
+        self.assertSequenceEqual(rs.fetchone(), [2])
+        self.assertEqual(rs.rownumber, 2)
+        self.assertEqualRowValues(rs.fetchall(), [[3], [4], [5], [6], [7]])
+        self.assertEqual(rs.rownumber, 7)
+        self.assertIsNone(rs.fetchone())
+
+    def test_fetchone_then_fetchmany_then_fetchall_arrow(self):
+        rs = self.make_batched_result_set(
+            [[[1], [2], [3], [4], [5]], [[6], [7], [8], [9]]], arraysize=4
+        )
+        self.assertSequenceEqual(rs.fetchone(), [1])
+        self.assertEqualRowValues(rs.fetchmany(2), [[2], [3]])
+        self.assertEqual(rs.rownumber, 3)
+
+        table = rs.fetchall_arrow()
+
+        self.assertEqual(table.column(0).to_pylist(), [4, 5, 6, 7, 8, 9])
+        self.assertEqual(rs.rownumber, 9)
+        self.assertEqual(rs.fetchall_arrow().num_rows, 0)
+
+    def test_fetchmany_arrow_spans_buffered_rows_and_new_batches(self):
+        rs = self.make_batched_result_set(
+            [[[1], [2], [3], [4], [5]], [[6], [7], [8], [9]]], arraysize=4
+        )
+        self.assertSequenceEqual(rs.fetchone(), [1])
+
+        table = rs.fetchmany_arrow(5)
+
+        self.assertEqual(table.column(0).to_pylist(), [2, 3, 4, 5, 6])
+        self.assertEqual(rs.rownumber, 6)
+        self.assertEqualRowValues(rs.fetchmany(10), [[7], [8], [9]])
+        self.assertEqual(rs.rownumber, 9)
+
+    def test_row_fetches_on_empty_result(self):
+        rs = self.make_batched_result_set([[]], arraysize=3)
+        self.assertIsNone(rs.fetchone())
+        self.assertEqual(list(rs), [])
+        self.assertEqual(rs.fetchmany(3), [])
+        self.assertEqual(rs.fetchall_arrow().num_rows, 0)
+        self.assertEqual(rs.rownumber, 0)
+
+    @staticmethod
+    def make_column_queue_result_set():
+        column_table = ColumnTable([[1, 2, 3, 4], ["a", "b", "c", "d"]], ["n", "s"])
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
+        mock_thrift_backend.fetch_results.return_value = (
+            ColumnQueue(column_table),
+            False,
+            0,
+        )
+        return ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=None,
+                status=None,
+                has_been_closed_server_side=True,
+                description=[
+                    ("n", "integer", None, None, None, None, None),
+                    ("s", "string", None, None, None, None, None),
+                ],
+                lz4_compressed=False,
+                is_staging_operation=False,
+            ),
+            thrift_client=mock_thrift_backend,
+            t_row_set=None,
+        )
+
+    def test_fetchone_on_column_queue_then_columnar_and_arrow_fetches(self):
+        rs = self.make_column_queue_result_set()
+
+        self.assertSequenceEqual(rs.fetchone(), [1, "a"])
+        self.assertEqualRowValues(rs.fetchmany(1), [[2, "b"]])
+        self.assertEqual(
+            rs.fetchmany_columnar(1), ColumnTable([[3], ["c"]], ["n", "s"])
+        )
+        self.assertEqual(rs.fetchall_arrow().to_pydict(), {"n": [4], "s": ["d"]})
+        self.assertEqual(rs.rownumber, 4)
+
+    def test_fetchone_on_column_queue_then_fetchall_columnar(self):
+        rs = self.make_column_queue_result_set()
+
+        self.assertSequenceEqual(rs.fetchone(), [1, "a"])
+
+        self.assertEqual(
+            rs.fetchall_columnar(),
+            ColumnTable([[2, 3, 4], ["b", "c", "d"]], ["n", "s"]),
+        )
+        self.assertEqual(rs.rownumber, 4)
 
     # Regression tests for fetchmany_arrow / fetchall_arrow handling of
     # the schemaless CloudFetch placeholder.

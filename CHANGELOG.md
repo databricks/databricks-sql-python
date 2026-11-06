@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Fix: iterating a cursor (`for row in cursor`) and calling `fetchone()` in a loop are now about as fast as `fetchall()`. They previously converted each row through pandas on its own, costing around 1 ms per row, which made SQLAlchemy result iteration very slow. Rows are now converted `arraysize` at a time and served from an internal buffer.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
