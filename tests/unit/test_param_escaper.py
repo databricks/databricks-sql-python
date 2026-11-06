@@ -1,7 +1,10 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
 from typing import Any, Dict
+from unittest.mock import patch
 from databricks.sql.parameters.native import dbsql_parameter_from_primitive
+from databricks.sql.exc import ProgrammingError
+from databricks.sql.types import Row
 
 from databricks.sql.utils import (
     ParamEscaper,
@@ -195,6 +198,362 @@ class TestFullQueryEscaping(object):
 
         with pytest.raises(Exception):
             inject_parameters(INPUT, pe.escape_args(args))
+
+
+class TestInClauseSequenceRendering(object):
+    """Regression tests for databricks-sql-python#629.
+
+    The IN predicate needs a parenthesised list; Spark rejects `x IN ARRAY(...)` as a syntax
+    error. Everywhere else a sequence must keep rendering as an ARRAY literal so inline values can
+    still be written to ARRAY columns.
+    """
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "named list",
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                {"ids": [1, 2, 3]},
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+            ),
+            (
+                "positional list",
+                "SELECT * FROM t WHERE x IN %s",
+                ([1, 2, 3],),
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+            ),
+            (
+                "tuple of strings is escaped",
+                "SELECT * FROM t WHERE name IN %(names)s",
+                {"names": ("a", "O'Connell")},
+                r"SELECT * FROM t WHERE name IN ('a','O\'Connell')",
+            ),
+            (
+                "NOT IN",
+                "SELECT * FROM t WHERE x NOT IN %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE x NOT IN (1,2)",
+            ),
+            (
+                "lowercase keyword and newline before the marker",
+                "SELECT * FROM t WHERE x in\n  %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE x in\n  (1,2)",
+            ),
+            (
+                "nested lists stay arrays",
+                "SELECT * FROM t WHERE arr IN %(arrs)s",
+                {"arrs": [[1, 2], [3]]},
+                "SELECT * FROM t WHERE arr IN (ARRAY(1,2),ARRAY(3))",
+            ),
+            (
+                "nested tuples render as rows",
+                "SELECT * FROM t WHERE (a, b) IN %(pairs)s",
+                {"pairs": [(1, "x"), (2, "O'Connell")]},
+                r"SELECT * FROM t WHERE (a, b) IN ((1,'x'),(2,'O\'Connell'))",
+            ),
+            (
+                "tuple of tuples with NOT IN, positional",
+                "SELECT * FROM t WHERE (a, b) NOT IN %s",
+                (((1, 2), (3, 4)),),
+                "SELECT * FROM t WHERE (a, b) NOT IN ((1,2),(3,4))",
+            ),
+            (
+                "Row objects render as rows",
+                "SELECT * FROM t WHERE (a, b) IN %(rows)s",
+                {"rows": [Row(a=1, b=2), Row(a=3, b=4)]},
+                "SELECT * FROM t WHERE (a, b) IN ((1,2),(3,4))",
+            ),
+            (
+                "a row can hold an array and a nested row",
+                "SELECT * FROM t WHERE (a, arr, s) IN %(rows)s",
+                {"rows": [(1, [2, 3], (4, 5))]},
+                "SELECT * FROM t WHERE (a, arr, s) IN ((1,ARRAY(2,3),(4,5)))",
+            ),
+            (
+                "only the positional marker after IN",
+                "SELECT %s AS tags FROM t WHERE x IN %s AND y = %s",
+                (["a"], [1, 2], 5),
+                "SELECT ARRAY('a') AS tags FROM t WHERE x IN (1,2) AND y = 5",
+            ),
+            (
+                "escaped percent does not shift positional markers",
+                "SELECT '100%%' AS pct, %s AS tags FROM t WHERE x IN %s",
+                (["a"], [1, 2]),
+                "SELECT '100%' AS pct, ARRAY('a') AS tags FROM t WHERE x IN (1,2)",
+            ),
+            (
+                "named %d marker elsewhere in the query",
+                "SELECT * FROM t WHERE x IN %(ids)s LIMIT %(n)d",
+                {"ids": [1, 2], "n": 5},
+                "SELECT * FROM t WHERE x IN (1,2) LIMIT 5",
+            ),
+            (
+                "positional %d marker elsewhere in the query",
+                "SELECT * FROM t WHERE x IN %s LIMIT %d",
+                ([1, 2], 5),
+                "SELECT * FROM t WHERE x IN (1,2) LIMIT 5",
+            ),
+            (
+                "PIVOT value list",
+                "SELECT * FROM t PIVOT (sum(v) FOR k IN %(ks)s)",
+                {"ks": ["a", "b"]},
+                "SELECT * FROM t PIVOT (sum(v) FOR k IN ('a','b'))",
+            ),
+        ),
+    )
+    def test_sequence_after_in_renders_as_list(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "insert into an array column",
+                "INSERT INTO t (arr) VALUES (%(p)s)",
+                {"p": ["a", "b"]},
+                "INSERT INTO t (arr) VALUES (ARRAY('a','b'))",
+            ),
+            (
+                "function argument",
+                "SELECT array_contains(%(p)s, 2)",
+                {"p": [1, 2, 3]},
+                "SELECT array_contains(ARRAY(1,2,3), 2)",
+            ),
+            (
+                "caller-written parentheses after IN compare against an array value",
+                "SELECT * FROM t WHERE arr IN (%(p)s)",
+                {"p": [1, 2]},
+                "SELECT * FROM t WHERE arr IN (ARRAY(1,2))",
+            ),
+            (
+                "a tuple outside an IN list is still an array",
+                "INSERT INTO t (arr) VALUES (%(p)s)",
+                {"p": (1, 2)},
+                "INSERT INTO t (arr) VALUES (ARRAY(1,2))",
+            ),
+        ),
+    )
+    def test_sequence_elsewhere_stays_array(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "same name after IN and as a function argument",
+                "SELECT * FROM t WHERE x IN %(ids)s AND array_contains(%(ids)s, x)",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE x IN (1,2) AND array_contains(ARRAY(1,2), x)",
+            ),
+            (
+                "commented-out IN does not change the live marker",
+                "SELECT * FROM t WHERE arr = %(tags)s\n-- AND tag IN %(tags)s\n",
+                {"tags": ["a", "b"]},
+                "SELECT * FROM t WHERE arr = ARRAY('a','b')\n-- AND tag IN ('a','b')\n",
+            ),
+        ),
+    )
+    def test_rendering_is_chosen_per_marker(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "IN ending a line comment does not change the marker on the next line",
+                "SELECT * FROM t WHERE arr =  -- tags we filter IN\n  %(tags)s",
+                {"tags": ["a", "b"]},
+                "SELECT * FROM t WHERE arr =  -- tags we filter IN\n  ARRAY('a','b')",
+            ),
+            (
+                "the same with CRLF line endings",
+                "SELECT * FROM t WHERE arr = -- filter IN\r\n  %(tags)s",
+                {"tags": ["a"]},
+                "SELECT * FROM t WHERE arr = -- filter IN\r\n  ARRAY('a')",
+            ),
+            (
+                "a value containing -- does not hide an IN that ends the line",
+                "SELECT * FROM t WHERE name = %(name)s AND id IN\n  %(ids)s",
+                {"name": "a--b", "ids": [1, 2]},
+                "SELECT * FROM t WHERE name = 'a--b' AND id IN\n  (1,2)",
+            ),
+            (
+                "a -- string literal on the line of IN and the marker",
+                "SELECT * FROM t WHERE sep = '--' AND id IN %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE sep = '--' AND id IN (1,2)",
+            ),
+            (
+                # Detection reads the SQL text without parsing string literals, so this falls
+                # back to the ARRAY rendering, as on main.
+                "a -- string literal before an IN that ends its line keeps ARRAY",
+                "SELECT * FROM t WHERE sep = '--' AND id IN\n  %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE sep = '--' AND id IN\n  ARRAY(1,2)",
+            ),
+        ),
+    )
+    def test_line_comments(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    def test_single_digit_decimal_at_a_c_marker_still_renders_the_in_list(self):
+        query = "SELECT %(d)c AS digit FROM t WHERE x IN %(ids)s"
+        params = {"d": decimal.Decimal("5"), "ids": [1, 2]}
+        assert (
+            pe.render_inline(query, params)
+            == "SELECT 5 AS digit FROM t WHERE x IN (1,2)"
+        )
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params"),
+        (
+            (
+                "named markers",
+                "INSERT INTO t VALUES (%(s)s, %(n)s, %(arr)s, %(m)s, %(none)s)",
+                {"s": "it's", "n": 1.5, "arr": [1, [2]], "m": {"k": 1}, "none": None},
+            ),
+            (
+                "bare %s with dict parameters formats the whole dict",
+                "SELECT * FROM t WHERE x IN %s",
+                {"ids": [1]},
+            ),
+        ),
+    )
+    def test_matches_escape_args_without_in_list(self, label, query, params):
+        assert pe.render_inline(query, params) == inject_parameters(
+            query, pe.escape_args(params)
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "params"),
+        (
+            ("SELECT * FROM t WHERE a = %(a)s AND b IN (%(b)s)", {"a": "x", "b": 2}),
+            ("SELECT * FROM t WHERE a = %s LIMIT %d", ("x", 5)),
+            ("SELECT * FROM t WHERE a = %s", {"a": "x"}),
+        ),
+    )
+    def test_without_sequences_renders_as_escape_args_without_probing(
+        self, query, params
+    ):
+        with patch.object(
+            ParamEscaper, "_markers_following_in", side_effect=AssertionError
+        ) as probe:
+            assert pe.render_inline(query, params) == inject_parameters(
+                query, pe.escape_args(params)
+            )
+        probe.assert_not_called()
+
+    def test_probe_shaped_string_value_is_not_a_probe(self):
+        """A string value that contains a probe-like token must not make another marker render as
+        a list."""
+        query = "INSERT INTO t VALUES (%(note)s, %(tags)s)"
+        params = {"note": "x IN \x000000000000000000:1\x00", "tags": ["a"]}
+        assert pe.render_inline(query, params) == (
+            "INSERT INTO t VALUES ('x IN \x000000000000000000:1\x00', ARRAY('a'))"
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "params", "error", "message"),
+        (
+            (
+                "SELECT * FROM t WHERE x IN %s AND name LIKE '%sonite'",
+                ([1, 2],),
+                TypeError,
+                "not enough arguments for format string",
+            ),
+            (
+                "SELECT * FROM t WHERE x IN %d",
+                ([1, 2],),
+                TypeError,
+                "a real number is required, not str",
+            ),
+            ("SELECT * FROM t WHERE x IN %(nope)s", {"ids": [1]}, KeyError, "nope"),
+        ),
+    )
+    def test_errors_match_escape_args(self, query, params, error, message):
+        with pytest.raises(error, match=message):
+            inject_parameters(query, pe.escape_args(params))
+        with pytest.raises(error, match=message):
+            pe.render_inline(query, params)
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "set, sorted",
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                {"ids": {3, 1, 2}},
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+            ),
+            (
+                "frozenset, positional, NOT IN",
+                "SELECT * FROM t WHERE x NOT IN %s",
+                (frozenset({2, 1}),),
+                "SELECT * FROM t WHERE x NOT IN (1,2)",
+            ),
+            (
+                "dict keys",
+                "SELECT * FROM t WHERE name IN %(names)s",
+                {"names": {"b": 1, "a": 2}.keys()},
+                "SELECT * FROM t WHERE name IN ('a','b')",
+            ),
+            (
+                "items that do not compare are sorted by repr",
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                {"ids": {None, 1}},
+                "SELECT * FROM t WHERE x IN (1,NULL)",
+            ),
+            (
+                "set of tuples renders sorted rows",
+                "SELECT * FROM t WHERE (a, b) IN %(pairs)s",
+                {"pairs": {(2, "b"), (1, "a")}},
+                "SELECT * FROM t WHERE (a, b) IN ((1,'a'),(2,'b'))",
+            ),
+            (
+                "same set after IN twice",
+                "SELECT * FROM t WHERE x IN %(ids)s OR y IN %(ids)s",
+                {"ids": {2, 1}},
+                "SELECT * FROM t WHERE x IN (1,2) OR y IN (1,2)",
+            ),
+            (
+                "set next to an array elsewhere",
+                "SELECT %(tags)s AS tags FROM t WHERE x IN %(ids)s",
+                {"tags": ["a"], "ids": {1}},
+                "SELECT ARRAY('a') AS tags FROM t WHERE x IN (1)",
+            ),
+        ),
+    )
+    def test_set_after_in_renders_as_sorted_list(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params"),
+        (
+            (
+                "set at a marker not after IN",
+                "INSERT INTO t VALUES (%(s)s)",
+                {"s": {1}},
+            ),
+            (
+                "set used after IN and elsewhere",
+                "SELECT %(ids)s FROM t WHERE x IN %(ids)s",
+                {"ids": {1}},
+            ),
+            ("unused set", "SELECT * FROM t WHERE x = %(a)s", {"a": 1, "s": {1}}),
+            ("set after IN in caller-written parentheses", "SELECT 1 IN (%s)", ({1},)),
+            ("set inside a list", "SELECT * FROM t WHERE x IN %(v)s", {"v": [{1}]}),
+            ("set at a %d marker after IN", "SELECT * FROM t WHERE x IN %d", ({1},)),
+            ("set in an operation that does not format", "SELECT %s, %s", ({1},)),
+            ("set in an IN that ends a line comment", "SELECT -- IN\n %s", ({1},)),
+        ),
+    )
+    def test_set_elsewhere_raises_as_before(self, label, query, params):
+        with pytest.raises(ProgrammingError, match="Unsupported object"):
+            inject_parameters(query, pe.escape_args(params))
+        with pytest.raises(ProgrammingError, match="Unsupported object"):
+            pe.render_inline(query, params)
 
 
 class TestInlineToNativeTransformer(object):

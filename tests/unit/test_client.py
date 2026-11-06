@@ -494,6 +494,31 @@ class ClientTestSuite(unittest.TestCase):
                 expected_query,
             )
 
+    def test_execute_inline_sequence_after_in_renders_as_list(self):
+        """Regression test for databricks-sql-python#629: `x IN ARRAY(...)` is a syntax error."""
+        mock_thrift_backend = ThriftDatabricksClientMockFactory.new()
+        cursor = client.Cursor(Mock(), mock_thrift_backend)
+
+        tests = [
+            (
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+                {"ids": [1, 2, 3]},
+            ),
+            (
+                "SELECT * FROM t WHERE x IN %s",
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+                [[1, 2, 3]],
+            ),
+        ]
+
+        for query, expected_query, params in tests:
+            cursor.execute(query, parameters=params)
+            self.assertEqual(
+                mock_thrift_backend.execute_command.call_args[1]["operation"],
+                expected_query,
+            )
+
     def test_executemany_parameter_passhthrough_and_uses_last_result_set(self):
         # Create a new mock result set each time the class is instantiated
         mock_result_set_instances = [Mock(), Mock(), Mock()]
