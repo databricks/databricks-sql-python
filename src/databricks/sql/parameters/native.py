@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     # these out of the runtime import graph; the ``TSparkParameter*`` objects
     # are constructed via function-local imports inside the ``as_tspark_param``
     # / ``_tspark_*`` helpers below, which only run on the Thrift execute path.
-    # This keeps the Apache Thrift ``thrift`` package out of the SEA/kernel
+    # This keeps the Apache Thrift ``thrift`` package out of the kernel
     # load path (see ``test_lazy_thrift_import``).
     from databricks.sql.thrift_api.TCLIService.ttypes import (
         TSparkParameter,
@@ -26,7 +26,7 @@ from typing import Dict, List, Union
 # Thrift-generated ``ttypes``. They are resolved lazily via ``__getattr__``
 # (PEP 562) so ``from databricks.sql.parameters.native import TSparkParameter``
 # keeps working for existing callers without importing the Apache Thrift
-# ``thrift`` package at module load -- which is what keeps the SEA/kernel path
+# ``thrift`` package at module load -- which is what keeps the kernel path
 # Thrift-free. See ``test_lazy_thrift_import``.
 _LAZY_THRIFT_REEXPORTS = frozenset(
     {"TSparkParameter", "TSparkParameterValue", "TSparkParameterValueArg"}

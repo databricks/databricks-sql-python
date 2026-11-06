@@ -16,7 +16,6 @@ class AuthMech(Enum):
 
 
 class DatabricksClientType(Enum):
-    SEA = "SEA"
     THRIFT = "THRIFT"
 
 

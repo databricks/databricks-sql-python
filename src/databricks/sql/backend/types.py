@@ -72,7 +72,7 @@ class CommandState(Enum):
 
         # Function-local import: this classmethod is only ever called from the
         # Thrift backend, so deferring the import keeps ``thrift`` out of the
-        # SEA/kernel load path.
+        # kernel load path.
         from databricks.sql.thrift_api.TCLIService import ttypes
 
         if state in (
@@ -97,26 +97,6 @@ class CommandState(Enum):
         else:
             return None
 
-    @classmethod
-    def from_sea_state(cls, state: str) -> Optional["CommandState"]:
-        """
-        Map SEA state string to CommandState enum.
-        Args:
-            state: SEA state string
-        Returns:
-            CommandState: The corresponding CommandState enum value
-        """
-        state_mapping = {
-            "PENDING": cls.PENDING,
-            "RUNNING": cls.RUNNING,
-            "SUCCEEDED": cls.SUCCEEDED,
-            "FAILED": cls.FAILED,
-            "CLOSED": cls.CLOSED,
-            "CANCELED": cls.CANCELLED,
-        }
-
-        return state_mapping.get(state, None)
-
 
 class BackendType(Enum):
     """
@@ -124,15 +104,15 @@ class BackendType(Enum):
     """
 
     THRIFT = "thrift"
-    SEA = "sea"
+    KERNEL = "kernel"
 
 
 class SessionId:
     """
-    A normalized session identifier that works with both Thrift and SEA backends.
+    A normalized session identifier that works with both Thrift and kernel backends.
 
     This class abstracts away the differences between Thrift's TSessionHandle and
-    SEA's session ID string, providing a consistent interface for the connector.
+    the kernel's session ID string, providing a consistent interface for the connector.
     """
 
     def __init__(
@@ -146,7 +126,7 @@ class SessionId:
         Initialize a SessionId.
 
         Args:
-            backend_type: The type of backend (THRIFT or SEA)
+            backend_type: The type of backend (THRIFT or KERNEL)
             guid: The primary identifier for the session
             secret: The secret part of the identifier (only used for Thrift)
             properties: Additional information about the session
@@ -161,14 +141,14 @@ class SessionId:
         """
         Return a string representation of the SessionId.
 
-        For SEA backend, returns the guid.
+        For kernel backend, returns the guid.
         For Thrift backend, returns a format like "guid|secret".
 
         Returns:
             A string representation of the session ID
         """
 
-        if self.backend_type == BackendType.SEA:
+        if self.backend_type == BackendType.KERNEL:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
             secret_hex = (
@@ -207,20 +187,20 @@ class SessionId:
         return cls(BackendType.THRIFT, guid_bytes, secret_bytes, properties)
 
     @classmethod
-    def from_sea_session_id(
+    def from_kernel_session_id(
         cls, session_id: str, properties: Optional[Dict[str, Any]] = None
     ):
         """
-        Create a SessionId from a SEA session ID.
+        Create a SessionId from a kernel session ID.
 
         Args:
-            session_id: The SEA session ID string
+            session_id: The kernel session ID string
 
         Returns:
             A SessionId instance
         """
 
-        return cls(BackendType.SEA, session_id, properties=properties)
+        return cls(BackendType.KERNEL, session_id, properties=properties)
 
     def to_thrift_handle(self):
         """
@@ -240,19 +220,6 @@ class SessionId:
         return ttypes.TSessionHandle(
             sessionId=handle_identifier, serverProtocolVersion=server_protocol_version
         )
-
-    def to_sea_session_id(self):
-        """
-        Get the SEA session ID string.
-
-        Returns:
-            The session ID string or None if this is not a SEA session ID
-        """
-
-        if self.backend_type != BackendType.SEA:
-            return None
-
-        return self.guid
 
     @property
     def hex_guid(self) -> str:
@@ -275,7 +242,7 @@ class SessionId:
 
         Returns:
             The server protocol version or None if it does not exist
-            It is not expected to exist for SEA sessions.
+            It is not expected to exist for kernel sessions.
         """
 
         return self.properties.get("serverProtocolVersion")
@@ -283,10 +250,10 @@ class SessionId:
 
 class CommandId:
     """
-    A normalized command identifier that works with both Thrift and SEA backends.
+    A normalized command identifier that works with both Thrift and kernel backends.
 
     This class abstracts away the differences between Thrift's TOperationHandle and
-    SEA's statement ID string, providing a consistent interface for the connector.
+    the kernel's statement ID string, providing a consistent interface for the connector.
     """
 
     def __init__(
@@ -302,7 +269,7 @@ class CommandId:
         Initialize a CommandId.
 
         Args:
-            backend_type: The type of backend (THRIFT or SEA)
+            backend_type: The type of backend (THRIFT or KERNEL)
             guid: The primary identifier for the command
             secret: The secret part of the identifier (only used for Thrift)
             operation_type: The operation type (only used for Thrift)
@@ -321,14 +288,14 @@ class CommandId:
         """
         Return a string representation of the CommandId.
 
-        For SEA backend, returns the guid.
+        For kernel backend, returns the guid.
         For Thrift backend, returns a format like "guid|secret".
 
         Returns:
             A string representation of the command ID
         """
 
-        if self.backend_type == BackendType.SEA:
+        if self.backend_type == BackendType.KERNEL:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
             secret_hex = (
@@ -367,18 +334,18 @@ class CommandId:
         )
 
     @classmethod
-    def from_sea_statement_id(cls, statement_id: str):
+    def from_kernel_statement_id(cls, statement_id: str):
         """
-        Create a CommandId from a SEA statement ID.
+        Create a CommandId from a kernel statement ID.
 
         Args:
-            statement_id: The SEA statement ID string
+            statement_id: The kernel statement ID string
 
         Returns:
             A CommandId instance
         """
 
-        return cls(BackendType.SEA, statement_id)
+        return cls(BackendType.KERNEL, statement_id)
 
     def to_thrift_handle(self):
         """
@@ -400,19 +367,6 @@ class CommandId:
             hasResultSet=self.has_result_set,
             modifiedRowCount=self.modified_row_count,
         )
-
-    def to_sea_statement_id(self):
-        """
-        Get the SEA statement ID string.
-
-        Returns:
-            The statement ID string or None if this is not a SEA statement ID
-        """
-
-        if self.backend_type != BackendType.SEA:
-            return None
-
-        return self.guid
 
     def to_hex_guid(self) -> str:
         """

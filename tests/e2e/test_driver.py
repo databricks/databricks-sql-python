@@ -139,7 +139,7 @@ class PySQLPytestTestCase:
 
 
 class TestPySQLLargeWideResultSet(PySQLPytestTestCase):
-    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    @pytest.mark.parametrize("extra_params", [{}])
     @pytest.mark.parametrize("lz4_compression", [False, True])
     def test_query_with_large_wide_result_set(self, extra_params, lz4_compression):
         resultSize = 100 * 1000 * 1000  # 100 MB
@@ -163,7 +163,7 @@ class TestPySQLLargeWideResultSet(PySQLPytestTestCase):
 
 
 class TestPySQLLargeNarrowResultSet(PySQLPytestTestCase):
-    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    @pytest.mark.parametrize("extra_params", [{}])
     def test_query_with_large_narrow_result_set(self, extra_params):
         resultSize = 100 * 1000 * 1000  # 100 MB
         width = 8  # sizeof(long)
@@ -179,7 +179,7 @@ class TestPySQLLargeNarrowResultSet(PySQLPytestTestCase):
 
 
 class TestPySQLLongRunningQuery(PySQLPytestTestCase):
-    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    @pytest.mark.parametrize("extra_params", [{}])
     def test_long_running_query(self, extra_params):
         """Incrementally increase query size until it takes at least 1 minute,
         and asserts that the query completes successfully.
@@ -250,12 +250,7 @@ class TestPySQLCloudFetch(PySQLPytestTestCase):
 class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_execute_async__long_running(self, extra_params):
 
@@ -275,14 +270,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
+        [{}],
     )
     def test_execute_async__small_result(self, extra_params):
         small_result_query = "SELECT 1"
@@ -305,12 +293,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_execute_async__large_result(self, extra_params):
         x_dimension = 1000
@@ -428,17 +411,7 @@ class TestPySQLCoreSuite(
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_create_table_will_return_empty_result_set(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -699,17 +672,7 @@ class TestPySQLCoreSuite(
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_get_arrow(self, extra_params):
         # These tests are quite light weight as the arrow fetch methods are used internally
@@ -724,14 +687,7 @@ class TestPySQLCoreSuite(
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
+        [{}],
     )
     def test_unicode(self, extra_params):
         unicode_str = "数据砖"
@@ -775,17 +731,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_can_execute_command_after_failure(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -800,17 +746,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_can_execute_command_after_success(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -827,17 +763,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_fetchone(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -853,14 +779,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
+        [{}],
     )
     def test_fetchall(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -874,17 +793,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_fetchmany_when_stride_fits(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -897,17 +806,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_fetchmany_in_excess(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -920,17 +819,7 @@ class TestPySQLCoreSuite(
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_iterator_api(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -1008,17 +897,7 @@ class TestPySQLCoreSuite(
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
+        [{}],
     )
     def test_multi_timestamps_arrow(self, extra_params):
         with self.cursor(

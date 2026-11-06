@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     # annotations``). ``TSparkRowSetType`` is used at runtime only inside
     # ``ThriftResultSetQueueFactory.build_queue``, which is a Thrift-only code
     # path and imports it locally. This keeps the Apache Thrift ``thrift``
-    # package out of the SEA/kernel load path (see ``test_lazy_thrift_import``).
+    # package out of the kernel load path (see ``test_lazy_thrift_import``).
     from databricks.sql.thrift_api.TCLIService.ttypes import (
         TRowSet,
         TSparkArrowResultLink,
@@ -116,7 +116,7 @@ class ThriftResultSetQueueFactory(ABC):
         """
 
         # Function-local import: this factory is only used by the Thrift
-        # backend, so deferring keeps ``thrift`` out of the SEA/kernel path.
+        # backend, so deferring keeps ``thrift`` out of the kernel path.
         from databricks.sql.thrift_api.TCLIService.ttypes import TSparkRowSetType
 
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:

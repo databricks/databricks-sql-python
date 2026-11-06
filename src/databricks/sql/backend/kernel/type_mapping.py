@@ -6,13 +6,6 @@ type-name string per column. ``description_from_arrow_schema``
 flattens the conversion so ``KernelResultSet`` and any future
 kernel-result wrapper share the same mapping.
 
-The string constants come from ``SqlType`` in the SEA backend's
-``conversion`` module — same single source of truth both backends
-already use. The Arrow → ``SqlType`` lookup itself is kernel-
-specific (SEA receives type-text from the server and normalises it;
-the kernel receives Arrow schemas directly), so the mapping
-function stays local but the names are shared.
-
 Parameter binding (``TSparkParameter`` → kernel
 ``Statement.bind_param``) is handled by ``bind_tspark_params`` —
 forwards the connector's already-string-encoded form to the kernel
@@ -25,7 +18,6 @@ from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 import pyarrow
 
-from databricks.sql.backend.sea.utils.conversion import SqlType
 from databricks.sql.exc import NotSupportedError
 
 if TYPE_CHECKING:
@@ -44,41 +36,37 @@ _COMPOUND_PARAM_TYPES = frozenset({"ARRAY", "MAP", "STRUCT"})
 
 
 def _arrow_type_to_dbapi_string(arrow_type: pyarrow.DataType) -> str:
-    """Map a pyarrow type to the Databricks SQL type name used in
-    PEP 249 ``description``. Names come from ``SqlType`` so the
-    kernel and SEA backends emit identical type-code strings;
-    consumers can branch on them identically.
-    """
+    """Map an Arrow type to the lowercase type name used by Thrift descriptions."""
     if pyarrow.types.is_boolean(arrow_type):
-        return SqlType.BOOLEAN
+        return "boolean"
     if pyarrow.types.is_int8(arrow_type):
-        return SqlType.TINYINT
+        return "tinyint"
     if pyarrow.types.is_int16(arrow_type):
-        return SqlType.SMALLINT
+        return "smallint"
     if pyarrow.types.is_int32(arrow_type):
-        return SqlType.INT
+        return "int"
     if pyarrow.types.is_int64(arrow_type):
-        return SqlType.BIGINT
+        return "bigint"
     if pyarrow.types.is_float32(arrow_type):
-        return SqlType.FLOAT
+        return "float"
     if pyarrow.types.is_float64(arrow_type):
-        return SqlType.DOUBLE
+        return "double"
     if pyarrow.types.is_decimal(arrow_type):
-        return SqlType.DECIMAL
+        return "decimal"
     if pyarrow.types.is_string(arrow_type) or pyarrow.types.is_large_string(arrow_type):
-        return SqlType.STRING
+        return "string"
     if pyarrow.types.is_binary(arrow_type) or pyarrow.types.is_large_binary(arrow_type):
-        return SqlType.BINARY
+        return "binary"
     if pyarrow.types.is_date(arrow_type):
-        return SqlType.DATE
+        return "date"
     if pyarrow.types.is_timestamp(arrow_type):
-        return SqlType.TIMESTAMP
+        return "timestamp"
     if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(arrow_type):
-        return SqlType.ARRAY
+        return "array"
     if pyarrow.types.is_struct(arrow_type):
-        return SqlType.STRUCT
+        return "struct"
     if pyarrow.types.is_map(arrow_type):
-        return SqlType.MAP
+        return "map"
     # Fallback for types the kernel hasn't been observed to emit yet
     # (time32/time64, unsigned ints, dictionary, string_view,
     # binary_view, fixed_size_*). ``str(arrow_type)`` produces shapes
@@ -175,7 +163,7 @@ def _databricks_type_for_field(field: pyarrow.Field) -> str:
     # bytes); compare against bytes to avoid one encode per field.
     type_name = md.get(b"databricks.type_name")
     if type_name is not None:
-        # Lowercase to match the canonical SqlType slugs the Thrift
+        # Lowercase to match the type names the Thrift
         # backend produces (``"array"`` / ``"map"`` / ``"struct"`` /
         # ``"variant"``). Other server-reported names (``"INT"`` etc.)
         # would also pass through this branch but we deliberately

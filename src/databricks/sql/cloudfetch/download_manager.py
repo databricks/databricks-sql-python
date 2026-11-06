@@ -15,7 +15,7 @@ from databricks.sql.telemetry.models.event import StatementType
 
 if TYPE_CHECKING:
     # Type-annotation-only import; see the note in downloader.py. Keeping the
-    # ``thrift`` package out of this module lets the SEA/kernel backends use the
+    # ``thrift`` package out of this module lets the kernel backend use the
     # cloud-fetch download manager without importing Apache Thrift.
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 

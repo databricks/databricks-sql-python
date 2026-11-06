@@ -54,7 +54,7 @@ def _make_rs(handle, *, disable_pandas=False) -> KernelResultSet:
         connection=connection,
         backend=backend,
         kernel_handle=handle,
-        command_id=CommandId.from_sea_statement_id("smoke-test"),
+        command_id=CommandId.from_kernel_statement_id("smoke-test"),
         arraysize=100,
         buffer_size_bytes=1024,
     )
@@ -232,7 +232,7 @@ def test_close_skips_kernel_call_when_connection_already_closed(int_schema):
         connection=connection,
         backend=backend,
         kernel_handle=handle,
-        command_id=CommandId.from_sea_statement_id("conn-closed-test"),
+        command_id=CommandId.from_kernel_statement_id("conn-closed-test"),
         arraysize=100,
         buffer_size_bytes=1024,
     )

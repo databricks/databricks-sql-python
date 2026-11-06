@@ -111,10 +111,7 @@ def _isolated_from_telemetry():
 class Client429ResponseMixin:
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_client_should_retry_automatically_when_getting_429(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -126,10 +123,7 @@ class Client429ResponseMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_client_should_not_retry_429_if_RateLimitRetry_is_0(self, extra_params):
         with pytest.raises(self.error_type) as cm:
@@ -155,10 +149,7 @@ class Client429ResponseMixin:
 class Client503ResponseMixin:
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_wait_cluster_startup(self, extra_params):
         with self.cursor(extra_params) as cursor:
@@ -167,10 +158,7 @@ class Client503ResponseMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def _test_retry_disabled_with_message(
         self, error_msg_substring, exception_type, extra_params
@@ -326,10 +314,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_urllib3_settings_are_honored(
@@ -356,10 +341,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_oserror_retries(self, mock_send_telemetry, extra_params):
@@ -377,10 +359,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_max_count_not_exceeded(self, mock_send_telemetry, extra_params):
@@ -400,10 +379,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_exponential_backoff(self, mock_send_telemetry, extra_params):
@@ -438,10 +414,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_max_duration_not_exceeded(self, extra_params):
         """GIVEN the max attempt duration of 10 seconds
@@ -457,10 +430,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_abort_non_recoverable_error(self, extra_params):
         """GIVEN the server returns a code 501
@@ -478,10 +448,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_abort_unsafe_execute_statement_retry_condition(self, extra_params):
         """GIVEN the server sends a code other than 429 or 503
@@ -499,10 +466,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_dangerous_codes(self, extra_params):
         """GIVEN the server sends a dangerous code and the user forced this to be retryable
@@ -541,10 +505,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_safe_execute_statement_retry_condition(self, extra_params):
         """GIVEN the server sends either code 429 or 503
@@ -573,10 +534,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_abort_close_session_on_404(self, extra_params, caplog):
         """GIVEN the connector sends a CloseSession command
@@ -598,10 +556,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_abort_close_operation_on_404(self, extra_params, caplog):
         """GIVEN the connector sends a CancelOperation command
@@ -631,10 +586,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_3xx_redirect_codes_are_not_retried(
@@ -667,10 +619,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_3xx_codes_not_retried_regardless_of_max_redirects_setting(
@@ -703,10 +652,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_3xx_codes_stop_request_immediately_no_retry_attempts(
         self, extra_params
@@ -739,10 +685,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(
         self, extra_params, caplog
@@ -761,10 +704,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_retry_legacy_behavior_warns_user(self, extra_params, caplog):
         with self.connection(
@@ -780,10 +720,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_403_not_retried(self, extra_params):
         """GIVEN the server returns a code 403
@@ -801,10 +738,7 @@ class PySQLRetryTestsMixin:
 
     @pytest.mark.parametrize(
         "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
+        [{}],
     )
     def test_401_not_retried(self, extra_params):
         """GIVEN the server returns a code 401

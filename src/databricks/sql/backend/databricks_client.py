@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 
     # Type-annotation-only import (deferred by ``from __future__ import
     # annotations``). ``execute_command`` is typed with ``TSparkParameter`` for
-    # backwards compatibility, but this abstract base -- and the SEA/kernel
-    # implementations of it -- never import the Apache Thrift ``thrift`` package
+    # backwards compatibility, but this abstract base and the kernel
+    # implementation never import the Apache Thrift ``thrift`` package
     # at load time. See ``test_lazy_thrift_import``.
     from databricks.sql.thrift_api.TCLIService import ttypes
 

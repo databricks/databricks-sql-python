@@ -50,7 +50,6 @@ class DriverConnectionParameters(JsonSerializableMixin):
         use_system_trust_store (bool): Whether system trust store is used
         enable_arrow (bool): Whether Arrow format is enabled
         enable_direct_results (bool): Whether direct results are enabled
-        enable_sea_hybrid_results (bool): Whether SEA hybrid results are enabled
         http_connection_pool_size (int): HTTP connection pool size
         rows_fetched_per_block (int): Number of rows fetched per block
         async_poll_interval_millis (int): Async polling interval in milliseconds
@@ -78,7 +77,6 @@ class DriverConnectionParameters(JsonSerializableMixin):
     use_system_trust_store: Optional[bool] = None
     enable_arrow: Optional[bool] = None
     enable_direct_results: Optional[bool] = None
-    enable_sea_hybrid_results: Optional[bool] = None
     http_connection_pool_size: Optional[int] = None
     rows_fetched_per_block: Optional[int] = None
     async_poll_interval_millis: Optional[int] = None

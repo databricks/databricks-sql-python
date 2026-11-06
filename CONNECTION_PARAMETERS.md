@@ -19,11 +19,6 @@ but ignored (or rejected) on the other is called out in the **Note** column.
 > does **not** splat `**kwargs`. Options implemented in the shared Python driver
 > layer can still apply to both backends; unforwarded backend-specific options
 > are ignored or rejected on the kernel path.
->
-> A separate pure-Python **SEA** backend (`use_sea=True`) also exists but is
-> being deprecated. Its selector and SEA-only hybrid-disposition option are
-> listed for completeness, but this reference does not provide a third SEA
-> support column.
 
 ## Legend
 
@@ -60,10 +55,7 @@ to change without notice.
 
 | Option                   | Type   | Thrift | Kernel | Default Value | Note                                                                                               |
 | ------------------------ | ------ | :----: | :----: | ------------- | -------------------------------------------------------------------------------------------------- |
-| `use_kernel`             | `bool` |   —    |   —    | `False`       | Routing selector: `False` selects Thrift; `True` selects Kernel. Mutually exclusive with `use_sea`. |
-| `use_sea`                | `bool` |   —    |   —    | `False`       | Select the deprecated pure-Python SEA backend. Mutually exclusive with `use_kernel`.               |
-| `use_hybrid_disposition` | `bool` |   ❌   |   ❌   | `False`       | SEA-only result-disposition option; ignored by Thrift and Kernel.                                  |
-| `max_connections`        | `int`  |   ❌   |   ❌   | `10`          | Internal SEA-only HTTP-pool limit; ignored by Thrift and Kernel.                                   |
+| `use_kernel`             | `bool` |   —    |   —    | `False`       | Routing selector: `False` selects Thrift; `True` selects Kernel. |
 
 ---
 
