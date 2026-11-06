@@ -1,7 +1,9 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
 from typing import Any, Dict
+from unittest.mock import patch
 from databricks.sql.parameters.native import dbsql_parameter_from_primitive
+from databricks.sql.types import Row
 
 from databricks.sql.utils import (
     ParamEscaper,
@@ -239,10 +241,34 @@ class TestInClauseSequenceRendering(object):
                 "SELECT * FROM t WHERE x in\n  (1,2)",
             ),
             (
-                "nested sequences stay arrays",
+                "nested lists stay arrays",
                 "SELECT * FROM t WHERE arr IN %(arrs)s",
                 {"arrs": [[1, 2], [3]]},
                 "SELECT * FROM t WHERE arr IN (ARRAY(1,2),ARRAY(3))",
+            ),
+            (
+                "nested tuples render as rows",
+                "SELECT * FROM t WHERE (a, b) IN %(pairs)s",
+                {"pairs": [(1, "x"), (2, "O'Connell")]},
+                r"SELECT * FROM t WHERE (a, b) IN ((1,'x'),(2,'O\'Connell'))",
+            ),
+            (
+                "tuple of tuples with NOT IN, positional",
+                "SELECT * FROM t WHERE (a, b) NOT IN %s",
+                (((1, 2), (3, 4)),),
+                "SELECT * FROM t WHERE (a, b) NOT IN ((1,2),(3,4))",
+            ),
+            (
+                "Row objects render as rows",
+                "SELECT * FROM t WHERE (a, b) IN %(rows)s",
+                {"rows": [Row(a=1, b=2), Row(a=3, b=4)]},
+                "SELECT * FROM t WHERE (a, b) IN ((1,2),(3,4))",
+            ),
+            (
+                "a row can hold an array and a nested row",
+                "SELECT * FROM t WHERE (a, arr, s) IN %(rows)s",
+                {"rows": [(1, [2, 3], (4, 5))]},
+                "SELECT * FROM t WHERE (a, arr, s) IN ((1,ARRAY(2,3),(4,5)))",
             ),
             (
                 "only the positional marker after IN",
@@ -300,6 +326,12 @@ class TestInClauseSequenceRendering(object):
                 {"p": [1, 2]},
                 "SELECT * FROM t WHERE arr IN (ARRAY(1,2))",
             ),
+            (
+                "a tuple outside an IN list is still an array",
+                "INSERT INTO t (arr) VALUES (%(p)s)",
+                {"p": (1, 2)},
+                "INSERT INTO t (arr) VALUES (ARRAY(1,2))",
+            ),
         ),
     )
     def test_sequence_elsewhere_stays_array(self, label, query, params, expected):
@@ -344,6 +376,25 @@ class TestInClauseSequenceRendering(object):
         assert pe.render_inline(query, params) == inject_parameters(
             query, pe.escape_args(params)
         )
+
+    @pytest.mark.parametrize(
+        ("query", "params"),
+        (
+            ("SELECT * FROM t WHERE a = %(a)s AND b IN (%(b)s)", {"a": "x", "b": 2}),
+            ("SELECT * FROM t WHERE a = %s LIMIT %d", ("x", 5)),
+            ("SELECT * FROM t WHERE a = %s", {"a": "x"}),
+        ),
+    )
+    def test_without_sequences_renders_as_escape_args_without_probing(
+        self, query, params
+    ):
+        with patch.object(
+            ParamEscaper, "_sequence_markers_following_in", side_effect=AssertionError
+        ) as probe:
+            assert pe.render_inline(query, params) == inject_parameters(
+                query, pe.escape_args(params)
+            )
+        probe.assert_not_called()
 
     def test_probe_shaped_string_value_is_not_a_probe(self):
         """Real values are substituted while probing, so a string value that contains a probe-like

@@ -569,6 +569,14 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 {"ids": [1, 3, 4], "n": 2},
                 [1, 3],
             ),
+            (
+                # Tuples render as rows for a multi-column IN. Spark does not widen the field
+                # types of a row, so the INT and STRING columns match the rendered literals.
+                "SELECT id FROM VALUES (1, 'a'), (2, 'b'), (3, 'c') AS t(id, tag)"
+                " WHERE (id, tag) IN %(pairs)s ORDER BY id",
+                {"pairs": [(1, "a"), (2, "x"), (3, "c")]},
+                [1, 3],
+            ),
         ],
     )
     def test_inline_sequence_in_clause(self, query, params, expected_ids):

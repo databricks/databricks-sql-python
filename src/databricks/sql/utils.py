@@ -657,9 +657,15 @@ class ParamEscaper:
         marker that directly follows IN (e.g. `x IN %(ids)s`) renders as the parenthesised list
         Spark requires there, `x IN (1,2,3)`, instead of `x IN ARRAY(1,2,3)`, which Spark rejects.
         The choice is made per marker, so a parameter used both after IN and elsewhere keeps its
-        ARRAY rendering at the other markers.
+        ARRAY rendering at the other markers. Inside the list, tuples render as rows and lists as
+        ARRAY literals.
         """
         escaped = self.escape_args(parameters)
+        values = parameters.values() if isinstance(parameters, dict) else parameters
+        if not any(_renders_as_array(value) for value in values):
+            # Only a sequence can render as an IN list, so without one render exactly as before.
+            return inject_parameters(operation, escaped)
+
         in_list_markers = self._sequence_markers_following_in(
             operation, parameters, escaped
         )
@@ -706,7 +712,14 @@ class ParamEscaper:
         }
 
     def escape_in_list(self, item):
-        return "(" + ",".join(map(str, map(self.escape_item, item))) + ")"
+        return "(" + ",".join(map(str, map(self._escape_in_list_element, item))) + ")"
+
+    def _escape_in_list_element(self, item):
+        # Inside an IN list a tuple is a row, as in `(a, b) IN ((1, 2), (3, 4))`. A list stays an
+        # ARRAY literal so ARRAY columns can still be matched, as in `arr IN (ARRAY(1, 2))`.
+        if isinstance(item, tuple):
+            return self.escape_in_list(item)
+        return self.escape_item(item)
 
     def escape_number(self, item):
         return item

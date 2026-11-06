@@ -237,6 +237,19 @@ SELECT field FROM table WHERE field IN (1,2,3,4,5)
 
 The marker must directly follow `IN` (or `NOT IN`), as in `IN %(value_list)s`. Anywhere else, including inside parentheses you write yourself such as `IN (%(value_list)s)`, a sequence is rendered as an `ARRAY(...)` literal.
 
+Inside the list, a tuple is rendered as a row and a list as an `ARRAY(...)` literal. For a multi-column `IN`, pass tuples:
+
+```python
+query = "SELECT * FROM table WHERE (id, tag) IN %(pairs)s"
+parameters = {"pairs": [(1, "a"), (2, "b")]}
+```
+
+```sql
+SELECT * FROM table WHERE (id, tag) IN ((1,'a'),(2,'b'))
+```
+
+Spark does not convert the types of the values inside a row, so each value must have the same type as its column. For example, the literal `1` is an `INT` and does not match a `BIGINT` column.
+
 **Note**: this behavior is not specified by PEP-249 and only works due to the specific implementation of our inline renderer.
 
 ### Migrating to native parameters
