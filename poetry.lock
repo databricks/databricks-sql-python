@@ -2,14 +2,14 @@
 
 [[package]]
 name = "astroid"
-version = "4.0.4"
+version = "4.3.4"
 description = "An abstract syntax tree for Python with inference support."
 optional = false
 python-versions = ">=3.10.0"
 groups = ["dev"]
 files = [
-    {file = "astroid-4.0.4-py3-none-any.whl", hash = "sha256:52f39653876c7dec3e3afd4c2696920e05c83832b9737afc21928f2d2eb7a753"},
-    {file = "astroid-4.0.4.tar.gz", hash = "sha256:986fed8bcf79fb82c78b18a53352a0b287a73817d6dbcfba3162da36667c49a0"},
+    {file = "astroid-4.3.4-py3-none-any.whl", hash = "sha256:2bcd0d02648a443a4b818c952c3550091989daefac3c12d3b83b2289482e0818"},
+    {file = "astroid-4.3.4.tar.gz", hash = "sha256:d515a105722b72098bbe82d430d65e635f742b6cbac3bdfaf8b7c188b87c5e39"},
 ]
 
 [package.dependencies]
@@ -497,19 +497,19 @@ ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
 name = "databricks-sql-kernel"
-version = "1.3.0"
+version = "1.4.0"
 description = "Python bindings for the Databricks SQL Kernel (PyO3)"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"kernel\""
 files = [
-    {file = "databricks_sql_kernel-1.3.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:f13a2d749dfc458c4eca71db51027ac9e3d86e6bfdeb32bd65ca47062227126e"},
-    {file = "databricks_sql_kernel-1.3.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:f374da38518f3c460a7f3bf9d7cda829c0982e9fd77f9fd79092d2dbeb30e71d"},
-    {file = "databricks_sql_kernel-1.3.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:f96cc06ee0b200c645dccb772af073dc71954359bcf5d5dfc5f9727b6d8ac167"},
-    {file = "databricks_sql_kernel-1.3.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:0107dc049497e3664ac2ae93badf513d4f66d37200d2517b310bc115c50ee627"},
-    {file = "databricks_sql_kernel-1.3.0-cp39-abi3-win_amd64.whl", hash = "sha256:d9d90b38260101044a2ece07ede7efc9cdc28056e509f9eb0f72927583656512"},
-    {file = "databricks_sql_kernel-1.3.0.tar.gz", hash = "sha256:79f29feeec56294e59669e697794f14fc8d1dc71d12f7be3be996d89da81b253"},
+    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:d7888fe54bb5b47c15741557495a0910c0ccb57297c99197c7e4092d963d398f"},
+    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:bd8b72af9e72a55e300d55bc793f2f3ed107dfbc0370e6180a13390b5f365865"},
+    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:9f6ed61f8571840b310a1b7e11d26891586268436c1a967dd029a8ef56038957"},
+    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:7d1d92fca31d6e50600b248db053738c5df6bbe1cac7d6f1ba4dffb60cd2991f"},
+    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-win_amd64.whl", hash = "sha256:9d91bc753638991ca17970d6547f156c56309fc7782c73b3dddcf40c209838d5"},
+    {file = "databricks_sql_kernel-1.4.0.tar.gz", hash = "sha256:4cd4f9296b853d610f4bf082eb8dfd86eb2701df7097af6b77414ef176cf229f"},
 ]
 
 [package.dependencies]
@@ -1561,25 +1561,25 @@ crypto = ["cryptography (>=3.4.0)"]
 
 [[package]]
 name = "pylint"
-version = "4.0.6"
+version = "4.1.3"
 description = "python code static checker"
 optional = false
 python-versions = ">=3.10.0"
 groups = ["dev"]
 files = [
-    {file = "pylint-4.0.6-py3-none-any.whl", hash = "sha256:d11a0e1fdb7b1cd46ec5d6fc78fee8b95f28695b2d6140e5809925f61e32ea54"},
-    {file = "pylint-4.0.6.tar.gz", hash = "sha256:52f19191bee08bf103f9705ad1a0ece4aa5a0a4ef2bdcbd969375a1e6f6579d5"},
+    {file = "pylint-4.1.3-py3-none-any.whl", hash = "sha256:a85357cae24f33ad8d86c8f3daaa92c600ae4012b54a57299cee76000e9364cf"},
+    {file = "pylint-4.1.3.tar.gz", hash = "sha256:9928603068edfa0d1a3c167f174b099d4b97c3db75d32d0fcdd029770b4713a9"},
 ]
 
 [package.dependencies]
-astroid = ">=4.0.2,<=4.1.dev0"
+astroid = ">=4.3.4,<=4.4"
 colorama = {version = ">=0.4.5", markers = "sys_platform == \"win32\""}
 dill = [
     {version = ">=0.2", markers = "python_version < \"3.11\""},
     {version = ">=0.3.7", markers = "python_version >= \"3.12\""},
     {version = ">=0.3.6", markers = "python_version == \"3.11\""},
 ]
-isort = ">=5,<5.13 || >5.13,<9"
+isort = ">=5,<5.13 || >5.13,<10"
 mccabe = ">=0.6,<0.8"
 platformdirs = ">=2.2"
 tomli = {version = ">=1.1", markers = "python_version < \"3.11\""}
@@ -2057,4 +2057,4 @@ pyarrow = ["pyarrow", "pyarrow", "pyarrow"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "1da6205bcd14c50da4fa4879d1c38969dcfd7454001450e57342a3936b8fd868"
+content-hash = "bd560a68822615b0af6e21116e0765f2c34610f4ee8d043b4ae34fea7111a404"
