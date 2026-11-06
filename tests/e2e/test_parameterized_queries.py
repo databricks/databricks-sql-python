@@ -557,6 +557,18 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 {"ids": (1, 3)},
                 [0, 2, 4],
             ),
+            (
+                # The same parameter renders as a list after IN and as an ARRAY elsewhere.
+                "SELECT id FROM range(5) WHERE id IN %(ids)s"
+                " AND array_contains(%(ids)s, id) ORDER BY id",
+                {"ids": [1, 3]},
+                [1, 3],
+            ),
+            (
+                "SELECT id FROM range(5) WHERE id IN %(ids)s ORDER BY id LIMIT %(n)d",
+                {"ids": [1, 3, 4], "n": 2},
+                [1, 3],
+            ),
         ],
     )
     def test_inline_sequence_in_clause(self, query, params, expected_ids):

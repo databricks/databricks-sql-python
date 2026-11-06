@@ -256,11 +256,28 @@ class TestInClauseSequenceRendering(object):
                 (["a"], [1, 2]),
                 "SELECT '100%' AS pct, ARRAY('a') AS tags FROM t WHERE x IN (1,2)",
             ),
+            (
+                "named %d marker elsewhere in the query",
+                "SELECT * FROM t WHERE x IN %(ids)s LIMIT %(n)d",
+                {"ids": [1, 2], "n": 5},
+                "SELECT * FROM t WHERE x IN (1,2) LIMIT 5",
+            ),
+            (
+                "positional %d marker elsewhere in the query",
+                "SELECT * FROM t WHERE x IN %s LIMIT %d",
+                ([1, 2], 5),
+                "SELECT * FROM t WHERE x IN (1,2) LIMIT 5",
+            ),
+            (
+                "PIVOT value list",
+                "SELECT * FROM t PIVOT (sum(v) FOR k IN %(ks)s)",
+                {"ks": ["a", "b"]},
+                "SELECT * FROM t PIVOT (sum(v) FOR k IN ('a','b'))",
+            ),
         ),
     )
     def test_sequence_after_in_renders_as_list(self, label, query, params, expected):
-        rendered = inject_parameters(query, pe.escape_args(params, operation=query))
-        assert rendered == expected
+        assert pe.render_inline(query, params) == expected
 
     @pytest.mark.parametrize(
         ("label", "query", "params", "expected"),
@@ -286,13 +303,80 @@ class TestInClauseSequenceRendering(object):
         ),
     )
     def test_sequence_elsewhere_stays_array(self, label, query, params, expected):
-        rendered = inject_parameters(query, pe.escape_args(params, operation=query))
-        assert rendered == expected
+        assert pe.render_inline(query, params) == expected
 
-    def test_malformed_operation_raises_the_same_error(self):
-        query = "SELECT * FROM t WHERE x IN %s AND name LIKE '%sonite'"
-        with pytest.raises(TypeError, match="not enough arguments for format string"):
-            inject_parameters(query, pe.escape_args(([1, 2],), operation=query))
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "same name after IN and as a function argument",
+                "SELECT * FROM t WHERE x IN %(ids)s AND array_contains(%(ids)s, x)",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE x IN (1,2) AND array_contains(ARRAY(1,2), x)",
+            ),
+            (
+                "commented-out IN does not change the live marker",
+                "SELECT * FROM t WHERE arr = %(tags)s\n-- AND tag IN %(tags)s\n",
+                {"tags": ["a", "b"]},
+                "SELECT * FROM t WHERE arr = ARRAY('a','b')\n-- AND tag IN ('a','b')\n",
+            ),
+        ),
+    )
+    def test_rendering_is_chosen_per_marker(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params"),
+        (
+            (
+                "named markers",
+                "INSERT INTO t VALUES (%(s)s, %(n)s, %(arr)s, %(m)s, %(none)s)",
+                {"s": "it's", "n": 1.5, "arr": [1, [2]], "m": {"k": 1}, "none": None},
+            ),
+            (
+                "bare %s with dict parameters formats the whole dict",
+                "SELECT * FROM t WHERE x IN %s",
+                {"ids": [1]},
+            ),
+        ),
+    )
+    def test_matches_escape_args_without_in_list(self, label, query, params):
+        assert pe.render_inline(query, params) == inject_parameters(
+            query, pe.escape_args(params)
+        )
+
+    def test_probe_shaped_string_value_is_not_a_probe(self):
+        """Real values are substituted while probing, so a string value that contains a probe-like
+        token must not make another marker render as a list."""
+        query = "INSERT INTO t VALUES (%(note)s, %(tags)s)"
+        params = {"note": "x IN \x000000000000000000:1\x00", "tags": ["a"]}
+        assert pe.render_inline(query, params) == (
+            "INSERT INTO t VALUES ('x IN \x000000000000000000:1\x00', ARRAY('a'))"
+        )
+
+    @pytest.mark.parametrize(
+        ("query", "params", "error", "message"),
+        (
+            (
+                "SELECT * FROM t WHERE x IN %s AND name LIKE '%sonite'",
+                ([1, 2],),
+                TypeError,
+                "not enough arguments for format string",
+            ),
+            (
+                "SELECT * FROM t WHERE x IN %d",
+                ([1, 2],),
+                TypeError,
+                "a real number is required, not str",
+            ),
+            ("SELECT * FROM t WHERE x IN %(nope)s", {"ids": [1]}, KeyError, "nope"),
+        ),
+    )
+    def test_errors_match_escape_args(self, query, params, error, message):
+        with pytest.raises(error, match=message):
+            inject_parameters(query, pe.escape_args(params))
+        with pytest.raises(error, match=message):
+            pe.render_inline(query, params)
 
 
 class TestInlineToNativeTransformer(object):

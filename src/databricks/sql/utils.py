@@ -1,5 +1,16 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    Sequence,
+    TYPE_CHECKING,
+)
 
 from dateutil import parser
 import datetime
@@ -10,6 +21,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
 import re
+import secrets
 
 import lz4.frame
 
@@ -557,17 +569,24 @@ class RequestErrorInfo(
         return user_friendly_error_message + ". " + error_context
 
 
-# A probe token directly after the IN keyword (also matches NOT IN). Requiring the marker to follow
-# IN directly leaves `IN (%(p)s)` alone: there the caller's parentheses already form the list and
-# an ARRAY value is a valid list element.
-_IN_PREDICATE_PROBE = re.compile(r"\bIN\s*\x00(\d+)\x00", re.IGNORECASE)
+# A probe token directly after the IN keyword (also matches NOT IN). Where Spark's grammar accepts a
+# value directly after IN, in the IN predicate and in PIVOT, it requires a parenthesised list, so
+# `IN ARRAY(...)` is a syntax error. (The one other place, `position(a IN b)`, takes a string and
+# rejects an ARRAY too.) Requiring the marker to follow IN directly leaves `IN (%(p)s)` alone: there
+# the caller's parentheses already form the list and an ARRAY value is a valid list element.
+_IN_MARKER_PROBE = re.compile(r"\bIN\s*\x00([0-9a-f]+):(\d+)\x00", re.IGNORECASE)
+
+
+def _renders_as_array(value: Any) -> bool:
+    """Whether ParamEscaper.escape_item renders `value` as an ARRAY literal."""
+    return isinstance(value, Sequence) and not isinstance(value, str)
 
 
 class _MarkerProbe:
-    """Formats as a unique token so a marker's position in the rendered operation can be found."""
+    """Formats as a token that identifies the marker it was substituted into."""
 
-    def __init__(self, index: int) -> None:
-        self._token = f"\x00{index}\x00"
+    def __init__(self, nonce: str, index: int) -> None:
+        self._token = f"\x00{nonce}:{index}\x00"
 
     def __str__(self) -> str:
         return self._token
@@ -575,45 +594,46 @@ class _MarkerProbe:
     __repr__ = __str__
 
 
-class _MarkerProbeMapping:
-    """Mapping stand-in that records the key looked up by each %(name)s marker."""
+class _NumberedLookups:
+    """Mapping stand-in for %-formatting that numbers its lookups.
 
-    def __init__(self) -> None:
-        self.keys: List[str] = []
-
-    def __getitem__(self, key: str) -> _MarkerProbe:
-        self.keys.append(key)
-        return _MarkerProbe(len(self.keys) - 1)
-
-
-def _parameter_keys_following_in(
-    operation: str, parameters: Union[Dict[str, Any], Sequence]
-) -> set:
-    """Return the names (dict) or positions (sequence) of parameters whose marker directly
-    follows the IN keyword in `operation`.
-
-    The operation is formatted with probes rather than regex-parsed so marker positions match
-    exactly what the %-formatting in `inject_parameters` will substitute.
+    %-formatting looks up each %(name)s marker once, left to right, so lookup n is always the n-th
+    named marker of the operation. `value_for(n, name)` supplies the value substituted there.
     """
-    if isinstance(parameters, dict):
-        probe_mapping = _MarkerProbeMapping()
-        probe_args: Any = probe_mapping
-        keys: List[Any] = probe_mapping.keys
+
+    def __init__(
+        self, value_for: Callable[[int, str], Any], escaped: Dict[str, Any]
+    ) -> None:
+        self._value_for = value_for
+        self._escaped = escaped
+        self._count = 0
+
+    def __getitem__(self, name: str) -> Any:
+        index = self._count
+        self._count += 1
+        return self._value_for(index, name)
+
+    def __str__(self) -> str:
+        # A bare %s marker formats the whole mapping; keep rendering the escaped dict there.
+        return str(self._escaped)
+
+    __repr__ = __str__
+
+
+def _format_markers(
+    operation: str, escaped: Any, value_for: Callable[[int, Any], Any]
+) -> str:
+    """%-format `operation`, taking the value of marker n from `value_for(n, key)`.
+
+    `escaped` is the output of `ParamEscaper.escape_args`. `key` is the marker's name when it is a
+    dict and the marker's position otherwise.
+    """
+    values: Any
+    if isinstance(escaped, dict):
+        values = _NumberedLookups(value_for, escaped)
     else:
-        keys = list(range(len(parameters)))
-        probe_args = tuple(_MarkerProbe(i) for i in keys)
-
-    try:
-        probed_operation = operation % probe_args
-    except (TypeError, ValueError):
-        # Either inject_parameters raises the same error for this operation, or a marker such as
-        # %d needs a real value; keep the default rendering in both cases.
-        return set()
-
-    return {
-        keys[int(match.group(1))]
-        for match in _IN_PREDICATE_PROBE.finditer(probed_operation)
-    }
+        values = tuple(value_for(i, i) for i in range(len(escaped)))
+    return inject_parameters(operation, values)
 
 
 # Taken from PyHive
@@ -622,34 +642,68 @@ class ParamEscaper:
     _TIME_FORMAT = "%H:%M:%S.%f %z"
     _DATETIME_FORMAT = "{} {}".format(_DATE_FORMAT, _TIME_FORMAT)
 
-    def escape_args(self, parameters, operation: Optional[str] = None):
-        """Escape parameter values for inline rendering into `operation`.
-
-        When `operation` is given, a sequence whose marker directly follows IN (e.g.
-        `x IN %(ids)s`) renders as the parenthesised list the IN predicate needs; anywhere else it
-        stays an ARRAY literal. Spark rejects `x IN ARRAY(...)` as a syntax error, so this cannot
-        change the rendering of a query that parses today.
-        """
-        if not isinstance(parameters, (dict, list, tuple)):
+    def escape_args(self, parameters):
+        if isinstance(parameters, dict):
+            return {k: self.escape_item(v) for k, v in parameters.items()}
+        elif isinstance(parameters, (list, tuple)):
+            return tuple(self.escape_item(x) for x in parameters)
+        else:
             raise ProgrammingError("Unsupported param format: {}".format(parameters))
 
-        in_list_keys = (
-            _parameter_keys_following_in(operation, parameters)
-            if operation is not None
-            else set()
-        )
-        if isinstance(parameters, dict):
-            return {
-                k: self._escape_arg(v, k in in_list_keys) for k, v in parameters.items()
-            }
-        return tuple(
-            self._escape_arg(x, i in in_list_keys) for i, x in enumerate(parameters)
+    def render_inline(self, operation: str, parameters) -> str:
+        """Render `parameters` into the markers of `operation` as inline SQL literals.
+
+        Values are escaped as `escape_args` escapes them, with one exception: a sequence at a
+        marker that directly follows IN (e.g. `x IN %(ids)s`) renders as the parenthesised list
+        Spark requires there, `x IN (1,2,3)`, instead of `x IN ARRAY(1,2,3)`, which Spark rejects.
+        The choice is made per marker, so a parameter used both after IN and elsewhere keeps its
+        ARRAY rendering at the other markers.
+        """
+        escaped = self.escape_args(parameters)
+        in_list_markers = self._sequence_markers_following_in(
+            operation, parameters, escaped
         )
 
-    def _escape_arg(self, item, follows_in: bool):
-        if follows_in and isinstance(item, Sequence) and not isinstance(item, str):
-            return self.escape_in_list(item)
-        return self.escape_item(item)
+        def render_marker(index: int, key: Any) -> Any:
+            if index in in_list_markers:
+                return self.escape_in_list(parameters[key])
+            return escaped[key]
+
+        return _format_markers(operation, escaped, render_marker)
+
+    def _sequence_markers_following_in(
+        self, operation: str, parameters, escaped
+    ) -> Set[int]:
+        """Return the numbers of the markers that directly follow IN and receive a sequence.
+
+        Markers are numbered as `_format_markers` numbers them. To find them, the operation is
+        formatted once through the same %-formatting as the real substitution, so `%%` and
+        positional markers line up exactly. Each sequence value is replaced by a probe token and
+        every other value keeps its escaped value, so scalar markers such as `%d` still format.
+        """
+        # The nonce stops a string value that happens to contain a probe-shaped token from being
+        # mistaken for a probe, since real values are substituted alongside the probes.
+        nonce = secrets.token_hex(8)
+
+        def probe_marker(index: int, key: Any) -> Any:
+            # A missing name raises KeyError here, as it does when rendering.
+            escaped_value = escaped[key]
+            if _renders_as_array(parameters[key]):
+                return _MarkerProbe(nonce, index)
+            return escaped_value
+
+        try:
+            probed_operation = _format_markers(operation, escaped, probe_marker)
+        except (KeyError, TypeError, ValueError):
+            # Rendering raises the same error: a probe only replaces a sequence, and a marker that
+            # cannot format a probe (such as %d) cannot format the sequence's ARRAY string either.
+            return set()
+
+        return {
+            int(match.group(2))
+            for match in _IN_MARKER_PROBE.finditer(probed_operation)
+            if match.group(1) == nonce
+        }
 
     def escape_in_list(self, item):
         return "(" + ",".join(map(str, map(self.escape_item, item))) + ")"
