@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Fix: with pandas enabled (the default), a floating-point NaN in a FLOAT or DOUBLE column is now returned as `float('nan')` instead of `None`, so it can be told apart from SQL NULL. This matches what `_disable_pandas=True` already returned.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
