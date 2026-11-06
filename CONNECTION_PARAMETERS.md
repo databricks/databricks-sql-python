@@ -55,7 +55,7 @@ to change without notice.
 
 | Option                   | Type   | Thrift | Kernel | Default Value | Note                                                                                               |
 | ------------------------ | ------ | :----: | :----: | ------------- | -------------------------------------------------------------------------------------------------- |
-| `use_kernel`             | `bool` |   —    |   —    | `False`       | Routing selector: `False` selects Thrift; `True` selects Kernel. |
+| `use_kernel`             | `bool` | —      | —      | `False`       | Routing selector: `False` selects Thrift; `True` selects Kernel.                                   |
 
 ---
 

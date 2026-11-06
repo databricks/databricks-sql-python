@@ -373,6 +373,12 @@ class Connection:
                 "install 'databricks-sql-connector[kernel]'."
             )
 
+        if kwargs.pop("use_hybrid_disposition", False):
+            logger.warning(
+                "Parameter 'use_hybrid_disposition' was removed with the SEA "
+                "backend and is ignored."
+            )
+
         logger.debug(
             "Connection.__init__(server_hostname=%s, http_path=%s)",
             server_hostname,

@@ -1,7 +1,8 @@
 # Release History
 
 # Unreleased
-- Remove the deprecated pure-Python SEA backend and its options; use Thrift (default) or `use_kernel=True`.
+- **Breaking:** Remove the deprecated pure-Python SEA backend and its options; use Thrift (default) or `use_kernel=True`.
+- **Breaking:** Kernel IDs now use `BackendType.KERNEL`, `SessionId.from_kernel_session_id`, and `CommandId.from_kernel_statement_id`. Remove `BackendType.SEA`, the `from_sea_*` / `to_sea_*` helpers, `CommandState.from_sea_state`, and `DatabricksClientType.SEA`.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
