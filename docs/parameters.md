@@ -237,6 +237,8 @@ SELECT field FROM table WHERE field IN (1,2,3,4,5)
 
 The marker must directly follow `IN` (or `NOT IN`), as in `IN %(value_list)s`. Anywhere else, including inside parentheses you write yourself such as `IN (%(value_list)s)`, a sequence is rendered as an `ARRAY(...)` literal.
 
+The connector finds `IN` by reading the query text, not by parsing SQL. It ignores an `IN` at the end of a `--` comment line, but an `IN` inside a string literal, directly before a marker, is still treated as the keyword.
+
 Inside the list, a tuple is rendered as a row and a list as an `ARRAY(...)` literal. For a multi-column `IN`, pass tuples:
 
 ```python

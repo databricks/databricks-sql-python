@@ -574,15 +574,21 @@ class RequestErrorInfo(
 # `IN ARRAY(...)` is a syntax error. (The one other place, `position(a IN b)`, takes a string and
 # rejects an ARRAY too.) Requiring the marker to follow IN directly leaves `IN (%(p)s)` alone: there
 # the caller's parentheses already form the list and an ARRAY value is a valid list element.
+#
+# This matches the SQL text rather than parsing it, so it is a heuristic. It skips an IN that ends
+# a `--` comment line (see `_in_ends_line_comment`), but an IN inside a string literal or a block
+# comment can still count as the keyword when a marker follows it.
 _IN_MARKER_PROBE = re.compile(r"\bIN\s*\x00([0-9a-f]+):(\d+)\x00", re.IGNORECASE)
 
 
 def _in_ends_line_comment(text: str, match: re.Match[str]) -> bool:
-    """Whether the IN that `match` found is inside a `--` comment and the marker is on a later line.
+    """Whether the IN that `match` found looks like it is in a `--` comment, with the marker on a
+    later line.
 
-    The marker is then live code and keeps its ARRAY rendering. A marker on the same line as a
-    commented IN is inside the comment too, so its rendering does not matter. A `--` inside a
-    string literal earlier on the line also counts; that only falls back to the ARRAY rendering.
+    This is a check on the text, not a parse. In that case the marker is most likely live code, so
+    it keeps its ARRAY rendering. A marker on the same line as a commented IN is usually inside the
+    comment too, so it is not checked. A `--` inside a string literal earlier on the line also
+    counts, which falls back to the ARRAY rendering.
     """
     if not re.search(r"[\r\n]", match.group(0)):
         return False
@@ -724,6 +730,10 @@ class ParamEscaper:
         The choice is made per marker, so a parameter used both after IN and elsewhere keeps its
         ARRAY rendering at the other markers. Inside the list, tuples render as rows and lists as
         ARRAY literals.
+
+        IN is found by matching the SQL text, not by parsing it (see `_IN_MARKER_PROBE`), so an
+        unusual query, such as one with IN inside a string literal just before a marker, can
+        still get a list where an ARRAY was meant.
 
         A set (or frozenset, or dict key view) is accepted only where every marker it fills
         directly follows IN, and its items are sorted. Anywhere else it raises the same
