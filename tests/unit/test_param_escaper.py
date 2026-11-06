@@ -196,6 +196,21 @@ class TestFullQueryEscaping(object):
         with pytest.raises(Exception):
             inject_parameters(INPUT, pe.escape_args(args))
 
+    def test_in_clause_with_positional_list_param(self):
+        query = "SELECT * FROM table WHERE something IN %s"
+        args = ([1, 2, 3],)
+
+        rendered = inject_parameters(query, pe.escape_args(args))
+
+        assert rendered == "SELECT * FROM table WHERE something IN (1,2,3)"
+
+    def test_in_clause_with_named_list_param(self):
+        query = "SELECT * FROM table WHERE something IN %(ids)s"
+        args = {"ids": [1, 2, 3]}
+
+        rendered = inject_parameters(query, pe.escape_args(args))
+
+        assert rendered == "SELECT * FROM table WHERE something IN (1,2,3)"
 
 class TestInlineToNativeTransformer(object):
     @pytest.mark.parametrize(
