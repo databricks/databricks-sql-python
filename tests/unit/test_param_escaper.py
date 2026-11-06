@@ -197,6 +197,104 @@ class TestFullQueryEscaping(object):
             inject_parameters(INPUT, pe.escape_args(args))
 
 
+class TestInClauseSequenceRendering(object):
+    """Regression tests for databricks-sql-python#629.
+
+    The IN predicate needs a parenthesised list; Spark rejects `x IN ARRAY(...)` as a syntax
+    error. Everywhere else a sequence must keep rendering as an ARRAY literal so inline values can
+    still be written to ARRAY columns.
+    """
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "named list",
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                {"ids": [1, 2, 3]},
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+            ),
+            (
+                "positional list",
+                "SELECT * FROM t WHERE x IN %s",
+                ([1, 2, 3],),
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+            ),
+            (
+                "tuple of strings is escaped",
+                "SELECT * FROM t WHERE name IN %(names)s",
+                {"names": ("a", "O'Connell")},
+                r"SELECT * FROM t WHERE name IN ('a','O\'Connell')",
+            ),
+            (
+                "NOT IN",
+                "SELECT * FROM t WHERE x NOT IN %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE x NOT IN (1,2)",
+            ),
+            (
+                "lowercase keyword and newline before the marker",
+                "SELECT * FROM t WHERE x in\n  %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE x in\n  (1,2)",
+            ),
+            (
+                "nested sequences stay arrays",
+                "SELECT * FROM t WHERE arr IN %(arrs)s",
+                {"arrs": [[1, 2], [3]]},
+                "SELECT * FROM t WHERE arr IN (ARRAY(1,2),ARRAY(3))",
+            ),
+            (
+                "only the positional marker after IN",
+                "SELECT %s AS tags FROM t WHERE x IN %s AND y = %s",
+                (["a"], [1, 2], 5),
+                "SELECT ARRAY('a') AS tags FROM t WHERE x IN (1,2) AND y = 5",
+            ),
+            (
+                "escaped percent does not shift positional markers",
+                "SELECT '100%%' AS pct, %s AS tags FROM t WHERE x IN %s",
+                (["a"], [1, 2]),
+                "SELECT '100%' AS pct, ARRAY('a') AS tags FROM t WHERE x IN (1,2)",
+            ),
+        ),
+    )
+    def test_sequence_after_in_renders_as_list(self, label, query, params, expected):
+        rendered = inject_parameters(query, pe.escape_args(params, operation=query))
+        assert rendered == expected
+
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "insert into an array column",
+                "INSERT INTO t (arr) VALUES (%(p)s)",
+                {"p": ["a", "b"]},
+                "INSERT INTO t (arr) VALUES (ARRAY('a','b'))",
+            ),
+            (
+                "function argument",
+                "SELECT array_contains(%(p)s, 2)",
+                {"p": [1, 2, 3]},
+                "SELECT array_contains(ARRAY(1,2,3), 2)",
+            ),
+            (
+                "caller-written parentheses after IN compare against an array value",
+                "SELECT * FROM t WHERE arr IN (%(p)s)",
+                {"p": [1, 2]},
+                "SELECT * FROM t WHERE arr IN (ARRAY(1,2))",
+            ),
+        ),
+    )
+    def test_sequence_elsewhere_stays_array(self, label, query, params, expected):
+        rendered = inject_parameters(query, pe.escape_args(params, operation=query))
+        assert rendered == expected
+
+    def test_malformed_operation_raises_the_same_error(self):
+        query = "SELECT * FROM t WHERE x IN %s AND name LIKE '%sonite'"
+        with pytest.raises(TypeError, match="not enough arguments for format string"):
+            inject_parameters(query, pe.escape_args(([1, 2],), operation=query))
+
+
 class TestInlineToNativeTransformer(object):
     @pytest.mark.parametrize(
         ("label", "query", "params", "expected"),

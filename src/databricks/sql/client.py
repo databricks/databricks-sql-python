@@ -1211,7 +1211,7 @@ class Cursor:
                 The list is always empty because native parameters are never used under the inline approach
         """
 
-        escaped_values = self.escaper.escape_args(params)
+        escaped_values = self.escaper.escape_args(params, operation=stmt)
         rendered_statement = inject_parameters(stmt, escaped_values)
 
         return rendered_statement, NO_NATIVE_PARAMS

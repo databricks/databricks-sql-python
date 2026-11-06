@@ -235,6 +235,8 @@ Output:
 SELECT field FROM table WHERE field IN (1,2,3,4,5)
 ```
 
+The marker must directly follow `IN` (or `NOT IN`), as in `IN %(value_list)s`. Anywhere else, including inside parentheses you write yourself such as `IN (%(value_list)s)`, a sequence is rendered as an `ARRAY(...)` literal.
+
 **Note**: this behavior is not specified by PEP-249 and only works due to the specific implementation of our inline renderer.
 
 ### Migrating to native parameters

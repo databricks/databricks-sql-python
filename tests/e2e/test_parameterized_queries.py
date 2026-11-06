@@ -543,6 +543,30 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 assert result.bar == 2
                 assert result.baz == 3
 
+    @pytest.mark.parametrize(
+        "query,params,expected_ids",
+        [
+            (
+                "SELECT id FROM range(5) WHERE id IN %(ids)s ORDER BY id",
+                {"ids": [1, 3]},
+                [1, 3],
+            ),
+            ("SELECT id FROM range(5) WHERE id IN %s ORDER BY id", [[1, 3]], [1, 3]),
+            (
+                "SELECT id FROM range(5) WHERE id NOT IN %(ids)s ORDER BY id",
+                {"ids": (1, 3)},
+                [0, 2, 4],
+            ),
+        ],
+    )
+    def test_inline_sequence_in_clause(self, query, params, expected_ids):
+        """Regression test for #629: a sequence bound directly after IN must render as a
+        parenthesised list, not an ARRAY literal, or the server rejects the query."""
+        with self.cursor(extra_params={"use_inline_params": True}) as cursor:
+            result = cursor.execute(query, parameters=params).fetchall()
+
+        assert [row.id for row in result] == expected_ids
+
     def test_inline_ordinals_can_break_sql(self):
         """With inline mode, ordinal parameters can break the SQL syntax
         because `%` symbols are used to wildcard match within LIKE statements. This test

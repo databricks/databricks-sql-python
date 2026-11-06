@@ -557,19 +557,102 @@ class RequestErrorInfo(
         return user_friendly_error_message + ". " + error_context
 
 
+# A probe token directly after the IN keyword (also matches NOT IN). Requiring the marker to follow
+# IN directly leaves `IN (%(p)s)` alone: there the caller's parentheses already form the list and
+# an ARRAY value is a valid list element.
+_IN_PREDICATE_PROBE = re.compile(r"\bIN\s*\x00(\d+)\x00", re.IGNORECASE)
+
+
+class _MarkerProbe:
+    """Formats as a unique token so a marker's position in the rendered operation can be found."""
+
+    def __init__(self, index: int) -> None:
+        self._token = f"\x00{index}\x00"
+
+    def __str__(self) -> str:
+        return self._token
+
+    __repr__ = __str__
+
+
+class _MarkerProbeMapping:
+    """Mapping stand-in that records the key looked up by each %(name)s marker."""
+
+    def __init__(self) -> None:
+        self.keys: List[str] = []
+
+    def __getitem__(self, key: str) -> _MarkerProbe:
+        self.keys.append(key)
+        return _MarkerProbe(len(self.keys) - 1)
+
+
+def _parameter_keys_following_in(
+    operation: str, parameters: Union[Dict[str, Any], Sequence]
+) -> set:
+    """Return the names (dict) or positions (sequence) of parameters whose marker directly
+    follows the IN keyword in `operation`.
+
+    The operation is formatted with probes rather than regex-parsed so marker positions match
+    exactly what the %-formatting in `inject_parameters` will substitute.
+    """
+    if isinstance(parameters, dict):
+        probe_mapping = _MarkerProbeMapping()
+        probe_args: Any = probe_mapping
+        keys: List[Any] = probe_mapping.keys
+    else:
+        keys = list(range(len(parameters)))
+        probe_args = tuple(_MarkerProbe(i) for i in keys)
+
+    try:
+        probed_operation = operation % probe_args
+    except (TypeError, ValueError):
+        # Either inject_parameters raises the same error for this operation, or a marker such as
+        # %d needs a real value; keep the default rendering in both cases.
+        return set()
+
+    return {
+        keys[int(match.group(1))]
+        for match in _IN_PREDICATE_PROBE.finditer(probed_operation)
+    }
+
+
 # Taken from PyHive
 class ParamEscaper:
     _DATE_FORMAT = "%Y-%m-%d"
     _TIME_FORMAT = "%H:%M:%S.%f %z"
     _DATETIME_FORMAT = "{} {}".format(_DATE_FORMAT, _TIME_FORMAT)
 
-    def escape_args(self, parameters):
-        if isinstance(parameters, dict):
-            return {k: self.escape_item(v) for k, v in parameters.items()}
-        elif isinstance(parameters, (list, tuple)):
-            return tuple(self.escape_item(x) for x in parameters)
-        else:
+    def escape_args(self, parameters, operation: Optional[str] = None):
+        """Escape parameter values for inline rendering into `operation`.
+
+        When `operation` is given, a sequence whose marker directly follows IN (e.g.
+        `x IN %(ids)s`) renders as the parenthesised list the IN predicate needs; anywhere else it
+        stays an ARRAY literal. Spark rejects `x IN ARRAY(...)` as a syntax error, so this cannot
+        change the rendering of a query that parses today.
+        """
+        if not isinstance(parameters, (dict, list, tuple)):
             raise ProgrammingError("Unsupported param format: {}".format(parameters))
+
+        in_list_keys = (
+            _parameter_keys_following_in(operation, parameters)
+            if operation is not None
+            else set()
+        )
+        if isinstance(parameters, dict):
+            return {
+                k: self._escape_arg(v, k in in_list_keys) for k, v in parameters.items()
+            }
+        return tuple(
+            self._escape_arg(x, i in in_list_keys) for i, x in enumerate(parameters)
+        )
+
+    def _escape_arg(self, item, follows_in: bool):
+        if follows_in and isinstance(item, Sequence) and not isinstance(item, str):
+            return self.escape_in_list(item)
+        return self.escape_item(item)
+
+    def escape_in_list(self, item):
+        return "(" + ",".join(map(str, map(self.escape_item, item))) + ")"
 
     def escape_number(self, item):
         return item
