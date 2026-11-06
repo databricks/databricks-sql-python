@@ -610,8 +610,12 @@ def _is_set(value: Any) -> bool:
 
 
 def _in_list_items(value: Any) -> Any:
-    """Return the items to render for an IN list, with a set's items sorted so the SQL text is
-    the same on every run."""
+    """Return the items to render for an IN list, with a set's items sorted.
+
+    Sorting usually makes the SQL text the same from run to run, but not always: items without a
+    consistent order, such as `float("nan")` among other numbers, can still come out in a
+    different order. The IN list matches the same rows either way.
+    """
     if not _is_set(value):
         return value
     try:

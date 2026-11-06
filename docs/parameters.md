@@ -252,7 +252,7 @@ SELECT * FROM table WHERE (id, tag) IN ((1,'a'),(2,'b'))
 
 Spark does not convert the types of the values inside a row, so each value must have the same type as its column. For example, the literal `1` is an `INT` and does not match a `BIGINT` column.
 
-A `set` or `frozenset` can also be passed directly after `IN`. Its items are sorted, so the query text is the same every time. Anywhere else a set raises `ProgrammingError`, because a set has no order to keep in an `ARRAY(...)` literal.
+A `set` or `frozenset` can also be passed directly after `IN`. Its items are sorted, which usually keeps the query text the same from run to run. Items without a consistent order, such as `float("nan")`, can still change position. Anywhere else a set raises `ProgrammingError`, because a set has no order to keep in an `ARRAY(...)` literal.
 
 **Note**: this behavior is not specified by PEP-249 and only works due to the specific implementation of our inline renderer.
 
