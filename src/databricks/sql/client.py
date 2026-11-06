@@ -367,7 +367,7 @@ class Connection:
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
-        if kwargs.get("use_sea", False):
+        if kwargs.pop("use_sea", False):
             raise ValueError(
                 "The SEA backend has been removed. Use use_kernel=True and "
                 "install 'databricks-sql-connector[kernel]'."
@@ -377,6 +377,13 @@ class Connection:
             logger.warning(
                 "Parameter 'use_hybrid_disposition' was removed with the SEA "
                 "backend and is ignored."
+            )
+
+        if "max_connections" in kwargs:
+            kwargs.pop("max_connections")
+            logger.warning(
+                "Parameter 'max_connections' was removed with the SEA backend "
+                "and is ignored. Use '_pool_maxsize' instead."
             )
 
         logger.debug(

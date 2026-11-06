@@ -50,12 +50,24 @@ class TestSession:
 
     @pytest.mark.parametrize("use_kernel", [False, True])
     @pytest.mark.parametrize(
-        "options",
-        [{}, {"use_hybrid_disposition": False}, {"use_hybrid_disposition": True}],
+        "options, expected_warning",
+        [
+            ({}, None),
+            ({"use_sea": False}, None),
+            ({"use_hybrid_disposition": False}, None),
+            ({"use_hybrid_disposition": True}, "use_hybrid_disposition"),
+            ({"max_connections": 10}, "Use '_pool_maxsize' instead."),
+            ({"max_connections": 0}, "Use '_pool_maxsize' instead."),
+            ({"max_connections": None}, "Use '_pool_maxsize' instead."),
+            (
+                {"max_connections": 10, "_pool_maxsize": 42},
+                "Use '_pool_maxsize' instead.",
+            ),
+        ],
     )
     @patch("databricks.sql.session.Session._create_backend")
-    def test_removed_hybrid_disposition_warns_and_is_not_forwarded(
-        self, mock_create_backend, options, use_kernel, caplog
+    def test_removed_backend_options_warn_and_are_not_forwarded(
+        self, mock_create_backend, options, expected_warning, use_kernel, caplog
     ):
         backend_type = BackendType.KERNEL if use_kernel else BackendType.THRIFT
         mock_create_backend.return_value.open_session.return_value = SessionId(
@@ -66,19 +78,23 @@ class TestSession:
                 **self.DUMMY_CONNECTION_ARGS, use_kernel=use_kernel, **options
             ):
                 pass
-        assert "use_hybrid_disposition" not in mock_create_backend.call_args.args[-1]
-        messages = [
-            message
-            for message in caplog.messages
-            if "use_hybrid_disposition" in message
-        ]
-        assert messages == (
-            [
-                "Parameter 'use_hybrid_disposition' was removed with the SEA backend and is ignored."
-            ]
-            if options.get("use_hybrid_disposition")
-            else []
+        forwarded = mock_create_backend.call_args.args[-1]
+        assert (
+            not {"use_sea", "use_hybrid_disposition", "max_connections"}
+            & forwarded.keys()
         )
+        if "_pool_maxsize" in options:
+            assert forwarded["_pool_maxsize"] == options["_pool_maxsize"]
+        messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "databricks.sql.client"
+        ]
+        if expected_warning:
+            assert len(messages) == 1
+            assert expected_warning in messages[0]
+        else:
+            assert messages == []
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
