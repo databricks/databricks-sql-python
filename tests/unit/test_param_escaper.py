@@ -358,6 +358,54 @@ class TestInClauseSequenceRendering(object):
         assert pe.render_inline(query, params) == expected
 
     @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "IN ending a line comment does not change the marker on the next line",
+                "SELECT * FROM t WHERE arr =  -- tags we filter IN\n  %(tags)s",
+                {"tags": ["a", "b"]},
+                "SELECT * FROM t WHERE arr =  -- tags we filter IN\n  ARRAY('a','b')",
+            ),
+            (
+                "the same with CRLF line endings",
+                "SELECT * FROM t WHERE arr = -- filter IN\r\n  %(tags)s",
+                {"tags": ["a"]},
+                "SELECT * FROM t WHERE arr = -- filter IN\r\n  ARRAY('a')",
+            ),
+            (
+                "a value containing -- does not hide an IN that ends the line",
+                "SELECT * FROM t WHERE name = %(name)s AND id IN\n  %(ids)s",
+                {"name": "a--b", "ids": [1, 2]},
+                "SELECT * FROM t WHERE name = 'a--b' AND id IN\n  (1,2)",
+            ),
+            (
+                "a -- string literal on the line of IN and the marker",
+                "SELECT * FROM t WHERE sep = '--' AND id IN %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE sep = '--' AND id IN (1,2)",
+            ),
+            (
+                # Detection reads the SQL text without parsing string literals, so this falls
+                # back to the ARRAY rendering, as on main.
+                "a -- string literal before an IN that ends its line keeps ARRAY",
+                "SELECT * FROM t WHERE sep = '--' AND id IN\n  %(ids)s",
+                {"ids": [1, 2]},
+                "SELECT * FROM t WHERE sep = '--' AND id IN\n  ARRAY(1,2)",
+            ),
+        ),
+    )
+    def test_line_comments(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
+
+    def test_single_digit_decimal_at_a_c_marker_still_renders_the_in_list(self):
+        query = "SELECT %(d)c AS digit FROM t WHERE x IN %(ids)s"
+        params = {"d": decimal.Decimal("5"), "ids": [1, 2]}
+        assert (
+            pe.render_inline(query, params)
+            == "SELECT 5 AS digit FROM t WHERE x IN (1,2)"
+        )
+
+    @pytest.mark.parametrize(
         ("label", "query", "params"),
         (
             (

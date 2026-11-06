@@ -577,6 +577,21 @@ class RequestErrorInfo(
 _IN_MARKER_PROBE = re.compile(r"\bIN\s*\x00([0-9a-f]+):(\d+)\x00", re.IGNORECASE)
 
 
+def _in_ends_line_comment(text: str, match: re.Match[str]) -> bool:
+    """Whether the IN that `match` found is inside a `--` comment and the marker is on a later line.
+
+    The marker is then live code and keeps its ARRAY rendering. A marker on the same line as a
+    commented IN is inside the comment too, so its rendering does not matter. A `--` inside a
+    string literal earlier on the line also counts; that only falls back to the ARRAY rendering.
+    """
+    if not re.search(r"[\r\n]", match.group(0)):
+        return False
+    line_start = max(
+        text.rfind("\n", 0, match.start()), text.rfind("\r", 0, match.start())
+    )
+    return "--" in text[line_start + 1 : match.start()]
+
+
 def _renders_as_array(value: Any) -> bool:
     """Whether ParamEscaper.escape_item renders `value` as an ARRAY literal."""
     return isinstance(value, Sequence) and not isinstance(value, str)
@@ -684,11 +699,11 @@ class ParamEscaper:
 
         Markers are numbered as `_format_markers` numbers them. To find them, the operation is
         formatted once through the same %-formatting as the real substitution, so `%%` and
-        positional markers line up exactly. Each sequence value is replaced by a probe token and
-        every other value keeps its escaped value, so scalar markers such as `%d` still format.
+        positional markers line up exactly. Each sequence value is replaced by a probe token.
+        Numbers keep their value, so markers such as `%d` still format, and escaped strings are
+        replaced by an empty string literal, so the text of a value cannot change the result.
         """
-        # The nonce stops a string value that happens to contain a probe-shaped token from being
-        # mistaken for a probe, since real values are substituted alongside the probes.
+        # The nonce stops text that only looks like a probe token from being taken for one.
         nonce = secrets.token_hex(8)
 
         def probe_marker(index: int, key: Any) -> Any:
@@ -696,6 +711,11 @@ class ParamEscaper:
             escaped_value = escaped[key]
             if _renders_as_array(parameters[key]):
                 return _MarkerProbe(nonce, index)
+            # Replace text with '' so the content of a value cannot change the result. A string
+            # of two or more characters formats under exactly the markers '' does. A one-character
+            # string can only be a single-digit Decimal, which %c accepts, so it is kept.
+            if isinstance(escaped_value, str) and len(escaped_value) > 1:
+                return "''"
             return escaped_value
 
         try:
@@ -709,6 +729,7 @@ class ParamEscaper:
             int(match.group(2))
             for match in _IN_MARKER_PROBE.finditer(probed_operation)
             if match.group(1) == nonce
+            and not _in_ends_line_comment(probed_operation, match)
         }
 
     def escape_in_list(self, item):
