@@ -107,6 +107,21 @@ def test_calculate_decimal_cast_string(value, expected):
     assert p._cast_expr() == expected
 
 
+@pytest.mark.parametrize(
+    "value,precision,scale,expected",
+    (
+        (Decimal("123.45"), 10, 2, "DECIMAL(10,2)"),
+        (Decimal("123"), 10, 0, "DECIMAL(10,0)"),
+        (Decimal("123.45"), None, None, "DECIMAL(5,2)"),
+    ),
+)
+def test_decimal_parameter_explicit_type(value, precision, scale, expected):
+    parameter = DecimalParameter(value, precision=precision, scale=scale)
+    bound = parameter.as_tspark_param(named=False)
+    assert bound.type == expected
+    assert bound.value.stringValue == str(value)
+
+
 class Primitive(Enum):
     """These are the inferrable types. This Enum is used for parametrized tests."""
 
