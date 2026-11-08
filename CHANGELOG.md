@@ -2,6 +2,9 @@
 
 # Unreleased
 - Include the available SQL statement ID in Thrift failure telemetry so errors can be correlated with the failed statement.
+
+# 4.9.0 (2026-11-04)
+- Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
 - Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
 
 # 4.8.0 (2026-10-24)
