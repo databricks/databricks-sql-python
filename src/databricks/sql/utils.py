@@ -791,15 +791,16 @@ class ParamEscaper:
     def _markers_following_in(
         self, operation: str, parameters, escaped
     ) -> Tuple[Set[int], Dict[int, Any]]:
-        """Return the numbers of the markers that directly follow IN and receive a sequence or a
-        set, and the parameter key that each marker number refers to.
+        """Return the numbers of the markers that directly follow IN and receive a value that can
+        render as an IN list, and the parameter key that each marker number refers to.
 
         Markers are numbered as `_format_markers` numbers them. To find them, the operation is
         formatted once through the same %-formatting as the real substitution, so `%%` and
         positional markers line up exactly. Each value that can render as an IN list (see
-        `_renders_as_in_list`) is replaced by a probe token. Numbers keep their value, so markers such as `%d` still format, and escaped strings
-        are replaced by an empty string literal, so the text of a value cannot change the result.
-        If the operation does not format, both results are empty.
+        `_renders_as_in_list`) is replaced by a probe token. Numbers keep their value, so
+        markers such as `%d` still format, and escaped strings are replaced by an empty string
+        literal, so the text of a value cannot change the result. If the operation does not
+        format, both results are empty.
         """
         # The nonce stops text that only looks like a probe token from being taken for one.
         nonce = secrets.token_hex(8)

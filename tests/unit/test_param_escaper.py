@@ -16,6 +16,11 @@ from databricks.sql.utils import (
 pe = ParamEscaper()
 
 
+def _fake_probe(index: int) -> str:
+    """Text shaped like render_inline's probe token for marker `index`, with a fixed nonce."""
+    return f"\x000123456789abcdef:{index}\x00"
+
+
 class TestIndividualFormatters(object):
     # Test individual type escapers
     def test_escape_number_integer(self):
@@ -445,14 +450,31 @@ class TestInClauseSequenceRendering(object):
             )
         probe.assert_not_called()
 
-    def test_probe_shaped_string_value_is_not_a_probe(self):
-        """A string value that contains a probe-like token must not make another marker render as
-        a list."""
-        query = "INSERT INTO t VALUES (%(note)s, %(tags)s)"
-        params = {"note": "x IN \x000000000000000000:1\x00", "tags": ["a"]}
-        assert pe.render_inline(query, params) == (
-            "INSERT INTO t VALUES ('x IN \x000000000000000000:1\x00', ARRAY('a'))"
-        )
+    @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                # The operation's own text reaches the probe pass unchanged, so only the nonce
+                # check keeps this token from marking %(tags)s (marker 0) as an IN list.
+                "probe-shaped text in the operation",
+                "SELECT * FROM t WHERE x IN " + _fake_probe(0) + " AND arr = %(tags)s",
+                {"tags": ["a"]},
+                "SELECT * FROM t WHERE x IN "
+                + _fake_probe(0)
+                + " AND arr = ARRAY('a')",
+            ),
+            (
+                # String values are blanked during the probe pass, so their text cannot mark
+                # %(tags)s (marker 1) as an IN list either.
+                "probe-shaped text in a string value",
+                "INSERT INTO t VALUES (%(note)s, %(tags)s)",
+                {"note": "x IN " + _fake_probe(1), "tags": ["a"]},
+                "INSERT INTO t VALUES ('x IN " + _fake_probe(1) + "', ARRAY('a'))",
+            ),
+        ),
+    )
+    def test_probe_shaped_text_is_not_a_probe(self, label, query, params, expected):
+        assert pe.render_inline(query, params) == expected
 
     @pytest.mark.parametrize(
         ("query", "params", "error", "message"),
