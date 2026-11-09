@@ -529,6 +529,37 @@ class TestInClauseSequenceRendering(object):
         assert pe.render_inline(query, params) == expected
 
     @pytest.mark.parametrize(
+        ("label", "query", "params", "expected"),
+        (
+            (
+                "bytes",
+                "SELECT * FROM t WHERE x IN %(b)s",
+                {"b": b"ab"},
+                "SELECT * FROM t WHERE x IN ARRAY(97,98)",
+            ),
+            (
+                "bytearray, positional",
+                "SELECT * FROM t WHERE x IN %s",
+                (bytearray(b"ab"),),
+                "SELECT * FROM t WHERE x IN ARRAY(97,98)",
+            ),
+            (
+                "bytes next to a list after IN",
+                "SELECT * FROM t WHERE x IN %(b)s AND y IN %(ids)s",
+                {"b": b"ab", "ids": [1]},
+                "SELECT * FROM t WHERE x IN ARRAY(97,98) AND y IN (1)",
+            ),
+        ),
+    )
+    def test_bytes_after_in_keep_the_array_rendering(
+        self, label, query, params, expected
+    ):
+        """bytes render as an ARRAY of byte values. After IN they keep that rendering, which Spark
+        rejects as on main, instead of becoming a valid IN list that matches the wrong rows.
+        """
+        assert pe.render_inline(query, params) == expected
+
+    @pytest.mark.parametrize(
         ("label", "query", "params"),
         (
             (

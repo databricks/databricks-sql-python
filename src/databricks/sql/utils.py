@@ -609,6 +609,18 @@ def _is_set(value: Any) -> bool:
     return isinstance(value, AbstractSet)
 
 
+def _renders_as_in_list(value: Any) -> bool:
+    """Whether `value` renders as an IN list when its marker directly follows IN.
+
+    bytes and bytearray are sequences of ints, so escape_item renders them as ARRAY literals of
+    byte values. They are left out here, so `x IN %s` with bytes still fails loudly as it does on
+    main, instead of quietly comparing x with the byte values.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        return False
+    return _renders_as_array(value) or _is_set(value)
+
+
 def _in_list_items(value: Any) -> Any:
     """Return the items to render for an IN list, with a set's items sorted.
 
@@ -745,7 +757,7 @@ class ParamEscaper:
         """
         escaped = self._escape_values(parameters)
         values = parameters.values() if isinstance(parameters, dict) else parameters
-        if not any(_renders_as_array(value) or _is_set(value) for value in values):
+        if not any(_renders_as_in_list(value) for value in values):
             # Only a sequence or a set can render as an IN list, so without one render exactly
             # as before.
             return inject_parameters(operation, escaped)
@@ -784,8 +796,8 @@ class ParamEscaper:
 
         Markers are numbered as `_format_markers` numbers them. To find them, the operation is
         formatted once through the same %-formatting as the real substitution, so `%%` and
-        positional markers line up exactly. Each sequence or set value is replaced by a probe
-        token. Numbers keep their value, so markers such as `%d` still format, and escaped strings
+        positional markers line up exactly. Each value that can render as an IN list (see
+        `_renders_as_in_list`) is replaced by a probe token. Numbers keep their value, so markers such as `%d` still format, and escaped strings
         are replaced by an empty string literal, so the text of a value cannot change the result.
         If the operation does not format, both results are empty.
         """
@@ -798,7 +810,7 @@ class ParamEscaper:
             escaped_value = escaped[key]
             marker_keys[index] = key
             value = parameters[key]
-            if _renders_as_array(value) or _is_set(value):
+            if _renders_as_in_list(value):
                 return _MarkerProbe(nonce, index)
             # Replace text with '' so the content of a value cannot change the result. A string
             # of two or more characters formats under exactly the markers '' does. A one-character
