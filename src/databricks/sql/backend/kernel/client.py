@@ -966,7 +966,9 @@ class KernelDatabricksClient(DatabricksClient):
         # telemetry — an accepted, narrow gap limited to the case where
         # result-set construction fails after a successful await.
         try:
-            return self._make_result_set(stream, cursor, command_id)
+            result_set = self._make_result_set(stream, cursor, command_id)
+            result_set.num_modified_rows = getattr(handle, "num_modified_rows", None)
+            return result_set
         except Exception as exc:
             raise _wrap_kernel_exception("get_execution_result", exc) from exc
 

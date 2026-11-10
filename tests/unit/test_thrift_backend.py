@@ -3,7 +3,7 @@ from decimal import Decimal
 import itertools
 import unittest
 import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock, Mock, sentinel
 from ssl import CERT_NONE, CERT_REQUIRED
 from urllib3 import HTTPSConnectionPool
 
@@ -132,6 +132,51 @@ def test_metadata_catalog_escaping(
                 "table_types": "tableTypes",
             }[arg]
             assert getattr(request, thrift_field) == value
+
+
+@pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+@pytest.mark.parametrize("count", [7, 0, None])
+def test_async_result_reads_status_count_and_preserves_rows(count):
+    with (
+        patch(
+            "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
+        ),
+        patch("databricks.sql.backend.thrift_backend.ThriftResultSet") as result_set,
+    ):
+        backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        operation_status = ttypes.TGetOperationStatusResp(
+            status=ThriftBackendTestSuite.okay_status,
+            operationState=ttypes.TOperationState.FINISHED_STATE,
+            numModifiedRows=count,
+        )
+        backend._poll_for_status = Mock(return_value=operation_status)
+        metadata = ttypes.TGetResultSetMetadataResp(
+            schema=ttypes.TTableSchema(columns=[]),
+            arrowSchema=pyarrow.schema([]).serialize().to_pybytes(),
+            resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+        )
+        backend.make_request = Mock(
+            return_value=Mock(
+                resultSetMetadata=metadata,
+                results=sentinel.counter_rows,
+                hasMoreRows=False,
+            )
+        )
+        cid = CommandId.from_thrift_handle(ThriftBackendTestSuite.operation_handle)
+        backend.get_execution_result(cid, Mock())
+
+        backend._poll_for_status.assert_called_once_with(cid.to_thrift_handle())
+        response = result_set.call_args.kwargs["execute_response"]
+        assert response.num_modified_rows == count
+        assert result_set.call_args.kwargs["t_row_set"] is sentinel.counter_rows
 
 
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")

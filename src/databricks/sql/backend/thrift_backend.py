@@ -931,6 +931,11 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
+        operation_status = self._poll_for_status(thrift_handle)
+        self._check_command_not_in_error_or_closed_state(
+            thrift_handle, operation_status
+        )
+
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
                 thrift_handle.operationId,
@@ -981,6 +986,7 @@ class ThriftDatabricksClient(DatabricksClient):
             is_staging_operation=is_staging_operation,
             arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
+            num_modified_rows=operation_status.numModifiedRows,
         )
 
         return ThriftResultSet(

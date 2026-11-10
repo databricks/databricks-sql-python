@@ -1233,6 +1233,48 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
+@pytest.mark.parametrize("count", [7, 0, None, "unavailable"])
+@pytest.mark.parametrize("source", ["owner", "reader", "attached"])
+def test_async_result_count_after_await(source, count):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cid = CommandId.from_sea_statement_id("async-count")
+    owner = MagicMock()
+    handle = owner
+    if source == "attached":
+        c._kernel_session.attach_async_statement.return_value = handle
+    else:
+        c._async_handles[cid.guid] = owner
+        if source == "reader":
+            c._async_result_stream_started.add(cid.guid)
+            handle = owner.reader.return_value
+
+    del handle.num_modified_rows
+    stream = MagicMock()
+    stream.arrow_schema.return_value = pa.schema([("num_affected_rows", pa.int64())])
+    stream.fetch_next_batch.side_effect = [
+        pa.record_batch(
+            [[count if isinstance(count, int) else 1]], names=["num_affected_rows"]
+        ),
+        None,
+    ]
+
+    def await_result():
+        if count != "unavailable":
+            handle.num_modified_rows = count
+        return stream
+
+    handle.await_result.side_effect = await_result
+    cursor = MagicMock(arraysize=100, buffer_size_bytes=1024)
+    rs = c.get_execution_result(cid, cursor)
+
+    assert rs.num_modified_rows == (None if count == "unavailable" else count)
+    stream.fetch_next_batch.assert_not_called()
+    assert [list(row) for row in rs.fetchall()] == [
+        [count if isinstance(count, int) else 1]
+    ]
+
+
 def test_get_execution_result_uses_retained_owning_handle_first():
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
