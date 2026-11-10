@@ -21,6 +21,7 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from uuid import uuid4
 
@@ -134,6 +135,33 @@ def conn(kernel_conn_params):
         yield c
     finally:
         c.close()
+
+
+def test_cloudfetch_disabled_returns_complete_large_result(kernel_conn_params):
+    from databricks.sql.backend.kernel.client import KernelDatabricksClient
+
+    with sql.connect(**kernel_conn_params, use_cloud_fetch=False) as connection:
+        assert isinstance(connection.session.backend, KernelDatabricksClient)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, sha2(CAST(id AS STRING), 512) AS payload "
+                "FROM range(250000) ORDER BY id"
+            )
+            count = 0
+            payload_bytes = 0
+            digest = hashlib.sha256()
+            while rows := cursor.fetchmany(8192):
+                for identity, payload in rows:
+                    assert identity == count
+                    assert payload == hashlib.sha512(str(identity).encode()).hexdigest()
+                    payload_bytes += len(payload)
+                    digest.update(f"{identity}\t{payload}\n".encode())
+                    count += 1
+            assert count == 250000
+            assert payload_bytes == 32000000
+            assert digest.hexdigest() == (
+                "a25ada4c6c476b53e97eb6e8a945e9ce4c14cc432c7ad672dc6fb607d660c86a"
+            )
 
 
 def test_connect_with_use_kernel_opens_a_session(conn):
@@ -366,9 +394,7 @@ def test_schemas_with_empty_string_filter_matches_nothing(conn):
         assert cur.fetchall() == []
 
 
-@pytest.mark.parametrize(
-    "empty_filter", ["schema_name", "table_name", "column_name"]
-)
+@pytest.mark.parametrize("empty_filter", ["schema_name", "table_name", "column_name"])
 def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
     filters = {
         "catalog_name": "system",
