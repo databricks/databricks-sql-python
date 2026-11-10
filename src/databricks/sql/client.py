@@ -1701,7 +1701,9 @@ class Cursor:
                 self.active_command_id, self
             )
 
-            num_modified_rows = self.active_result_set.num_modified_rows
+            num_modified_rows = getattr(
+                self.active_result_set, "num_modified_rows", None
+            )
             self.rowcount = num_modified_rows if num_modified_rows is not None else -1
 
             if self.active_result_set and self.active_result_set.is_staging_operation:

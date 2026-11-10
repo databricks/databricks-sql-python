@@ -927,6 +927,11 @@ class ThriftDatabricksClient(DatabricksClient):
     def get_execution_result(
         self, command_id: CommandId, cursor: Cursor
     ) -> "ResultSet":
+        """Fetch a completed async result and its latest operation metadata.
+
+        FetchResults does not carry ``numModifiedRows``, so Thrift refreshes
+        operation status before constructing the result set.
+        """
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")

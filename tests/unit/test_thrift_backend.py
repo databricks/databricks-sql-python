@@ -179,6 +179,44 @@ def test_async_result_reads_status_count_and_preserves_rows(count):
         assert result_set.call_args.kwargs["t_row_set"] is sentinel.counter_rows
 
 
+@pytest.mark.parametrize(
+    "operation_state,exception_type",
+    [
+        (ttypes.TOperationState.ERROR_STATE, ServerOperationError),
+        (ttypes.TOperationState.CLOSED_STATE, DatabaseError),
+    ],
+)
+def test_async_result_rejects_terminal_error_state_before_fetch(
+    operation_state, exception_type
+):
+    with patch(
+        "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
+    ):
+        backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        backend._poll_for_status = Mock(
+            return_value=ttypes.TGetOperationStatusResp(
+                status=ThriftBackendTestSuite.okay_status,
+                operationState=operation_state,
+                errorMessage="async operation failed",
+            )
+        )
+        backend.make_request = Mock()
+        cid = CommandId.from_thrift_handle(ThriftBackendTestSuite.operation_handle)
+
+        with pytest.raises(exception_type):
+            backend.get_execution_result(cid, Mock())
+
+        backend.make_request.assert_not_called()
+
+
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
