@@ -46,7 +46,6 @@ from databricks.sql.backend.reyden_warehouse_cache import (
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
     ParamEscaper,
-    inject_parameters,
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
@@ -1211,8 +1210,7 @@ class Cursor:
                 The list is always empty because native parameters are never used under the inline approach
         """
 
-        escaped_values = self.escaper.escape_args(params)
-        rendered_statement = inject_parameters(stmt, escaped_values)
+        rendered_statement = self.escaper.render_inline(stmt, params)
 
         return rendered_statement, NO_NATIVE_PARAMS
 
