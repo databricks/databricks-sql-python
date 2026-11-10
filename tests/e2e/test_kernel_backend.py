@@ -137,10 +137,15 @@ def conn(kernel_conn_params):
         c.close()
 
 
-def test_cloudfetch_disabled_returns_complete_large_result(kernel_conn_params):
+@pytest.mark.parametrize("use_cloud_fetch", [False, True])
+def test_cloudfetch_disabled_returns_complete_large_result(
+    kernel_conn_params, caplog, use_cloud_fetch
+):
     from databricks.sql.backend.kernel.client import KernelDatabricksClient
 
-    with sql.connect(**kernel_conn_params, use_cloud_fetch=False) as connection:
+    with caplog.at_level(logging.INFO, logger="databricks.sql.kernel"), sql.connect(
+        **kernel_conn_params, use_cloud_fetch=use_cloud_fetch
+    ) as connection:
         assert isinstance(connection.session.backend, KernelDatabricksClient)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -163,6 +168,19 @@ def test_cloudfetch_disabled_returns_complete_large_result(kernel_conn_params):
                 "a25ada4c6c476b53e97eb6e8a945e9ce4c14cc432c7ad672dc6fb607d660c86a"
             )
 
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("databricks.sql.kernel")
+    ]
+    assert (
+        any("Using CloudFetch reader" in message for message in messages)
+        == use_cloud_fetch
+    )
+    assert any(
+        "inline" in message.lower() and "reader" in message.lower()
+        for message in messages
+    ) == (not use_cloud_fetch)
 
 def test_connect_with_use_kernel_opens_a_session(conn):
     assert conn.open, "connection should report open after connect()"
@@ -394,7 +412,9 @@ def test_schemas_with_empty_string_filter_matches_nothing(conn):
         assert cur.fetchall() == []
 
 
-@pytest.mark.parametrize("empty_filter", ["schema_name", "table_name", "column_name"])
+@pytest.mark.parametrize(
+    "empty_filter", ["schema_name", "table_name", "column_name"]
+)
 def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
     filters = {
         "catalog_name": "system",
