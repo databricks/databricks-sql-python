@@ -149,7 +149,7 @@ to change without notice.
 
 | Option                                | Type   | Thrift | Kernel | Default Value | Note                                                                                                          |
 | ------------------------------------- | ------ | :----: | :----: | ------------- | ------------------------------------------------------------------------------------------------------------- |
-| `use_cloud_fetch`                     | `bool` |   ✅   |   ❌   | `True`        | Download large result sets in parallel from cloud storage. The kernel manages result transport internally.    |
+| `use_cloud_fetch` | `bool` | ✅ | ✅ | `True` | Set `False` to fetch complete results through the SQL connection without cloud-storage downloads. |
 | `max_download_threads`                | `int`  |   ✅   |   ❌   | `10`          | Worker threads for cloud-fetch downloads. Not forwarded to the kernel.                                        |
 | `enable_query_result_lz4_compression` | `bool` |   ✅   |   ❌   | `True`        | LZ4-compress result payloads. Not forwarded; the kernel handles compression internally.                       |
 | `_disable_pandas`                     | `bool` |   ✅   |   ✅   | `False`       | Skip the pandas-based Arrow→row deserialization and materialize rows directly with PyArrow. This is a **Python-side** result-conversion toggle, not a wire option: the kernel returns results as Arrow (`RecordBatch`es) and the connector runs the *same* `_convert_arrow_table` for both backends, so the flag is honored on the kernel path too. Affects only row fetches (`fetchone`/`fetchmany`/`fetchall`); the `fetch*_arrow` methods return the Arrow table unchanged regardless of this flag. |
@@ -202,7 +202,7 @@ installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
 2. `experimental_oauth_persistence` (custom OAuth token store).
 3. TLS-client-cert *authentication* (`_use_cert_as_auth`) — note the TLS
    *transport* options (`_tls_*`) themselves **are** honored on both backends.
-4. Result-transport tuning: `use_cloud_fetch`, `max_download_threads`,
+4. Result-transport tuning: `max_download_threads`,
    `enable_query_result_lz4_compression`.
 5. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).

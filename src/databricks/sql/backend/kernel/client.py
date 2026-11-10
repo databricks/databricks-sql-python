@@ -398,7 +398,12 @@ class KernelDatabricksClient(DatabricksClient):
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
         if not self._use_cloud_fetch:
-            session_conf = {**(session_conf or {}), "can_cloud_download": "false"}
+            session_conf = {
+                k: v
+                for k, v in (session_conf or {}).items()
+                if k.lower() != "can_cloud_download"
+            }
+            session_conf["can_cloud_download"] = "false"
         # The kwarg builds run INSIDE the try so the ``finally`` scrub
         # below always fires — including when ``kernel_auth_kwargs``
         # itself raises mid-build (e.g. an OAuth token-exchange failure

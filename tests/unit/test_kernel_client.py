@@ -345,14 +345,35 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
 
 
 @pytest.mark.parametrize(
-    "kwargs, expected",
+    "kwargs, configuration, expected",
     [
-        ({}, None),
-        ({"use_cloud_fetch": True}, None),
-        ({"use_cloud_fetch": False}, "false"),
+        ({}, {"TIMEZONE": "UTC"}, {"TIMEZONE": "UTC"}),
+        (
+            {"use_cloud_fetch": True},
+            {"can_cloud_download": "false"},
+            {"can_cloud_download": "false"},
+        ),
+        ({"use_cloud_fetch": False}, None, {"can_cloud_download": "false"}),
+        (
+            {"use_cloud_fetch": False},
+            {"TIMEZONE": "UTC"},
+            {"TIMEZONE": "UTC", "can_cloud_download": "false"},
+        ),
+        (
+            {"use_cloud_fetch": False},
+            {"can_cloud_download": "true"},
+            {"can_cloud_download": "false"},
+        ),
+        (
+            {"use_cloud_fetch": False},
+            {"Can_Cloud_Download": "true"},
+            {"can_cloud_download": "false"},
+        ),
     ],
 )
-def test_open_session_honors_cloudfetch_option(monkeypatch, kwargs, expected):
+def test_open_session_honors_cloudfetch_option(
+    monkeypatch, kwargs, configuration, expected
+):
     captured = {}
 
     def fake_session(**options):
@@ -369,11 +390,10 @@ def test_open_session_honors_cloudfetch_option(monkeypatch, kwargs, expected):
         ssl_options=None,
         **kwargs,
     )
-    configuration = {"TIMEZONE": "UTC"}
+    original = dict(configuration) if configuration is not None else None
     client.open_session(configuration, catalog=None, schema=None)
-    assert captured["session_conf"].get("can_cloud_download") == expected
-    assert captured["session_conf"]["TIMEZONE"] == "UTC"
-    assert configuration == {"TIMEZONE": "UTC"}
+    assert captured["session_conf"] == expected
+    assert configuration == original
 
 
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
