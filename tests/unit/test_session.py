@@ -484,6 +484,7 @@ class TestKernelTransportOptionsThreading:
                 _retry_stop_after_attempts_duration=600.0,
                 _socket_timeout=12.5,
                 _pool_maxsize=41,
+                use_cloud_fetch=False,
                 enable_geospatial_support=False,
             )
             try:
@@ -495,6 +496,7 @@ class TestKernelTransportOptionsThreading:
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
                 assert kwargs["request_timeout_secs"] == 12.5
                 assert kwargs["max_connections"] == 41
+                assert kwargs["use_cloud_fetch"] is False
                 assert kwargs["enable_geospatial_support"] is False
             finally:
                 conn.close()

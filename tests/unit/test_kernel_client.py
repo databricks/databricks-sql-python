@@ -344,6 +344,38 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
     assert captured.get("complex_types_as_json") is expected_flag
 
 
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        ({}, None),
+        ({"use_cloud_fetch": True}, None),
+        ({"use_cloud_fetch": False}, "false"),
+    ],
+)
+def test_open_session_honors_cloudfetch_option(monkeypatch, kwargs, expected):
+    captured = {}
+
+    def fake_session(**options):
+        captured.update(options)
+        session = MagicMock()
+        session.session_id = "sess-id"
+        return session
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        **kwargs,
+    )
+    configuration = {"TIMEZONE": "UTC"}
+    client.open_session(configuration, catalog=None, schema=None)
+    assert captured["session_conf"].get("can_cloud_download") == expected
+    assert captured["session_conf"]["TIMEZONE"] == "UTC"
+    assert configuration == {"TIMEZONE": "UTC"}
+
+
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
 def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     captured = {}
