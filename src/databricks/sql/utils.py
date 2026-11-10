@@ -1,15 +1,27 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    Sequence,
+    TYPE_CHECKING,
+)
 
 from dateutil import parser
 import datetime
 import decimal
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
-from collections.abc import Mapping
+from collections.abc import Mapping, Set as AbstractSet
 from decimal import Decimal
 from enum import Enum
 import re
+import secrets
 
 import lz4.frame
 
@@ -557,6 +569,160 @@ class RequestErrorInfo(
         return user_friendly_error_message + ". " + error_context
 
 
+# A probe token directly after the IN keyword (also matches NOT IN). Where Spark's grammar accepts a
+# value directly after IN, in the IN predicate and in PIVOT, it requires a parenthesised list, so
+# `IN ARRAY(...)` is a syntax error. (The one other place, `position(a IN b)`, takes a string and
+# rejects an ARRAY too.) Requiring the marker to follow IN directly leaves `IN (%(p)s)` alone: there
+# the caller's parentheses already form the list and an ARRAY value is a valid list element.
+#
+# This matches the SQL text rather than parsing it, so it is a heuristic. It skips an IN that ends
+# a `--` comment line (see `_in_ends_line_comment`), but an IN inside a string literal or a block
+# comment can still count as the keyword when a marker follows it.
+_IN_MARKER_PROBE = re.compile(r"\bIN\s*\x00([0-9a-f]+):(\d+)\x00", re.IGNORECASE)
+
+
+def _in_ends_line_comment(text: str, match: re.Match[str]) -> bool:
+    """Whether the IN that `match` found looks like it is in a `--` comment, with the marker on a
+    later line.
+
+    This is a check on the text, not a parse. In that case the marker is most likely live code, so
+    it keeps its ARRAY rendering. A marker on the same line as a commented IN is usually inside the
+    comment too, so it is not checked. A `--` inside a string literal earlier on the line also
+    counts, which falls back to the ARRAY rendering.
+    """
+    if not re.search(r"[\r\n]", match.group(0)):
+        return False
+    line_start = max(
+        text.rfind("\n", 0, match.start()), text.rfind("\r", 0, match.start())
+    )
+    return "--" in text[line_start + 1 : match.start()]
+
+
+def _renders_as_array(value: Any) -> bool:
+    """Whether ParamEscaper.escape_item renders `value` as an ARRAY literal."""
+    return isinstance(value, Sequence) and not isinstance(value, str)
+
+
+def _is_set(value: Any) -> bool:
+    """Whether `value` is a set, frozenset or dict key view. A set has no order, so it can only
+    render as an IN list, never as an ARRAY."""
+    return isinstance(value, AbstractSet)
+
+
+def _renders_as_in_list(value: Any) -> bool:
+    """Whether `value` renders as an IN list when its marker directly follows IN.
+
+    bytes and bytearray are sequences of ints, so escape_item renders them as ARRAY literals of
+    byte values. They are left out here, so `x IN %s` with bytes still fails loudly as it does on
+    main, instead of quietly comparing x with the byte values.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        return False
+    return _renders_as_array(value) or _is_set(value)
+
+
+def _in_list_items(value: Any) -> Any:
+    """Return the items to render for an IN list, with a set's items sorted.
+
+    Sorting usually makes the SQL text the same from run to run, but not always: items without a
+    consistent order, such as `float("nan")` among other numbers, can still come out in a
+    different order. The IN list matches the same rows either way.
+    """
+    if not _is_set(value):
+        return value
+    try:
+        return sorted(value)
+    except TypeError:
+        # The items do not compare with each other, for example None and an int.
+        return sorted(value, key=repr)
+
+
+class _InListOnly:
+    """Stands in for an escaped set, which can only be rendered as an IN list.
+
+    `render_inline` rejects a set at any other marker before formatting. Raising here as well
+    keeps an unescaped set from ever reaching the SQL text.
+    """
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    def __str__(self) -> str:
+        raise ProgrammingError("Unsupported object {}".format(self.value))
+
+    __repr__ = __str__
+
+
+class _MarkerProbe:
+    """Formats as a token that identifies the marker it was substituted into."""
+
+    def __init__(self, nonce: str, index: int) -> None:
+        self._token = f"\x00{nonce}:{index}\x00"
+
+    def __str__(self) -> str:
+        return self._token
+
+    __repr__ = __str__
+
+
+class _NumberedLookups:
+    """Mapping stand-in for %-formatting that numbers its lookups.
+
+    %-formatting looks up each %(name)s marker once, left to right, so lookup n is always the n-th
+    named marker of the operation. `value_for(n, name)` supplies the value substituted there.
+    """
+
+    def __init__(
+        self, value_for: Callable[[int, str], Any], escaped: Dict[str, Any]
+    ) -> None:
+        self._value_for = value_for
+        self._escaped = escaped
+        self._count = 0
+
+    def __getitem__(self, name: str) -> Any:
+        index = self._count
+        self._count += 1
+        return self._value_for(index, name)
+
+    def __str__(self) -> str:
+        # A bare %s marker formats the whole mapping; keep rendering the escaped dict there.
+        return str(self._escaped)
+
+    __repr__ = __str__
+
+
+def _reject_sets_outside_in_lists(
+    parameters: Any, in_list_markers: Set[int], marker_keys: Dict[int, Any]
+) -> None:
+    """Raise the error `escape_args` raises for a set, unless the set is used and every marker
+    it fills renders as an IN list."""
+    items = (
+        parameters.items() if isinstance(parameters, dict) else enumerate(parameters)
+    )
+    for key, value in items:
+        if not _is_set(value):
+            continue
+        markers = {index for index, k in marker_keys.items() if k == key}
+        if not markers or not markers <= in_list_markers:
+            raise ProgrammingError("Unsupported object {}".format(value))
+
+
+def _format_markers(
+    operation: str, escaped: Any, value_for: Callable[[int, Any], Any]
+) -> str:
+    """%-format `operation`, taking the value of marker n from `value_for(n, key)`.
+
+    `escaped` holds the escaped parameter values. `key` is the marker's name when it is a dict and
+    the marker's position otherwise.
+    """
+    values: Any
+    if isinstance(escaped, dict):
+        values = _NumberedLookups(value_for, escaped)
+    else:
+        values = tuple(value_for(i, i) for i in range(len(escaped)))
+    return inject_parameters(operation, values)
+
+
 # Taken from PyHive
 class ParamEscaper:
     _DATE_FORMAT = "%Y-%m-%d"
@@ -570,6 +736,115 @@ class ParamEscaper:
             return tuple(self.escape_item(x) for x in parameters)
         else:
             raise ProgrammingError("Unsupported param format: {}".format(parameters))
+
+    def render_inline(self, operation: str, parameters) -> str:
+        """Render `parameters` into the markers of `operation` as inline SQL literals.
+
+        Values are escaped as `escape_args` escapes them, with one exception: a sequence at a
+        marker that directly follows IN (e.g. `x IN %(ids)s`) renders as the parenthesised list
+        Spark requires there, `x IN (1,2,3)`, instead of `x IN ARRAY(1,2,3)`, which Spark rejects.
+        The choice is made per marker, so a parameter used both after IN and elsewhere keeps its
+        ARRAY rendering at the other markers. Inside the list, tuples render as rows and lists as
+        ARRAY literals.
+
+        IN is found by matching the SQL text, not by parsing it (see `_IN_MARKER_PROBE`), so an
+        unusual query, such as one with IN inside a string literal just before a marker, can
+        still get a list where an ARRAY was meant.
+
+        A set (or frozenset, or dict key view) is accepted only where every marker it fills
+        directly follows IN, and its items are sorted. Anywhere else it raises the same
+        `ProgrammingError` as `escape_args`, because a set has no order to put into an ARRAY.
+        """
+        escaped = self._escape_values(parameters)
+        values = parameters.values() if isinstance(parameters, dict) else parameters
+        if not any(_renders_as_in_list(value) for value in values):
+            # Only a sequence or a set can render as an IN list, so without one render exactly
+            # as before.
+            return inject_parameters(operation, escaped)
+
+        in_list_markers, marker_keys = self._markers_following_in(
+            operation, parameters, escaped
+        )
+        _reject_sets_outside_in_lists(parameters, in_list_markers, marker_keys)
+
+        def render_marker(index: int, key: Any) -> Any:
+            if index in in_list_markers:
+                return self.escape_in_list(_in_list_items(parameters[key]))
+            return escaped[key]
+
+        return _format_markers(operation, escaped, render_marker)
+
+    def _escape_values(self, parameters):
+        """Escape like `escape_args`, except that a set becomes an `_InListOnly` placeholder
+        instead of raising, so `render_inline` can decide where it is allowed."""
+
+        def escape(value: Any) -> Any:
+            return _InListOnly(value) if _is_set(value) else self.escape_item(value)
+
+        if isinstance(parameters, dict):
+            return {k: escape(v) for k, v in parameters.items()}
+        elif isinstance(parameters, (list, tuple)):
+            return tuple(escape(x) for x in parameters)
+        else:
+            raise ProgrammingError("Unsupported param format: {}".format(parameters))
+
+    def _markers_following_in(
+        self, operation: str, parameters, escaped
+    ) -> Tuple[Set[int], Dict[int, Any]]:
+        """Return the numbers of the markers that directly follow IN and receive a value that can
+        render as an IN list, and the parameter key that each marker number refers to.
+
+        Markers are numbered as `_format_markers` numbers them. To find them, the operation is
+        formatted once through the same %-formatting as the real substitution, so `%%` and
+        positional markers line up exactly. Each value that can render as an IN list (see
+        `_renders_as_in_list`) is replaced by a probe token. Numbers keep their value, so
+        markers such as `%d` still format, and escaped strings are replaced by an empty string
+        literal, so the text of a value cannot change the result. If the operation does not
+        format, both results are empty.
+        """
+        # The nonce stops text that only looks like a probe token from being taken for one.
+        nonce = secrets.token_hex(8)
+        marker_keys: Dict[int, Any] = {}
+
+        def probe_marker(index: int, key: Any) -> Any:
+            # A missing name raises KeyError here, as it does when rendering.
+            escaped_value = escaped[key]
+            marker_keys[index] = key
+            value = parameters[key]
+            if _renders_as_in_list(value):
+                return _MarkerProbe(nonce, index)
+            # Replace text with '' so the content of a value cannot change the result. A string
+            # of two or more characters formats under exactly the markers '' does. A one-character
+            # string can only be a single-digit Decimal, which %c accepts, so it is kept.
+            if isinstance(escaped_value, str) and len(escaped_value) > 1:
+                return "''"
+            return escaped_value
+
+        try:
+            probed_operation = _format_markers(operation, escaped, probe_marker)
+        except (KeyError, TypeError, ValueError):
+            # Rendering raises the same error: a probe only replaces a sequence, and a marker that
+            # cannot format a probe (such as %d) cannot format the sequence's ARRAY string either.
+            # A set gets the ProgrammingError escape_args raises, since none of its markers count.
+            return set(), {}
+
+        in_list_markers = {
+            int(match.group(2))
+            for match in _IN_MARKER_PROBE.finditer(probed_operation)
+            if match.group(1) == nonce
+            and not _in_ends_line_comment(probed_operation, match)
+        }
+        return in_list_markers, marker_keys
+
+    def escape_in_list(self, item):
+        return "(" + ",".join(map(str, map(self._escape_in_list_element, item))) + ")"
+
+    def _escape_in_list_element(self, item):
+        # Inside an IN list a tuple is a row, as in `(a, b) IN ((1, 2), (3, 4))`. A list stays an
+        # ARRAY literal so ARRAY columns can still be matched, as in `arr IN (ARRAY(1, 2))`.
+        if isinstance(item, tuple):
+            return self.escape_in_list(item)
+        return self.escape_item(item)
 
     def escape_number(self, item):
         return item

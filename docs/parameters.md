@@ -235,6 +235,25 @@ Output:
 SELECT field FROM table WHERE field IN (1,2,3,4,5)
 ```
 
+The marker must directly follow `IN` (or `NOT IN`), as in `IN %(value_list)s`. Anywhere else, including inside parentheses you write yourself such as `IN (%(value_list)s)`, a sequence is rendered as an `ARRAY(...)` literal.
+
+The connector finds `IN` by reading the query text, not by parsing SQL. It ignores an `IN` at the end of a `--` comment line, but an `IN` inside a string literal, directly before a marker, is still treated as the keyword.
+
+Inside the list, a tuple is rendered as a row and a list as an `ARRAY(...)` literal. For a multi-column `IN`, pass tuples:
+
+```python
+query = "SELECT * FROM table WHERE (id, tag) IN %(pairs)s"
+parameters = {"pairs": [(1, "a"), (2, "b")]}
+```
+
+```sql
+SELECT * FROM table WHERE (id, tag) IN ((1,'a'),(2,'b'))
+```
+
+Spark does not convert the types of the values inside a row, so each value must have the same type as its column. For example, the literal `1` is an `INT` and does not match a `BIGINT` column.
+
+A `set` or `frozenset` can also be passed directly after `IN`. Its items are sorted, which usually keeps the query text the same from run to run. Items without a consistent order, such as `float("nan")`, can still change position. Anywhere else a set raises `ProgrammingError`, because a set has no order to keep in an `ARRAY(...)` literal.
+
 **Note**: this behavior is not specified by PEP-249 and only works due to the specific implementation of our inline renderer.
 
 ### Migrating to native parameters
