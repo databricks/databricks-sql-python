@@ -13,8 +13,7 @@ The PyO3 boundary can produce two flavours of exception:
 - Anything else — ``TypeError`` / ``OverflowError`` /
   ``ValueError`` from PyO3 argument conversion, or arbitrary
   extension-internal Python errors. These would otherwise propagate
-  raw to connector callers, breaking the DB-API contract that says
-  "only PEP 249 exception types cross the boundary". Wrapped in
+  raw to connector callers. Wrapped in
   ``OperationalError`` here.
 
 Local missing transfer files use the built-in ``FileNotFoundError`` class;
