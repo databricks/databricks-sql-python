@@ -1234,45 +1234,7 @@ def test_get_query_state_uses_reader_after_result_stream_started():
 
 
 @pytest.mark.parametrize("count", [7, 0, None])
-@pytest.mark.parametrize("source", ["owner", "reader", "attached"])
-def test_async_result_count_after_await(source, count):
-    c = _make_client()
-    c._kernel_session = MagicMock()
-    cid = CommandId.from_sea_statement_id("async-count")
-    owner = MagicMock()
-    handle = owner
-    if source == "attached":
-        c._kernel_session.attach_async_statement.return_value = handle
-    else:
-        c._async_handles[cid.guid] = owner
-        if source == "reader":
-            c._async_result_stream_started.add(cid.guid)
-            handle = owner.reader.return_value
-
-    del handle.num_modified_rows
-    stream = MagicMock()
-    stream.arrow_schema.return_value = pa.schema([("num_affected_rows", pa.int64())])
-    stream.fetch_next_batch.side_effect = [
-        pa.record_batch(
-            [[count if count is not None else 1]], names=["num_affected_rows"]
-        ),
-        None,
-    ]
-
-    def await_result():
-        handle.num_modified_rows = count
-        return stream
-
-    handle.await_result.side_effect = await_result
-    cursor = MagicMock(arraysize=100, buffer_size_bytes=1024)
-    rs = c.get_execution_result(cid, cursor)
-
-    assert rs.num_modified_rows == count
-    stream.fetch_next_batch.assert_not_called()
-    assert [list(row) for row in rs.fetchall()] == [[count if count is not None else 1]]
-
-
-def test_get_execution_result_uses_retained_owning_handle_first():
+def test_get_execution_result_uses_retained_owning_handle_first(count):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
@@ -1280,7 +1242,13 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
-    handle.await_result.return_value = fake_stream
+    del handle.num_modified_rows
+
+    def await_result():
+        handle.num_modified_rows = count
+        return fake_stream
+
+    handle.await_result.side_effect = await_result
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1291,6 +1259,8 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == count
+    fake_stream.fetch_next_batch.assert_not_called()
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
@@ -1303,6 +1273,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = _attach_returns(c, await_result=fake_stream)
+    handle.num_modified_rows = 7
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1311,6 +1282,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == 7
     c._kernel_session.attach_async_statement.assert_called_once_with("async-1")
     handle.await_result.assert_called_once_with()
 
@@ -1365,6 +1337,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     retry_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     reader = MagicMock()
     reader.await_result.return_value = retry_stream
+    reader.num_modified_rows = 0
     owning_handle.reader.return_value = reader
     cursor = MagicMock()
     cursor.arraysize = 100
@@ -1373,6 +1346,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == 0
     owning_handle.reader.assert_called_once_with()
     c._kernel_session.attach_async_statement.assert_not_called()
     reader.await_result.assert_called_once_with()

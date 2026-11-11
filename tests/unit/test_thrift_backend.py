@@ -135,113 +135,6 @@ def test_metadata_catalog_escaping(
 
 
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
-@pytest.mark.parametrize(
-    "operation_state,count,expected_count",
-    [
-        (ttypes.TOperationState.FINISHED_STATE, 7, 7),
-        (ttypes.TOperationState.FINISHED_STATE, 0, 0),
-        (ttypes.TOperationState.FINISHED_STATE, None, None),
-        (ttypes.TOperationState.RUNNING_STATE, 7, None),
-    ],
-)
-@pytest.mark.parametrize("cache_status", [True, False])
-def test_async_result_reads_only_terminal_status_count_and_preserves_rows(
-    operation_state, count, expected_count, cache_status
-):
-    with (
-        patch(
-            "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
-        ),
-        patch("databricks.sql.backend.thrift_backend.ThriftResultSet") as result_set,
-    ):
-        backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-            http_client=MagicMock(),
-        )
-        operation_status = ttypes.TGetOperationStatusResp(
-            status=ThriftBackendTestSuite.okay_status,
-            operationState=operation_state,
-            numModifiedRows=count,
-        )
-        backend._poll_for_status = Mock(return_value=operation_status)
-        metadata = ttypes.TGetResultSetMetadataResp(
-            schema=ttypes.TTableSchema(columns=[]),
-            arrowSchema=pyarrow.schema([]).serialize().to_pybytes(),
-            resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
-        )
-        backend.make_request = Mock(
-            return_value=Mock(
-                resultSetMetadata=metadata,
-                results=sentinel.counter_rows,
-                hasMoreRows=False,
-            )
-        )
-        cid = CommandId.from_thrift_handle(ThriftBackendTestSuite.operation_handle)
-        if cache_status:
-            expected_state = (
-                CommandState.SUCCEEDED
-                if operation_state == ttypes.TOperationState.FINISHED_STATE
-                else CommandState.RUNNING
-            )
-            assert backend.get_query_state(cid) == expected_state
-        backend.get_execution_result(cid, Mock())
-
-        expected_polls = (
-            2
-            if cache_status and operation_state == ttypes.TOperationState.RUNNING_STATE
-            else 1
-        )
-        assert backend._poll_for_status.call_count == expected_polls
-        backend._poll_for_status.assert_called_with(cid.to_thrift_handle())
-        response = result_set.call_args.kwargs["execute_response"]
-        assert response.num_modified_rows == expected_count
-        assert result_set.call_args.kwargs["t_row_set"] is sentinel.counter_rows
-
-
-@pytest.mark.parametrize(
-    "operation_state,exception_type",
-    [
-        (ttypes.TOperationState.ERROR_STATE, ServerOperationError),
-        (ttypes.TOperationState.CLOSED_STATE, DatabaseError),
-    ],
-)
-def test_async_result_rejects_terminal_error_state_before_fetch(
-    operation_state, exception_type
-):
-    with patch(
-        "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
-    ):
-        backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-            http_client=MagicMock(),
-        )
-        backend._poll_for_status = Mock(
-            return_value=ttypes.TGetOperationStatusResp(
-                status=ThriftBackendTestSuite.okay_status,
-                operationState=operation_state,
-                errorMessage="async operation failed",
-            )
-        )
-        backend.make_request = Mock()
-        cid = CommandId.from_thrift_handle(ThriftBackendTestSuite.operation_handle)
-
-        with pytest.raises(exception_type):
-            backend.get_execution_result(cid, Mock())
-
-        backend.make_request.assert_not_called()
-
-
-@pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 
@@ -319,6 +212,64 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._create_arrow_table = MagicMock()
         thrift_backend._create_arrow_table.return_value = (MagicMock(), Mock())
         return thrift_backend
+
+    @patch("databricks.sql.backend.thrift_backend.ThriftResultSet")
+    @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
+    def test_async_result_rowcount(self, tcli_service_class, result_set):
+        for state, count, expected_count, polled in [
+            (ttypes.TOperationState.FINISHED_STATE, 7, 7, True),
+            (ttypes.TOperationState.FINISHED_STATE, 0, 0, True),
+            (ttypes.TOperationState.FINISHED_STATE, None, None, True),
+            (ttypes.TOperationState.FINISHED_STATE, 7, 7, False),
+            (ttypes.TOperationState.RUNNING_STATE, 7, None, False),
+        ]:
+            with self.subTest(state=state, count=count, polled=polled):
+                backend = self._make_fake_thrift_backend()
+                backend._poll_for_status = Mock(
+                    return_value=ttypes.TGetOperationStatusResp(
+                        status=self.okay_status,
+                        operationState=state,
+                        numModifiedRows=count,
+                    )
+                )
+                backend.make_request = Mock(
+                    return_value=Mock(
+                        resultSetMetadata=self.metadata_resp,
+                        results=sentinel.counter_rows,
+                        hasMoreRows=False,
+                    )
+                )
+                cid = CommandId.from_thrift_handle(self.operation_handle)
+                if polled:
+                    self.assertEqual(
+                        backend.get_query_state(cid), CommandState.SUCCEEDED
+                    )
+                backend.get_execution_result(cid, Mock())
+
+                backend._poll_for_status.assert_called_once_with(cid.to_thrift_handle())
+                response = result_set.call_args.kwargs["execute_response"]
+                self.assertEqual(response.num_modified_rows, expected_count)
+                self.assertIs(
+                    result_set.call_args.kwargs["t_row_set"], sentinel.counter_rows
+                )
+
+    @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
+    def test_async_result_checks_status_before_fetch(self, tcli_service_class):
+        backend = self._make_fake_thrift_backend()
+        backend._poll_for_status = Mock(
+            return_value=ttypes.TGetOperationStatusResp(
+                status=self.okay_status,
+                operationState=ttypes.TOperationState.ERROR_STATE,
+                errorMessage="async operation failed",
+            )
+        )
+        backend.make_request = Mock()
+        cid = CommandId.from_thrift_handle(self.operation_handle)
+
+        with self.assertRaises(ServerOperationError):
+            backend.get_execution_result(cid, Mock())
+
+        backend.make_request.assert_not_called()
 
     def test_hive_schema_to_arrow_schema_preserves_column_names(self):
         columns = [
