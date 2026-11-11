@@ -942,8 +942,9 @@ class ThriftDatabricksClient(DatabricksClient):
         """Fetch a completed async result and its latest operation metadata.
 
         FetchResults does not carry ``numModifiedRows``, so reuse a terminal
-        status observed by ``get_query_state`` or refresh it when the caller
-        resumes directly by command ID.
+        status observed for the same ``CommandId`` instance by
+        ``get_query_state``, or refresh the status when the caller resumes
+        directly by command ID.
         """
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -956,6 +957,12 @@ class ThriftDatabricksClient(DatabricksClient):
             self._check_command_not_in_error_or_closed_state(
                 thrift_handle, operation_status
             )
+
+        num_modified_rows = (
+            operation_status.numModifiedRows
+            if operation_status.operationState == ttypes.TOperationState.FINISHED_STATE
+            else None
+        )
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
@@ -1007,7 +1014,7 @@ class ThriftDatabricksClient(DatabricksClient):
             is_staging_operation=is_staging_operation,
             arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
-            num_modified_rows=operation_status.numModifiedRows,
+            num_modified_rows=num_modified_rows,
         )
 
         return ThriftResultSet(
