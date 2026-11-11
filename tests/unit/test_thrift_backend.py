@@ -503,6 +503,25 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(result.results.arrowBatches[0].batch, batch)
         protocol._fast_decode.assert_called()
 
+    def test_http_client_decodes_reply_from_short_urllib3_reads(self):
+        """urllib3 may return fewer bytes than asked for; a field spanning many
+        short reads must still be assembled correctly."""
+        small = [bytes([i % 256]) * 1000 for i in range(300)]
+        big = b"y" * (4 * 1024 * 1024)
+        reply = self._fetch_results_reply(small + [big])
+        for protocol_class in self._protocol_classes():
+            with self.subTest(protocol=protocol_class.__name__):
+                http_client, mock_resp = self._http_client_with_reply(b"")
+                stream = BytesIO(reply)
+                mock_resp.read.side_effect = lambda amt: stream.read(min(amt, 65536))
+                _, client = self._protocol_client(http_client, protocol_class)
+
+                result = client.FetchResults(self._fetch_results_req())
+
+                self.assertEqual(
+                    [b.batch for b in result.results.arrowBatches], small + [big]
+                )
+
     def test_http_client_truncated_reply_raises_eof(self):
         reply = self._fetch_results_reply([b"x" * 100])
         for protocol_class in self._protocol_classes():

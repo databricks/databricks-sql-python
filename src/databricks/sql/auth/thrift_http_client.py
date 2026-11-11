@@ -175,15 +175,17 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
 
     def cstringio_refill(self, partialread, reqlen):
         # As in TBufferedTransport: read one more chunk, or all of a larger field.
-        data = partialread
+        parts, have = [partialread], len(partialread)
         if reqlen < self._READ_CHUNK_SIZE:
-            data += self.__resp.read(self._READ_CHUNK_SIZE)
-        while len(data) < reqlen:
-            chunk = self.__resp.read(reqlen - len(data))
+            parts.append(self.__resp.read(self._READ_CHUNK_SIZE))
+            have += len(parts[-1])
+        while have < reqlen:
+            chunk = self.__resp.read(reqlen - have)
             if not chunk:
                 raise EOFError()
-            data += chunk
-        self.__rbuf = BytesIO(data)
+            parts.append(chunk)
+            have += len(chunk)
+        self.__rbuf = BytesIO(b"".join(parts))
         return self.__rbuf
 
     def isOpen(self):
