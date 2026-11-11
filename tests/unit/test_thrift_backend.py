@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from decimal import Decimal
 import itertools
+import logging
 import unittest
 import pytest
 from unittest.mock import patch, MagicMock, Mock
@@ -320,7 +321,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         import thrift.protocol.TBinaryProtocol
 
         with patch(
-            "thrift.protocol.TBinaryProtocol.TBinaryProtocol"
+            "thrift.protocol.TBinaryProtocol.TBinaryProtocolAccelerated"
         ) as mock_protocol_class:
             ThriftDatabricksClient(
                 "foo",
@@ -366,6 +367,108 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
         self.assertEqual(protocol.readBinary(), oversized_payload)
+
+    @staticmethod
+    def _http_client_with_reply(reply_bytes):
+        """A real THttpClient whose connection pool returns ``reply_bytes``."""
+        from databricks.sql.auth.thrift_http_client import THttpClient
+
+        http_client = THttpClient(
+            auth_provider=Mock(),
+            uri_or_host="https://example.com/cliservice",
+            ssl_options=SSLOptions(),
+        )
+        http_client.setCustomHeaders({"User-Agent": "test"})
+        http_client.open()
+        mock_resp = Mock(status=200, reason="OK", headers={})
+        mock_resp.read.return_value = reply_bytes
+        http_client._THttpClient__pool = Mock()
+        http_client._THttpClient__pool.request.return_value = mock_resp
+        return http_client, mock_resp
+
+    def test_http_client_buffers_reply_and_decodes_with_accelerated_protocol(self):
+        """The reply body is read from urllib3 once, then decoded from memory,
+        including by the C-accelerated protocol (the transport is a
+        CReadableTransport) for payloads above thrift's ~15.6 MiB default limit."""
+        from thrift.protocol import TBinaryProtocol
+        from thrift.transport import TTransport
+        from databricks.sql.thrift_api.TCLIService import TCLIService
+        from databricks.sql.backend.thrift_backend import (
+            THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
+            THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
+        )
+
+        batch = b"x" * (20 * 1024 * 1024)
+        resp = ttypes.TFetchResultsResp(
+            status=ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS),
+            hasMoreRows=False,
+            results=ttypes.TRowSet(
+                startRowOffset=0,
+                rows=[],
+                arrowBatches=[ttypes.TSparkArrowBatch(batch=batch, rowCount=1)],
+            ),
+        )
+        reply = TTransport.TMemoryBuffer()
+        reply_proto = TBinaryProtocol.TBinaryProtocol(reply)
+        reply_proto.writeMessageBegin("FetchResults", 2, 0)  # REPLY
+        TCLIService.FetchResults_result(success=resp).write(reply_proto)
+        reply_proto.writeMessageEnd()
+
+        http_client, mock_resp = self._http_client_with_reply(reply.getvalue())
+        self.assertIsInstance(http_client, TTransport.CReadableTransport)
+        protocol = TBinaryProtocol.TBinaryProtocolAccelerated(
+            http_client,
+            string_length_limit=THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
+            container_length_limit=THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
+        )
+        client = TCLIService.Client(protocol)
+
+        op_handle = ttypes.TOperationHandle(
+            operationId=ttypes.THandleIdentifier(guid=b"g" * 16, secret=b"s" * 16),
+            operationType=ttypes.TOperationType.EXECUTE_STATEMENT,
+            hasResultSet=True,
+        )
+        result = client.FetchResults(
+            ttypes.TFetchResultsReq(operationHandle=op_handle, orientation=0, maxRows=1)
+        )
+
+        self.assertEqual(result.results.arrowBatches[0].batch, batch)
+        mock_resp.read.assert_called_once_with()
+
+        http_client.close()
+        self.assertEqual(http_client.read(1), b"")
+
+    def test_http_client_cstringio_refill_on_truncated_reply_raises(self):
+        http_client, _ = self._http_client_with_reply(b"")
+        with self.assertRaises(EOFError):
+            http_client.cstringio_refill(b"", 4)
+
+    @patch("databricks.sql.backend.thrift_backend.unsafe_logger")
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
+    def test_unsafe_logger_formats_payloads_lazily(
+        self, t_http_client_class, mock_unsafe_logger
+    ):
+        """unsafe_logger is DEBUG-level with only a NullHandler by default, so
+        payloads must be passed as %s args rather than pre-formatted strings."""
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        request = Mock()
+        response = Mock()
+        response.status.statusCode = ttypes.TStatusCode.SUCCESS_STATUS
+        method = Mock(return_value=response)
+        method.__name__ = "method name"
+
+        thrift_backend.make_request(method, request)
+
+        mock_unsafe_logger.debug.assert_any_call("Sending request: %s", request)
+        mock_unsafe_logger.debug.assert_any_call("Received response: %s", response)
 
     def test_proxy_headers_are_set(self):
 

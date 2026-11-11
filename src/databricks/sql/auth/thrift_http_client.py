@@ -11,6 +11,7 @@ import warnings
 from http.client import HTTPResponse
 from io import BytesIO
 
+from thrift.transport.TTransport import CReadableTransport
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
@@ -22,7 +23,7 @@ from databricks.sql.common.http_utils import (
 logger = logging.getLogger(__name__)
 
 
-class THttpClient(thrift.transport.THttpClient.THttpClient):
+class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
     realhost: Optional[str]
     realport: Optional[int]
     proxy_uri: Optional[str]
@@ -94,6 +95,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy = retry_policy
 
         self.__wbuf = BytesIO()
+        self.__rbuf = BytesIO()
         self.__resp: Union[None, HTTPResponse] = None
         self.__timeout = None
         self.__custom_headers = None
@@ -153,9 +155,19 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.__resp and self.__resp.drain_conn()
         self.__resp and self.__resp.release_conn()
         self.__resp = None
+        self.__rbuf = BytesIO()
 
     def read(self, sz):
-        return self.__resp.read(sz)
+        return self.__rbuf.read(sz)
+
+    # CReadableTransport: lets TBinaryProtocolAccelerated decode the buffered body in C.
+    @property
+    def cstringio_buf(self):
+        return self.__rbuf
+
+    def cstringio_refill(self, partialread, reqlen):
+        # The whole response body is already buffered, so a refill means it was truncated.
+        raise EOFError()
 
     def isOpen(self):
         return self.__resp is not None
@@ -206,6 +218,10 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.code = self.__resp.status
         self.message = self.__resp.reason
         self.headers = self.__resp.headers
+
+        # Thrift decodes the reply one field at a time; reading each field
+        # straight from urllib3 costs far more than the decode itself.
+        self.__rbuf = BytesIO(self.__resp.read())
 
         logger.info(
             "HTTP Response with status code {}, message: {}".format(
