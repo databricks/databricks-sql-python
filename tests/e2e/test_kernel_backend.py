@@ -22,7 +22,11 @@ Run from the connector repo root:
 from __future__ import annotations
 
 import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import select
+import socket
 import sys
+import threading
 from uuid import uuid4
 
 import pytest
@@ -137,15 +141,61 @@ def conn(kernel_conn_params):
         c.close()
 
 
-@pytest.mark.parametrize("use_cloud_fetch", [False, True])
+@pytest.fixture
+def workspace_only_proxy(kernel_conn_params, monkeypatch):
+    connections = {"workspace": 0, "blocked": 0}
+    workspace = kernel_conn_params["server_hostname"] + ":443"
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_CONNECT(self):
+            self.close_connection = True
+            if self.path != workspace:
+                connections["blocked"] += 1
+                self.send_error(403)
+                return
+            with socket.create_connection(
+                (kernel_conn_params["server_hostname"], 443), timeout=30
+            ) as upstream:
+                connections["workspace"] += 1
+                self.send_response(200)
+                self.end_headers()
+                while True:
+                    ready, _, _ = select.select([self.connection, upstream], [], [], 30)
+                    if not ready:
+                        return
+                    for source in ready:
+                        data = source.recv(65536)
+                        if not data:
+                            return
+                        target = (
+                            upstream if source is self.connection else self.connection
+                        )
+                        target.sendall(data)
+
+        def log_message(self, *_args):
+            pass
+
+    proxy = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+    thread.start()
+    for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.setenv(name, f"http://127.0.0.1:{proxy.server_port}")
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(name, "")
+    try:
+        yield connections
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+        thread.join()
+
+
 def test_cloudfetch_disabled_returns_complete_large_result(
-    kernel_conn_params, caplog, use_cloud_fetch
+    kernel_conn_params, workspace_only_proxy
 ):
     from databricks.sql.backend.kernel.client import KernelDatabricksClient
 
-    with caplog.at_level(logging.INFO, logger="databricks.sql.kernel"), sql.connect(
-        **kernel_conn_params, use_cloud_fetch=use_cloud_fetch
-    ) as connection:
+    with sql.connect(**kernel_conn_params, use_cloud_fetch=False) as connection:
         assert isinstance(connection.session.backend, KernelDatabricksClient)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -168,19 +218,9 @@ def test_cloudfetch_disabled_returns_complete_large_result(
                 "a25ada4c6c476b53e97eb6e8a945e9ce4c14cc432c7ad672dc6fb607d660c86a"
             )
 
-    messages = [
-        record.getMessage()
-        for record in caplog.records
-        if record.name.startswith("databricks.sql.kernel")
-    ]
-    assert (
-        any("Using CloudFetch reader" in message for message in messages)
-        == use_cloud_fetch
-    )
-    assert any(
-        "inline" in message.lower() and "reader" in message.lower()
-        for message in messages
-    ) == (not use_cloud_fetch)
+    assert workspace_only_proxy["workspace"] > 0
+    assert workspace_only_proxy["blocked"] == 0
+
 
 def test_connect_with_use_kernel_opens_a_session(conn):
     assert conn.open, "connection should report open after connect()"
