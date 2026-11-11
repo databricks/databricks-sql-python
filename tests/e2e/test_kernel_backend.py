@@ -145,6 +145,7 @@ def conn(kernel_conn_params):
 def workspace_only_proxy(kernel_conn_params, monkeypatch):
     connections = {"workspace": 0, "blocked": 0}
     workspace = kernel_conn_params["server_hostname"] + ":443"
+    stopping = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
         def do_CONNECT(self):
@@ -159,10 +160,8 @@ def workspace_only_proxy(kernel_conn_params, monkeypatch):
                 connections["workspace"] += 1
                 self.send_response(200)
                 self.end_headers()
-                while True:
-                    ready, _, _ = select.select([self.connection, upstream], [], [], 30)
-                    if not ready:
-                        return
+                while not stopping.is_set():
+                    ready, _, _ = select.select([self.connection, upstream], [], [], 1)
                     for source in ready:
                         data = source.recv(65536)
                         if not data:
@@ -185,6 +184,7 @@ def workspace_only_proxy(kernel_conn_params, monkeypatch):
     try:
         yield connections
     finally:
+        stopping.set()
         proxy.shutdown()
         proxy.server_close()
         thread.join()
