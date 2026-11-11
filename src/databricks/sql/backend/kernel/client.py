@@ -967,6 +967,8 @@ class KernelDatabricksClient(DatabricksClient):
         # result-set construction fails after a successful await.
         try:
             result_set = self._make_result_set(stream, cursor, command_id)
+            # Older kernel wheels do not expose this value. Keep them compatible
+            # while allowing a newer binding to populate async rowcount.
             result_set.num_modified_rows = getattr(handle, "num_modified_rows", None)
             return result_set
         except Exception as exc:
