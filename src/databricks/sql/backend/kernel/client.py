@@ -74,10 +74,7 @@ logger = logging.getLogger(__name__)
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
-
-# Leading verbs of SQL volume/staging statements. Detected by the
-# leading token (case-insensitive) so the kernel backend can fail loud
-# on staging ops it can't service — see ``execute_command``.
+# Transfer detection controls local-path forwarding and the older-wheel guard.
 _STAGING_VERBS = ("PUT", "GET", "REMOVE")
 
 
@@ -597,7 +594,15 @@ class KernelDatabricksClient(DatabricksClient):
                     allowed_paths = [allowed_paths]
                 set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)
                 if callable(set_paths):
-                    set_paths([os.fsdecode(path) for path in allowed_paths or []])
+                    try:
+                        normalized_paths = [
+                            os.fsdecode(path) for path in allowed_paths or []
+                        ]
+                    except (TypeError, ValueError) as exc:
+                        raise ProgrammingError(
+                            "staging_allowed_local_path must be a path or a list of paths"
+                        ) from exc
+                    set_paths(normalized_paths)
                 elif _is_staging_statement(operation):
                     raise NotSupportedError(
                         "Volume transfers require a databricks-sql-kernel wheel "
