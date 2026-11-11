@@ -26,7 +26,17 @@ import inspect
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
+from typing import (
+    Any,
+    Dict,
+    FrozenSet,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    TYPE_CHECKING,
+    Union,
+)
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
@@ -160,6 +170,16 @@ def _is_staging_statement(operation: str) -> bool:
     return verb in _STAGING_VERBS
 
 
+class _KernelSessionParameterSupport(NamedTuple):
+    session_type: Any
+    parameters: FrozenSet[str]
+    accepts_kwargs: bool
+
+
+_KERNEL_SESSION_PARAMETER_SUPPORT: Optional[_KernelSessionParameterSupport] = None
+_KERNEL_SESSION_PARAMETER_SUPPORT_LOCK = threading.Lock()
+
+
 def _kernel_session_accepts_kwarg(name: str) -> bool:
     """True iff the installed ``databricks_sql_kernel.Session`` constructor
     declares keyword ``name``.
@@ -171,13 +191,31 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     can't be introspected because omitting an accepted optional kwarg is safer
     than forwarding an unsupported one.
     """
-    try:
-        params = inspect.signature(_kernel.Session).parameters
-    except (TypeError, ValueError):
-        return False
-    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
-        return True
-    return name in params
+    global _KERNEL_SESSION_PARAMETER_SUPPORT
+    session_type = _kernel.Session
+    support = _KERNEL_SESSION_PARAMETER_SUPPORT
+    if support is None or support.session_type is not session_type:
+        with _KERNEL_SESSION_PARAMETER_SUPPORT_LOCK:
+            session_type = _kernel.Session
+            support = _KERNEL_SESSION_PARAMETER_SUPPORT
+            if support is None or support.session_type is not session_type:
+                try:
+                    params = inspect.signature(session_type).parameters
+                except (TypeError, ValueError):
+                    support = _KernelSessionParameterSupport(
+                        session_type, frozenset(), False
+                    )
+                else:
+                    support = _KernelSessionParameterSupport(
+                        session_type,
+                        frozenset(params),
+                        any(
+                            p.kind is inspect.Parameter.VAR_KEYWORD
+                            for p in params.values()
+                        ),
+                    )
+                _KERNEL_SESSION_PARAMETER_SUPPORT = support
+    return support.accepts_kwargs or name in support.parameters
 
 
 def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
