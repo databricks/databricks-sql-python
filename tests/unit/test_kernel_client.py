@@ -353,21 +353,21 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
             {"can_cloud_download": "false"},
             {"can_cloud_download": "false"},
         ),
-        ({"use_cloud_fetch": False}, None, {"can_cloud_download": "false"}),
+        ({"use_cloud_fetch": False}, None, {"cloudfetch_enabled": "false"}),
         (
             {"use_cloud_fetch": False},
             {"TIMEZONE": "UTC"},
-            {"TIMEZONE": "UTC", "can_cloud_download": "false"},
+            {"TIMEZONE": "UTC", "cloudfetch_enabled": "false"},
         ),
         (
             {"use_cloud_fetch": False},
             {"can_cloud_download": "true"},
-            {"can_cloud_download": "false"},
+            {"can_cloud_download": "true", "cloudfetch_enabled": "false"},
         ),
         (
             {"use_cloud_fetch": False},
-            {"Can_Cloud_Download": "true"},
-            {"can_cloud_download": "false"},
+            {"CLOUDFETCH_ENABLED": "true", "cloudfetch_enabled": "true"},
+            {"CLOUDFETCH_ENABLED": "true", "cloudfetch_enabled": "false"},
         ),
     ],
 )
@@ -445,9 +445,7 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_open_session_passes_geospatial_representation_to_kernel(
-    monkeypatch, enabled
-):
+def test_open_session_passes_geospatial_representation_to_kernel(monkeypatch, enabled):
     captured = {}
 
     def fake_session(*, enable_geospatial_support=True, **kw):
