@@ -1714,6 +1714,13 @@ class Cursor:
                 self.active_command_id, self
             )
 
+            num_modified_rows = (
+                self.active_result_set.num_modified_rows
+                if self.active_result_set
+                else None
+            )
+            self.rowcount = num_modified_rows if num_modified_rows is not None else -1
+
             if self.active_result_set and self.active_result_set.is_staging_operation:
                 self._handle_staging_operation(
                     staging_allowed_local_path=self.connection.staging_allowed_local_path
