@@ -136,7 +136,8 @@ def test_metadata_catalog_escaping(
 
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 @pytest.mark.parametrize("count", [7, 0, None])
-def test_async_result_reads_status_count_and_preserves_rows(count):
+@pytest.mark.parametrize("cache_status", [True, False])
+def test_async_result_reads_status_count_and_preserves_rows(count, cache_status):
     with (
         patch(
             "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
@@ -171,6 +172,8 @@ def test_async_result_reads_status_count_and_preserves_rows(count):
             )
         )
         cid = CommandId.from_thrift_handle(ThriftBackendTestSuite.operation_handle)
+        if cache_status:
+            assert backend.get_query_state(cid) == CommandState.SUCCEEDED
         backend.get_execution_result(cid, Mock())
 
         backend._poll_for_status.assert_called_once_with(cid.to_thrift_handle())
