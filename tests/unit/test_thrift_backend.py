@@ -487,7 +487,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
         result = thrift_backend.make_request(
             thrift_backend._client.FetchResults,
-            ttypes.TFetchResultsReq(operationHandle=op_handle, orientation=0, maxRows=1),
+            ttypes.TFetchResultsReq(
+                operationHandle=op_handle, orientation=0, maxRows=1
+            ),
         )
 
         self.assertEqual(result.results.arrowBatches[0].batch, batch)
