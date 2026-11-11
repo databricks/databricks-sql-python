@@ -157,17 +157,34 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
         self.__resp = None
         self.__rbuf = BytesIO()
 
+    # Thrift decodes the reply one field at a time, and one urllib3 read per field
+    # costs far more than the decode, so the body is read in chunks of this size.
+    _READ_CHUNK_SIZE = 1024 * 1024
+
     def read(self, sz):
+        ret = self.__rbuf.read(sz)
+        if ret:
+            return ret
+        self.__rbuf = BytesIO(self.__resp.read(max(sz, self._READ_CHUNK_SIZE)))
         return self.__rbuf.read(sz)
 
-    # CReadableTransport: lets TBinaryProtocolAccelerated decode the buffered body in C.
+    # CReadableTransport: lets TBinaryProtocolAccelerated decode the chunks in C.
     @property
     def cstringio_buf(self):
         return self.__rbuf
 
     def cstringio_refill(self, partialread, reqlen):
-        # The whole response body is already buffered, so a refill means it was truncated.
-        raise EOFError()
+        # As in TBufferedTransport: read one more chunk, or all of a larger field.
+        data = partialread
+        if reqlen < self._READ_CHUNK_SIZE:
+            data += self.__resp.read(self._READ_CHUNK_SIZE)
+        while len(data) < reqlen:
+            chunk = self.__resp.read(reqlen - len(data))
+            if not chunk:
+                raise EOFError()
+            data += chunk
+        self.__rbuf = BytesIO(data)
+        return self.__rbuf
 
     def isOpen(self):
         return self.__resp is not None
@@ -218,12 +235,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
         self.code = self.__resp.status
         self.message = self.__resp.reason
         self.headers = self.__resp.headers
-
-        # Thrift decodes the reply one field at a time; reading each field
-        # straight from urllib3 costs far more than the decode itself. The
-        # trade-off: the raw body is held alongside the decoded objects until
-        # close() at the end of the RPC; for fetches it is bounded by maxBytes.
-        self.__rbuf = BytesIO(self.__resp.read())
+        self.__rbuf = BytesIO()
 
         logger.info(
             "HTTP Response with status code {}, message: {}".format(

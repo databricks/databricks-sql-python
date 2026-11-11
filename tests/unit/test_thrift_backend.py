@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from decimal import Decimal
+from io import BytesIO
 import itertools
 import logging
 import unittest
@@ -377,7 +378,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @staticmethod
     def _http_client_with_reply(reply_bytes):
-        """A real THttpClient whose connection pool returns ``reply_bytes``."""
+        """A real THttpClient whose connection pool streams ``reply_bytes``."""
         from databricks.sql.auth.thrift_http_client import THttpClient
 
         http_client = THttpClient(
@@ -388,14 +389,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
         http_client.setCustomHeaders({"User-Agent": "test"})
         http_client.open()
         mock_resp = Mock(status=200, reason="OK", headers={})
-        mock_resp.read.return_value = reply_bytes
+        mock_resp.read.side_effect = BytesIO(reply_bytes).read
         http_client._THttpClient__pool = Mock()
         http_client._THttpClient__pool.request.return_value = mock_resp
         return http_client, mock_resp
 
     @staticmethod
-    def _fetch_results_reply(batch):
-        """Wire bytes of a FetchResults REPLY carrying one inline Arrow batch."""
+    def _fetch_results_reply(batches):
+        """Wire bytes of a FetchResults REPLY carrying inline Arrow ``batches``."""
         from thrift.protocol import TBinaryProtocol
         from thrift.transport import TTransport
         from databricks.sql.thrift_api.TCLIService import TCLIService
@@ -406,7 +407,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
             results=ttypes.TRowSet(
                 startRowOffset=0,
                 rows=[],
-                arrowBatches=[ttypes.TSparkArrowBatch(batch=batch, rowCount=1)],
+                arrowBatches=[
+                    ttypes.TSparkArrowBatch(batch=batch, rowCount=1)
+                    for batch in batches
+                ],
             ),
         )
         reply = TTransport.TMemoryBuffer()
@@ -427,51 +431,71 @@ class ThriftBackendTestSuite(unittest.TestCase):
             operationHandle=op_handle, orientation=0, maxRows=1
         )
 
-    def _accelerated_client(self, http_client):
-        from thrift.protocol import TBinaryProtocol
+    @staticmethod
+    def _protocol_client(http_client, protocol_class):
         from databricks.sql.thrift_api.TCLIService import TCLIService
         from databricks.sql.backend.thrift_backend import (
             THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
             THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
         )
 
-        protocol = TBinaryProtocol.TBinaryProtocolAccelerated(
+        protocol = protocol_class(
             http_client,
             string_length_limit=THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
             container_length_limit=THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
         )
         return protocol, TCLIService.Client(protocol)
 
-    def test_http_client_buffers_reply_and_decodes_with_accelerated_protocol(self):
-        """The reply body is read from urllib3 once and decoded from memory via
-        TBinaryProtocolAccelerated, for payloads above thrift's ~15.6 MiB
-        default limit. Runs on both the C and the pure-Python fallback path."""
+    @staticmethod
+    def _protocol_classes():
+        """The C-accelerated protocol the backend uses, and the pure-Python
+        protocol it falls back to when thrift's C extension isn't built."""
+        from thrift.protocol import TBinaryProtocol
+
+        return (
+            TBinaryProtocol.TBinaryProtocolAccelerated,
+            TBinaryProtocol.TBinaryProtocol,
+        )
+
+    def test_http_client_reads_reply_in_chunks(self):
+        """The reply is pulled from urllib3 in a few chunk-sized reads: not one
+        read per field, and never the whole body at once. Includes a field
+        larger than a chunk and than thrift's ~15.6 MiB default limit."""
         from thrift.transport import TTransport
 
-        batch = b"x" * (20 * 1024 * 1024)
-        http_client, mock_resp = self._http_client_with_reply(
-            self._fetch_results_reply(batch)
-        )
-        self.assertIsInstance(http_client, TTransport.CReadableTransport)
-        _, client = self._accelerated_client(http_client)
+        small = [bytes([i % 256]) * 1000 for i in range(3000)]
+        big = b"x" * (20 * 1024 * 1024)
+        reply = self._fetch_results_reply(small + [big])
+        for protocol_class in self._protocol_classes():
+            with self.subTest(protocol=protocol_class.__name__):
+                http_client, mock_resp = self._http_client_with_reply(reply)
+                self.assertIsInstance(http_client, TTransport.CReadableTransport)
+                _, client = self._protocol_client(http_client, protocol_class)
 
-        result = client.FetchResults(self._fetch_results_req())
+                result = client.FetchResults(self._fetch_results_req())
 
-        self.assertEqual(result.results.arrowBatches[0].batch, batch)
-        mock_resp.read.assert_called_once_with()
-
-        http_client.close()
-        self.assertEqual(http_client.read(1), b"")
+                self.assertEqual(
+                    [b.batch for b in result.results.arrowBatches], small + [big]
+                )
+                read_sizes = [c.args[0] for c in mock_resp.read.call_args_list]
+                self.assertLess(len(read_sizes), 10)
+                self.assertLessEqual(max(read_sizes), len(big))
 
     @unittest.skipUnless(
         _HAS_THRIFT_FASTBINARY, "thrift C extension (fastbinary) not built"
     )
     def test_http_client_reply_is_decoded_by_thrift_c_extension(self):
         """TBinaryProtocolAccelerated silently falls back to pure Python without
-        fastbinary, so assert the C decoder actually ran on the buffered body."""
+        fastbinary, so assert the C decoder actually ran on the streamed body."""
+        from thrift.protocol import TBinaryProtocol
+
         batch = b"x" * (20 * 1024 * 1024)
-        http_client, _ = self._http_client_with_reply(self._fetch_results_reply(batch))
-        protocol, client = self._accelerated_client(http_client)
+        http_client, _ = self._http_client_with_reply(
+            self._fetch_results_reply([batch])
+        )
+        protocol, client = self._protocol_client(
+            http_client, TBinaryProtocol.TBinaryProtocolAccelerated
+        )
         protocol._fast_decode = Mock(wraps=protocol._fast_decode)
 
         result = client.FetchResults(self._fetch_results_req())
@@ -479,14 +503,56 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(result.results.arrowBatches[0].batch, batch)
         protocol._fast_decode.assert_called()
 
-    def test_http_client_cstringio_refill_on_truncated_reply_raises(self):
-        http_client, _ = self._http_client_with_reply(b"")
-        with self.assertRaises(EOFError):
-            http_client.cstringio_refill(b"", 4)
+    def test_http_client_truncated_reply_raises_eof(self):
+        reply = self._fetch_results_reply([b"x" * 100])
+        for protocol_class in self._protocol_classes():
+            with self.subTest(protocol=protocol_class.__name__):
+                http_client, _ = self._http_client_with_reply(reply[:40])
+                _, client = self._protocol_client(http_client, protocol_class)
+                with self.assertRaises(EOFError):
+                    client.FetchResults(self._fetch_results_req())
+
+    @patch("time.sleep")
+    def test_truncated_503_reply_is_retried(self, mock_sleep):
+        """A 503 whose body is cut short must still reach the status-based retry.
+        urllib3 1.26 raises on an unbounded read() of a truncated body, but not on
+        read(amt), so the body must only be read in bounded chunks."""
+        import urllib3
+
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [("User-Agent", "test")],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+            _enable_v3_retries=False,
+        )
+        truncated_body = BytesIO(b"<html>Service Unavail")
+
+        def urllib3_1_26_read(amt=None):
+            if amt is None:
+                raise urllib3.exceptions.ProtocolError("IncompleteRead")
+            return truncated_body.read(amt)
+
+        unavailable = Mock(status=503, reason="", headers={"Retry-After": "1"})
+        unavailable.read.side_effect = urllib3_1_26_read
+        ok = Mock(status=200, reason="OK", headers={})
+        ok.read.side_effect = BytesIO(self._fetch_results_reply([b"x" * 100])).read
+        pool = thrift_backend._transport._THttpClient__pool = Mock()
+        pool.request.side_effect = [unavailable, ok]
+
+        result = thrift_backend.make_request(
+            thrift_backend._client.FetchResults, self._fetch_results_req()
+        )
+
+        self.assertEqual(result.results.arrowBatches[0].batch, b"x" * 100)
+        self.assertEqual(pool.request.call_count, 2)
 
     def test_reply_buffer_is_released_after_successful_make_request(self):
-        """make_request closes the transport on success too, so the buffered
-        reply body is not kept on the connection after it has been decoded."""
+        """make_request closes the transport on success too, so the last chunk
+        of the reply is not kept on the connection after it has been decoded."""
         batch = b"x" * (1024 * 1024)
         thrift_backend = ThriftDatabricksClient(
             "foobar",
@@ -498,7 +564,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             http_client=MagicMock(),
         )
         mock_resp = Mock(status=200, reason="OK", headers={})
-        mock_resp.read.return_value = self._fetch_results_reply(batch)
+        mock_resp.read.side_effect = BytesIO(self._fetch_results_reply([batch])).read
         thrift_backend._transport._THttpClient__pool = Mock()
         thrift_backend._transport._THttpClient__pool.request.return_value = mock_resp
 
