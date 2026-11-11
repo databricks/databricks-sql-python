@@ -163,6 +163,7 @@ Kernel support for `use_cloud_fetch=False` requires a native release containing
 `KERNEL_REV` selects that source for validation. The published native dependency
 must be updated alongside the connector release; released kernel 1.4.0 does not
 provide this behavior.
+Pass a Python `bool` for this option; string values such as `"false"` are not parsed.
 
 ## Session defaults & transactions
 
