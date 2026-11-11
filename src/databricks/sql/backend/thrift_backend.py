@@ -937,6 +937,7 @@ class ThriftDatabricksClient(DatabricksClient):
         status observed for the same ``CommandId`` instance by
         ``get_query_state``, or refresh the status when the caller resumes
         directly by command ID.
+        Failed or closed operations raise before result rows are fetched.
         """
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
