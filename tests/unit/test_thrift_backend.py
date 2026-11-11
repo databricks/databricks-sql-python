@@ -135,9 +135,19 @@ def test_metadata_catalog_escaping(
 
 
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
-@pytest.mark.parametrize("count", [7, 0, None])
+@pytest.mark.parametrize(
+    "operation_state,count,expected_count",
+    [
+        (ttypes.TOperationState.FINISHED_STATE, 7, 7),
+        (ttypes.TOperationState.FINISHED_STATE, 0, 0),
+        (ttypes.TOperationState.FINISHED_STATE, None, None),
+        (ttypes.TOperationState.RUNNING_STATE, 7, None),
+    ],
+)
 @pytest.mark.parametrize("cache_status", [True, False])
-def test_async_result_reads_status_count_and_preserves_rows(count, cache_status):
+def test_async_result_reads_only_terminal_status_count_and_preserves_rows(
+    operation_state, count, expected_count, cache_status
+):
     with (
         patch(
             "databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True
@@ -155,7 +165,7 @@ def test_async_result_reads_status_count_and_preserves_rows(count, cache_status)
         )
         operation_status = ttypes.TGetOperationStatusResp(
             status=ThriftBackendTestSuite.okay_status,
-            operationState=ttypes.TOperationState.FINISHED_STATE,
+            operationState=operation_state,
             numModifiedRows=count,
         )
         backend._poll_for_status = Mock(return_value=operation_status)
@@ -173,12 +183,23 @@ def test_async_result_reads_status_count_and_preserves_rows(count, cache_status)
         )
         cid = CommandId.from_thrift_handle(ThriftBackendTestSuite.operation_handle)
         if cache_status:
-            assert backend.get_query_state(cid) == CommandState.SUCCEEDED
+            expected_state = (
+                CommandState.SUCCEEDED
+                if operation_state == ttypes.TOperationState.FINISHED_STATE
+                else CommandState.RUNNING
+            )
+            assert backend.get_query_state(cid) == expected_state
         backend.get_execution_result(cid, Mock())
 
-        backend._poll_for_status.assert_called_once_with(cid.to_thrift_handle())
+        expected_polls = (
+            2
+            if cache_status and operation_state == ttypes.TOperationState.RUNNING_STATE
+            else 1
+        )
+        assert backend._poll_for_status.call_count == expected_polls
+        backend._poll_for_status.assert_called_with(cid.to_thrift_handle())
         response = result_set.call_args.kwargs["execute_response"]
-        assert response.num_modified_rows == count
+        assert response.num_modified_rows == expected_count
         assert result_set.call_args.kwargs["t_row_set"] is sentinel.counter_rows
 
 
