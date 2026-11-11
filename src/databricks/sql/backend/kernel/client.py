@@ -16,8 +16,6 @@ Phase 1 gaps documented in the integration design:
 
 - ``query_tags`` on execute is not supported (kernel exposes
   ``statement_conf`` but PyO3 doesn't surface it).
-- Volume PUT/GET (staging operations): kernel has no Volume API
-  yet. Users on Thrift-only paths.
 """
 
 from __future__ import annotations
@@ -74,41 +72,6 @@ logger = logging.getLogger(__name__)
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
-# Leading verbs of SQL volume/staging statements. Detected by the
-# leading token (case-insensitive) so the kernel backend can fail loud
-# on staging ops it can't service — see ``execute_command``.
-_STAGING_VERBS = ("PUT", "GET", "REMOVE")
-
-
-def _strip_leading_sql_comments(sql: str) -> str:
-    """Strip leading whitespace and SQL comments (``-- …`` line and
-    ``/* … */`` block, possibly several) from ``sql``, returning the
-    remainder.
-
-    Needed so staging detection sees the real leading verb: a
-    comment-prefixed staging op (``-- upload\\nPUT …`` or
-    ``/* c */ PUT …``, common in ETL scripts) must still be classified
-    as staging, or it would slip past the guard into the silent-no-op
-    bug. Block comments do not nest in Databricks SQL, so a simple
-    scan-to-``*/`` is correct.
-    """
-    i = 0
-    n = len(sql)
-    while i < n:
-        if sql[i].isspace():
-            i += 1
-        elif sql.startswith("--", i):
-            # Line comment: skip to end of line (or string).
-            nl = sql.find("\n", i)
-            i = n if nl == -1 else nl + 1
-        elif sql.startswith("/*", i):
-            # Block comment: skip to closing */ (or end if unterminated).
-            close = sql.find("*/", i + 2)
-            i = n if close == -1 else close + 2
-        else:
-            break
-    return sql[i:]
-
 
 def _is_not_found(exc: BaseException) -> bool:
     """True iff ``exc`` is a kernel ``NotFound`` error (HTTP 404 /
@@ -143,21 +106,6 @@ def _catalog_or_none(value: Optional[str]) -> Optional[str]:
     if value is None or value in ("%", "*"):
         return None
     return value
-
-
-def _is_staging_statement(operation: str) -> bool:
-    """True iff ``operation`` is a volume/staging statement (PUT / GET /
-    REMOVE).
-
-    Strips leading whitespace + SQL comments first (so a comment-
-    prefixed staging op is still caught), then matches the leading token
-    only — so a normal query that merely *contains* the word (e.g.
-    ``SELECT 'GET' AS x``) isn't misflagged.
-    """
-    stripped = _strip_leading_sql_comments(operation)
-    # First whitespace-delimited token, uppercased.
-    verb = stripped.split(None, 1)[0].upper() if stripped.strip() else ""
-    return verb in _STAGING_VERBS
 
 
 def _kernel_session_accepts_kwarg(name: str) -> bool:
@@ -575,28 +523,14 @@ class KernelDatabricksClient(DatabricksClient):
         # ``_async_statements`` and closed by ``close_command``); the sync
         # path drops it in finally. ``close_stmt`` is the post-success
         # decision flag — it stays True on sync, flips to False on async.
-        # Volume/staging (PUT/GET/REMOVE) is not supported on the kernel
-        # path: the kernel returns the staging control row as a normal
-        # result set (``KernelResultSet.is_staging_operation`` is always
-        # False), so the connector's ``_handle_staging_operation`` never
-        # fires and NO file is transferred. Rather than silently no-op
-        # (the Thrift path performs the presigned-URL upload/download),
-        # fail loud at the call site so ETL scripts don't ingest
-        # stale/missing data. Detected by the leading SQL verb — the
-        # only signal available pre-execute, since the kernel exposes no
-        # staging marker today.
-        if _is_staging_statement(operation):
-            raise NotSupportedError(
-                "Volume / staging operations (PUT / GET / REMOVE) are not "
-                "supported on the kernel backend (use_kernel=True); the file "
-                "transfer would silently not happen. Use the Thrift backend "
-                "for staging operations."
-            )
-
         close_stmt = True
         try:
             try:
                 stmt.set_sql(operation)
+                allowed_paths = cursor.connection.staging_allowed_local_path
+                if isinstance(allowed_paths, str):
+                    allowed_paths = [allowed_paths]
+                stmt.set_staging_allowed_local_paths(allowed_paths or [])
                 stmt.set_row_limit(row_limit)
                 if query_tags:
                     # Per-statement query tags. The kernel serialises the

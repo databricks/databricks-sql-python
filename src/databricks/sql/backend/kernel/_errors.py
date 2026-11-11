@@ -39,6 +39,7 @@ flow is visible at the call site, the helper is a pure function
 from __future__ import annotations
 
 import logging
+from typing import Union
 
 from databricks.sql.exc import (
     DatabaseError,
@@ -115,7 +116,9 @@ _CODE_TO_EXCEPTION = {
 }
 
 
-def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
+def reraise_kernel_error(
+    exc: "_kernel.KernelError",
+) -> "Union[Error, FileNotFoundError]":
     """Convert a ``databricks_sql_kernel.KernelError`` to a PEP 249
     exception with the kernel's structured attributes forwarded onto
     the new instance.
@@ -126,6 +129,9 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     """
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
+    file_transfer = getattr(exc, "error_code", None) == "FILE_TRANSFER_ERROR"
+    if file_transfer:
+        cls = ProgrammingError if code == "PermissionDenied" else OperationalError
 
     # For ServerOperationError, reproduce the Thrift backend's
     # ``context`` dict so callers that read
@@ -141,7 +147,15 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
             "operation-id": getattr(exc, "query_id", None),
             "diagnostic-info": getattr(exc, "diagnostic_info", None),
         }
-    new = cls(getattr(exc, "message", str(exc)), context)
+    message = getattr(exc, "message", str(exc))
+    if (
+        file_transfer
+        and code == "NotFound"
+        and getattr(exc, "http_status", None) is None
+    ):
+        new = FileNotFoundError(message)
+    else:
+        new = cls(message, context)
 
     for attr in (
         "code",
@@ -162,7 +176,9 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     return new
 
 
-def wrap_kernel_exception(what: str, exc: BaseException) -> "Error":
+def wrap_kernel_exception(
+    what: str, exc: BaseException
+) -> "Union[Error, FileNotFoundError]":
     """Map any exception from a PyO3 call site to a PEP 249 exception.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.

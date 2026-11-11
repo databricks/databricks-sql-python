@@ -393,9 +393,7 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_open_session_passes_geospatial_representation_to_kernel(
-    monkeypatch, enabled
-):
+def test_open_session_passes_geospatial_representation_to_kernel(monkeypatch, enabled):
     captured = {}
 
     def fake_session(*, enable_geospatial_support=True, **kw):
@@ -807,70 +805,43 @@ def test_execute_command_forwards_row_limit(row_limit):
     stmt.set_row_limit.assert_called_once_with(row_limit)
 
 
-# ---------------------------------------------------------------------------
-# Staging / volume operations — fail loud (not silently no-op)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
-    "operation",
+    "allowed, expected",
     [
-        "PUT '/local/f.csv' INTO '/Volumes/c/s/v/f.csv'",
-        "  put '/local/f' into '/Volumes/...'",  # leading ws + lowercase
-        "GET '/Volumes/c/s/v/f' TO '/local/f'",
-        "REMOVE '/Volumes/c/s/v/f'",
+        (None, []),
+        ("/tmp/files", ["/tmp/files"]),
+        (["/tmp/a", "/tmp/b"], ["/tmp/a", "/tmp/b"]),
     ],
 )
-def test_staging_operation_raises_not_supported(operation):
-    """Volume/staging PUT/GET/REMOVE must FAIL LOUD on the kernel path
-    (the kernel can't perform the presigned-URL transfer; silently
-    no-opping would make ETL ingest stale/missing data)."""
+@pytest.mark.parametrize("async_op", [False, True])
+def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_op):
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
+    cursor.connection.staging_allowed_local_path = allowed
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-
-    with pytest.raises(NotSupportedError, match="staging"):
-        c.execute_command(
-            operation=operation,
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            lz4_compression=False,
-            cursor=cursor,
-            use_cloud_fetch=False,
-            parameters=[],
-            async_op=False,
-            enforce_embedded_schema_correctness=False,
-        )
-
-
-@pytest.mark.parametrize(
-    "operation, is_staging",
-    [
-        ("PUT '/f' INTO '/v'", True),
-        ("get '/v' to '/f'", True),
-        ("REMOVE '/v'", True),
-        # Comment-prefixed staging ops MUST still be caught — otherwise
-        # they slip into the silent-no-op bug this guard exists to close
-        # (regression: review #1 on PR #825). ETL scripts commonly
-        # prefix statements with comments.
-        ("-- upload the file\nPUT '/f' INTO '/v'", True),
-        ("/* staging */ PUT '/f' INTO '/v'", True),
-        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", True),  # mixed, multiple
-        ("   \n\t PUT '/f' INTO '/v'", True),  # leading whitespace only
-        ("SELECT 'GET' AS x", False),  # word appears but not leading verb
-        ("SELECT * FROM puts", False),
-        ("-- PUT in a comment\nSELECT 1", False),  # verb only in comment
-        ("/* PUT */ SELECT 1", False),
-        ("INSERT INTO t VALUES (1)", False),
-        ("", False),
-        ("-- just a comment", False),  # comment only, no statement
-    ],
-)
-def test_is_staging_statement(operation, is_staging):
-    assert kernel_client._is_staging_statement(operation) is is_staging
+    stmt = c._kernel_session.statement.return_value
+    executed = MagicMock(
+        statement_id="00000000-0000-0000-0000-000000000001",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    stmt.execute.return_value = executed
+    stmt.submit.return_value = executed
+    c.execute_command(
+        operation="PUT '/tmp/files/input' INTO '/Volumes/c/s/v/input'",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=async_op,
+        enforce_embedded_schema_correctness=False,
+    )
+    stmt.set_staging_allowed_local_paths.assert_called_once_with(expected)
+    (stmt.submit if async_op else stmt.execute).assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -2582,3 +2553,21 @@ class TestKernelHttpHeadersForwarding:
             monkeypatch, [("Authorization", "Bearer x"), ("x-databricks-org-id", "1")]
         )
         assert "http_headers" not in captured
+
+
+@pytest.mark.parametrize(
+    "code, http_status, expected",
+    [
+        ("PermissionDenied", None, ProgrammingError),
+        ("NotFound", None, FileNotFoundError),
+        ("NotFound", 404, OperationalError),
+        ("NetworkError", None, OperationalError),
+    ],
+)
+def test_file_transfer_error_matches_thrift_exception(code, http_status, expected):
+    error = _FakeKernelError(code=code, message="File transfer failed")
+    error.error_code = "FILE_TRANSFER_ERROR"
+    error.http_status = http_status
+    result = kernel_client._reraise_kernel_error(error)
+    assert type(result) is expected
+    assert result.error_code == "FILE_TRANSFER_ERROR"
