@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -810,6 +811,8 @@ def test_execute_command_forwards_row_limit(row_limit):
     [
         (None, []),
         ("/tmp/files", ["/tmp/files"]),
+        (Path("/tmp/files"), ["/tmp/files"]),
+        ([Path("/tmp/a"), Path("/tmp/b")], ["/tmp/a", "/tmp/b"]),
         (["/tmp/a", "/tmp/b"], ["/tmp/a", "/tmp/b"]),
     ],
 )

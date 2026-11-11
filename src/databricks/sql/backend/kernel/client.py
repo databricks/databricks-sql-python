@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import os
 import re
 import threading
 import uuid
@@ -588,11 +589,11 @@ class KernelDatabricksClient(DatabricksClient):
                     )
                 stmt.set_sql(operation)
                 allowed_paths = cursor.connection.staging_allowed_local_path
-                if isinstance(allowed_paths, str):
+                if isinstance(allowed_paths, (str, os.PathLike)):
                     allowed_paths = [allowed_paths]
                 set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)
                 if callable(set_paths):
-                    set_paths(allowed_paths or [])
+                    set_paths([os.fsdecode(path) for path in allowed_paths or []])
                 elif _is_staging_statement(operation):
                     raise NotSupportedError(
                         "Volume transfers require a databricks-sql-kernel wheel "
