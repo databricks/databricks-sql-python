@@ -206,12 +206,12 @@ installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
    `enable_query_result_lz4_compression`.
 5. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
-7. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
+6. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
-8. `force_enable_telemetry`.
-9. `_port` and `_connection_uri`.
-10. `_pool_connections` and `_proxy_auth_method` do not configure the
+7. `force_enable_telemetry`.
+8. `_port` and `_connection_uri`.
+9. `_pool_connections` and `_proxy_auth_method` do not configure the
     kernel-owned network stack.
 
 ### Supported on Kernel, missing / ignored on Thrift

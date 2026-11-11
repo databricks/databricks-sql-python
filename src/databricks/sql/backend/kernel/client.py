@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 import threading
 import uuid
 from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
@@ -577,6 +578,14 @@ class KernelDatabricksClient(DatabricksClient):
         close_stmt = True
         try:
             try:
+                if re.match(
+                    r"""PUT\s+(['"])__input_stream__\1(?:\s|$)""",
+                    _strip_leading_sql_comments(operation),
+                    re.IGNORECASE,
+                ):
+                    raise NotSupportedError(
+                        "Streaming PUT is not supported by the kernel backend."
+                    )
                 stmt.set_sql(operation)
                 allowed_paths = cursor.connection.staging_allowed_local_path
                 if isinstance(allowed_paths, str):

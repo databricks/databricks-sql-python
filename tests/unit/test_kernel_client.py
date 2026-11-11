@@ -845,6 +845,25 @@ def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_o
 
 
 @pytest.mark.parametrize(
+    "query",
+    [
+        "PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
+        "/* upload */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
+    ],
+)
+def test_kernel_rejects_streaming_put(query):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    with pytest.raises(NotSupportedError, match="Streaming PUT"):
+        c.execute_command(
+            query, MagicMock(), 1, 1, False, MagicMock(), False, [], False, False
+        )
+    stmt = c._kernel_session.statement.return_value
+    stmt.execute.assert_not_called()
+    stmt.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
     "operation",
     [
         "SELECT 1",
@@ -2599,6 +2618,7 @@ class TestKernelHttpHeadersForwarding:
     "code, http_status, expected",
     [
         ("PermissionDenied", None, ProgrammingError),
+        ("PermissionDenied", 403, OperationalError),
         ("NotFound", None, FileNotFoundError),
         ("NotFound", 404, OperationalError),
         ("NetworkError", None, OperationalError),

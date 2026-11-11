@@ -131,7 +131,11 @@ def reraise_kernel_error(
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
     file_transfer = getattr(exc, "error_code", None) == "FILE_TRANSFER_ERROR"
     if file_transfer:
-        cls = ProgrammingError if code == "PermissionDenied" else OperationalError
+        cls = (
+            ProgrammingError
+            if code == "PermissionDenied" and getattr(exc, "http_status", None) is None
+            else OperationalError
+        )
 
     # For ServerOperationError, reproduce the Thrift backend's
     # ``context`` dict so callers that read
