@@ -17,6 +17,9 @@ The PyO3 boundary can produce two flavours of exception:
   "only PEP 249 exception types cross the boundary". Wrapped in
   ``OperationalError`` here.
 
+Local missing transfer files deliberately retain the built-in
+``FileNotFoundError`` contract.
+
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
 ``fetch_next_batch`` on the same kernel handles) can share them
@@ -133,7 +136,8 @@ def reraise_kernel_error(
     if file_transfer:
         cls = (
             ProgrammingError
-            if code == "PermissionDenied" and getattr(exc, "http_status", None) is None
+            if code in ("PermissionDenied", "InvalidArgument")
+            and getattr(exc, "http_status", None) is None
             else OperationalError
         )
 
@@ -185,9 +189,10 @@ def reraise_kernel_error(
 def wrap_kernel_exception(
     what: str, exc: BaseException
 ) -> "Union[Error, FileNotFoundError]":
-    """Map any exception from a PyO3 call site to a PEP 249 exception.
+    """Map a PyO3 exception to the connector's public error contract.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.
+      A local missing transfer file maps to ``FileNotFoundError``.
     - Already-PEP-249 ``Error`` (e.g. raised by an inner caller that
       already mapped) → passed through unchanged.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3

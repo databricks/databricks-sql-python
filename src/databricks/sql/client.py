@@ -1394,7 +1394,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        # Kernel backends reject staging operations before reaching these handlers.
+        # The kernel completes configured transfers before reaching these handlers.
         assert self.connection.http_client is not None
         with open(local_file, "rb") as fh:
             r = self.connection.http_client.request(

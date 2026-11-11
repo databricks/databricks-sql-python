@@ -2621,6 +2621,7 @@ class TestKernelHttpHeadersForwarding:
     "code, http_status, expected",
     [
         ("PermissionDenied", None, ProgrammingError),
+        ("InvalidArgument", None, ProgrammingError),
         ("PermissionDenied", 403, OperationalError),
         ("NotFound", None, FileNotFoundError),
         ("NotFound", 404, OperationalError),

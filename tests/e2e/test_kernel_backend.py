@@ -367,7 +367,9 @@ def test_schemas_with_empty_string_filter_matches_nothing(conn):
         assert cur.fetchall() == []
 
 
-@pytest.mark.parametrize("empty_filter", ["schema_name", "table_name", "column_name"])
+@pytest.mark.parametrize(
+    "empty_filter", ["schema_name", "table_name", "column_name"]
+)
 def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
     filters = {
         "catalog_name": "system",
@@ -797,6 +799,13 @@ def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
             cur.execute(f"CREATE SCHEMA {qualified}")
             try:
                 cur.execute(f"CREATE VOLUME {qualified}.files")
+
+                with sql.connect(**kernel_conn_params) as no_paths:
+                    with no_paths.cursor() as denied_cursor:
+                        with pytest.raises(ProgrammingError):
+                            denied_cursor.execute(
+                                f"PUT '{source}' INTO '{remote}' OVERWRITE"
+                            )
 
                 def execute(query):
                     if async_op:
