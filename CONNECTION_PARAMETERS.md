@@ -158,6 +158,12 @@ to change without notice.
 | `_use_arrow_native_decimals`          | `bool` |   ✅   |   ❌   | `True`        | Thrift wire encoding for `DECIMAL`: `True` → native Arrow `decimal128`, `False` → Arrow string. **No value-level effect**, though: the connector unconditionally re-casts the column back to `decimal128` (`convert_decimals_in_arrow_table`, `thrift_backend.py`), so both `fetchall()` and `fetchall_arrow()` yield `Decimal` / `decimal128(p,s)` either way (verified live). Not forwarded to the kernel, which always returns native Arrow decimals. |
 | `_use_arrow_native_timestamps`        | `bool` |   ✅   |   ❌   | `True`        | Thrift wire encoding for `TIMESTAMP`: `True` → native Arrow timestamp (→ Python `datetime`), `False` → Arrow string (→ Python **`str`**). **Unlike decimals there is no re-cast**, so `False` genuinely surfaces strings — and `cursor.description` still reports the type code as `'timestamp'`, a mismatch to watch for (verified live). Note the connector always also sends the `spark.thriftserver.arrowBasedRowSet.timestampAsString=false` conf, but the `timestampAsArrow=False` flag wins. Not forwarded to the kernel, which always returns native Arrow timestamps. |
 
+Kernel support for `use_cloud_fetch=False` requires a native release containing
+[databricks-sql-kernel#436](https://github.com/databricks/databricks-sql-kernel/pull/436).
+`KERNEL_REV` selects that source for validation. The published native dependency
+must be updated alongside the connector release; released kernel 1.4.0 does not
+provide this behavior.
+
 ## Session defaults & transactions
 
 | Option                        | Type                              | Thrift | Kernel | Default Value | Note                                                                                                                       |
