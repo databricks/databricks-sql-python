@@ -220,7 +220,9 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
         self.headers = self.__resp.headers
 
         # Thrift decodes the reply one field at a time; reading each field
-        # straight from urllib3 costs far more than the decode itself.
+        # straight from urllib3 costs far more than the decode itself. The
+        # trade-off: the raw body (bounded by the request's maxBytes) is held
+        # alongside the decoded objects until close() at the end of the RPC.
         self.__rbuf = BytesIO(self.__resp.read())
 
         logger.info(
