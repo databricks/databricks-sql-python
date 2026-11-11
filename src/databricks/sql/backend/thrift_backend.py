@@ -6,6 +6,7 @@ import math
 import re
 import time
 import threading
+import weakref
 from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
@@ -267,6 +268,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
+        self._terminal_operation_statuses = weakref.WeakKeyDictionary()
         self._session_id_hex = None
 
     @property
@@ -929,17 +931,21 @@ class ThriftDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         """Fetch a completed async result and its latest operation metadata.
 
-        FetchResults does not carry ``numModifiedRows``, so Thrift refreshes
-        operation status before constructing the result set.
+        FetchResults does not carry ``numModifiedRows``, so reuse a terminal
+        status observed by ``get_query_state`` or refresh it when the caller
+        resumes directly by command ID.
         """
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        operation_status = self._poll_for_status(thrift_handle)
-        self._check_command_not_in_error_or_closed_state(
-            thrift_handle, operation_status
-        )
+        with self._request_lock:
+            operation_status = self._terminal_operation_statuses.pop(command_id, None)
+        if operation_status is None:
+            operation_status = self._poll_for_status(thrift_handle)
+            self._check_command_not_in_error_or_closed_state(
+                thrift_handle, operation_status
+            )
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
@@ -1040,6 +1046,9 @@ class ThriftDatabricksClient(DatabricksClient):
         state = CommandState.from_thrift_state(operation_state)
         if state is None:
             raise ValueError(f"Unknown command state: {operation_state}")
+        if state == CommandState.SUCCEEDED:
+            with self._request_lock:
+                self._terminal_operation_statuses[command_id] = poll_resp
         return state
 
     @staticmethod
