@@ -2,7 +2,7 @@
 
 # Unreleased
 - Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
-- Report `cursor.rowcount` after asynchronous DML completes. With `use_kernel=True`, this requires a kernel release containing async affected-row count support; kernel 1.4.0 continues to report `-1`.
+- Report `cursor.rowcount` after asynchronous DML completes on both the Thrift and kernel backends, preserving zero counts and fetched result rows.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.

@@ -1714,8 +1714,10 @@ class Cursor:
                 self.active_command_id, self
             )
 
-            num_modified_rows = getattr(
-                self.active_result_set, "num_modified_rows", None
+            num_modified_rows = (
+                self.active_result_set.num_modified_rows
+                if self.active_result_set
+                else None
             )
             self.rowcount = num_modified_rows if num_modified_rows is not None else -1
 

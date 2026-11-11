@@ -1233,26 +1233,7 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
-class _RaisingModifiedRows:
-    @property
-    def num_modified_rows(self):
-        raise RuntimeError("unavailable")
-
-
-@pytest.mark.parametrize(
-    ("handle", "expected"),
-    [
-        (types.SimpleNamespace(num_modified_rows=7), 7),
-        (types.SimpleNamespace(num_modified_rows=lambda: 8), 8),
-        (types.SimpleNamespace(), None),
-        (_RaisingModifiedRows(), None),
-    ],
-)
-def test_read_num_modified_rows_compatibility_shapes(handle, expected):
-    assert kernel_client._read_num_modified_rows(handle) == expected
-
-
-@pytest.mark.parametrize("count", [7, 0, None, "unavailable"])
+@pytest.mark.parametrize("count", [7, 0, None])
 @pytest.mark.parametrize("source", ["owner", "reader", "attached"])
 def test_async_result_count_after_await(source, count):
     c = _make_client()
@@ -1273,25 +1254,22 @@ def test_async_result_count_after_await(source, count):
     stream.arrow_schema.return_value = pa.schema([("num_affected_rows", pa.int64())])
     stream.fetch_next_batch.side_effect = [
         pa.record_batch(
-            [[count if isinstance(count, int) else 1]], names=["num_affected_rows"]
+            [[count if count is not None else 1]], names=["num_affected_rows"]
         ),
         None,
     ]
 
     def await_result():
-        if count != "unavailable":
-            handle.num_modified_rows = count
+        handle.num_modified_rows = count
         return stream
 
     handle.await_result.side_effect = await_result
     cursor = MagicMock(arraysize=100, buffer_size_bytes=1024)
     rs = c.get_execution_result(cid, cursor)
 
-    assert rs.num_modified_rows == (None if count == "unavailable" else count)
+    assert rs.num_modified_rows == count
     stream.fetch_next_batch.assert_not_called()
-    assert [list(row) for row in rs.fetchall()] == [
-        [count if isinstance(count, int) else 1]
-    ]
+    assert [list(row) for row in rs.fetchall()] == [[count if count is not None else 1]]
 
 
 def test_get_execution_result_uses_retained_owning_handle_first():
