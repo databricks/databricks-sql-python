@@ -52,7 +52,7 @@ class Session:
         self,
         server_hostname: str,
         http_path: str,
-        http_client: UnifiedHttpClient,
+        http_client: Optional[UnifiedHttpClient],
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,

@@ -33,6 +33,60 @@ class TestSession:
         "enable_telemetry": False,
     }
 
+    @pytest.mark.parametrize(
+        "backend_kwargs, backend_name",
+        [
+            ({}, "ThriftDatabricksClient"),
+            ({"use_kernel": False}, "ThriftDatabricksClient"),
+            ({"use_sea": True}, "SeaDatabricksClient"),
+        ],
+    )
+    @pytest.mark.parametrize("proxy_uri", [None, "http://proxy.example.com:8081"])
+    def test_python_backends_keep_http_client(
+        self, backend_kwargs, backend_name, proxy_uri
+    ):
+        with patch(f"{self.PACKAGE_NAME}.session.{backend_name}") as backend, patch(
+            f"{self.PACKAGE_NAME}.client.UnifiedHttpClient"
+        ) as http_client, patch(
+            f"{self.PACKAGE_NAME}.client.TelemetryClientFactory.get_telemetry_client"
+        ) as telemetry:
+            http_client.return_value.using_proxy.return_value = proxy_uri is not None
+            http_client.return_value.proxy_uri = proxy_uri
+            conn = databricks.sql.connect(
+                **self.DUMMY_CONNECTION_ARGS, **backend_kwargs
+            )
+            try:
+                http_client.assert_called_once()
+                assert conn.http_client is http_client.return_value
+                assert conn.session.http_client is conn.http_client
+                assert backend.call_args.kwargs["http_client"] is conn.http_client
+                params = telemetry.return_value.export_initial_telemetry_log.call_args.kwargs[
+                    "driver_connection_params"
+                ]
+                assert params.use_proxy is (proxy_uri is not None)
+                assert params.use_system_proxy is (proxy_uri is not None)
+                if proxy_uri:
+                    assert params.proxy_host_info.host_url == "proxy.example.com"
+                    assert params.proxy_host_info.port == 8081
+                else:
+                    assert params.proxy_host_info is None
+            finally:
+                conn.close()
+            backend.return_value.close_session.assert_called_once()
+            http_client.return_value.close.assert_called_once()
+
+    def test_conflicting_kernel_and_sea_flags_preserve_error(self):
+        with patch(
+            f"{self.PACKAGE_NAME}.client.UnifiedHttpClient",
+            side_effect=AssertionError(
+                "Explicit kernel must not create a Python client"
+            ),
+        ) as http_client, pytest.raises(ValueError, match="mutually exclusive"):
+            databricks.sql.connect(
+                **self.DUMMY_CONNECTION_ARGS, use_kernel=True, use_sea=True
+            )
+        http_client.assert_not_called()
+
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
@@ -878,6 +932,92 @@ class TestReydenThriftFallback:
         )
         args.update(overrides)
         return databricks.sql.connect(**args)
+
+    @pytest.mark.parametrize("route", ["explicit", "recovery", "cached"])
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
+    def test_kernel_http_client_lifecycle(self, mock_thrift, route):
+        from databricks.sql.backend import reyden_warehouse_cache
+        from databricks.sql.result_set import ResultSet
+
+        explicit = route == "explicit"
+        mock_thrift.return_value.open_session.side_effect = self._reject()
+        if route == "cached":
+            reyden_warehouse_cache.mark_reyden(self.HOST, "wh-reyden")
+
+        with self._fake_kernel() as kernel, patch(
+            f"{self.PACKAGE}.client.UnifiedHttpClient"
+        ) as http_client, patch(
+            f"{self.PACKAGE}.client.TelemetryClientFactory.get_telemetry_client"
+        ) as telemetry:
+            if explicit:
+                http_client.side_effect = AssertionError(
+                    "Explicit kernel must not create a Python client"
+                )
+            http_client.return_value.using_proxy.return_value = True
+            http_client.return_value.proxy_uri = "http://proxy.example.com:8081"
+            result = Mock(spec=ResultSet, is_staging_operation=False)
+            result.fetchall.return_value = [(1,)]
+            kernel.return_value.execute_command.return_value = result
+            conn = self._connect(
+                **({"use_kernel": True} if explicit else {}),
+                enable_telemetry=True,
+                force_enable_telemetry=True,
+            )
+            try:
+                assert conn.session.use_kernel is True
+                assert conn.telemetry_enabled is False
+                assert conn.http_client is (
+                    None if explicit else http_client.return_value
+                )
+                assert conn.session.http_client is conn.http_client
+                assert kernel.call_args.kwargs["http_client"] is conn.http_client
+                params = telemetry.return_value.export_initial_telemetry_log.call_args.kwargs[
+                    "driver_connection_params"
+                ]
+                assert params.use_proxy is (not explicit)
+                assert params.use_system_proxy is (not explicit)
+                if explicit:
+                    assert params.proxy_host_info is None
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    assert cursor.fetchall() == [(1,)]
+                kernel.return_value.execute_command.assert_called_once()
+            finally:
+                conn.close()
+            kernel.return_value.close_session.assert_called_once()
+            if explicit:
+                http_client.assert_not_called()
+            else:
+                http_client.assert_called_once()
+                http_client.return_value.close.assert_called_once()
+            assert mock_thrift.return_value.open_session.call_count == (
+                1 if route == "recovery" else 0
+            )
+
+    @pytest.mark.parametrize("failure_stage", ["backend", "open"])
+    def test_explicit_kernel_failure_preserves_error_and_telemetry(self, failure_stage):
+        with self._fake_kernel() as kernel, patch(
+            f"{self.PACKAGE}.client.UnifiedHttpClient",
+            side_effect=AssertionError(
+                "Explicit kernel must not create a Python client"
+            ),
+        ) as http_client, patch(
+            f"{self.PACKAGE}.client.TelemetryClientFactory.connection_failure_log"
+        ) as failure_log:
+            if failure_stage == "backend":
+                error = ImportError("kernel package unavailable")
+                kernel.side_effect = error
+            else:
+                error = OperationalError("kernel could not open session")
+                kernel.return_value.open_session.side_effect = error
+            with pytest.raises(type(error)) as excinfo:
+                self._connect(use_kernel=True, enable_telemetry=True)
+            assert excinfo.value is error
+            http_client.assert_not_called()
+            failure_log.assert_called_once()
+            assert failure_log.call_args.kwargs["enable_telemetry"] is (
+                failure_stage == "backend"
+            )
 
     @pytest.mark.parametrize("route", ["explicit", "recovery", "cached"])
     @pytest.mark.parametrize(
