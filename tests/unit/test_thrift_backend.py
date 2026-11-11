@@ -443,6 +443,56 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(EOFError):
             http_client.cstringio_refill(b"", 4)
 
+    def test_reply_buffer_is_released_after_successful_make_request(self):
+        """make_request closes the transport on success too, so the buffered
+        reply body is not kept on the connection after it has been decoded."""
+        from thrift.protocol import TBinaryProtocol
+        from thrift.transport import TTransport
+        from databricks.sql.thrift_api.TCLIService import TCLIService
+
+        batch = b"x" * (1024 * 1024)
+        resp = ttypes.TFetchResultsResp(
+            status=ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS),
+            hasMoreRows=False,
+            results=ttypes.TRowSet(
+                startRowOffset=0,
+                rows=[],
+                arrowBatches=[ttypes.TSparkArrowBatch(batch=batch, rowCount=1)],
+            ),
+        )
+        reply = TTransport.TMemoryBuffer()
+        reply_proto = TBinaryProtocol.TBinaryProtocol(reply)
+        reply_proto.writeMessageBegin("FetchResults", 2, 0)  # REPLY
+        TCLIService.FetchResults_result(success=resp).write(reply_proto)
+        reply_proto.writeMessageEnd()
+
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [("User-Agent", "test")],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        mock_resp = Mock(status=200, reason="OK", headers={})
+        mock_resp.read.return_value = reply.getvalue()
+        thrift_backend._transport._THttpClient__pool = Mock()
+        thrift_backend._transport._THttpClient__pool.request.return_value = mock_resp
+
+        op_handle = ttypes.TOperationHandle(
+            operationId=ttypes.THandleIdentifier(guid=b"g" * 16, secret=b"s" * 16),
+            operationType=ttypes.TOperationType.EXECUTE_STATEMENT,
+            hasResultSet=True,
+        )
+        result = thrift_backend.make_request(
+            thrift_backend._client.FetchResults,
+            ttypes.TFetchResultsReq(operationHandle=op_handle, orientation=0, maxRows=1),
+        )
+
+        self.assertEqual(result.results.arrowBatches[0].batch, batch)
+        self.assertEqual(thrift_backend._transport.cstringio_buf.getvalue(), b"")
+
     @patch("databricks.sql.backend.thrift_backend.unsafe_logger")
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_unsafe_logger_formats_payloads_lazily(
