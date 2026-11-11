@@ -73,6 +73,30 @@ logger = logging.getLogger(__name__)
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
 
+def _strip_leading_sql_comments(sql: str) -> str:
+    """Skip SQL comments so unsupported transfers cannot appear successful."""
+    i = 0
+    n = len(sql)
+    while i < n:
+        if sql[i].isspace():
+            i += 1
+        elif sql.startswith("--", i):
+            nl = sql.find("\n", i)
+            i = n if nl == -1 else nl + 1
+        elif sql.startswith("/*", i):
+            close = sql.find("*/", i + 2)
+            i = n if close == -1 else close + 2
+        else:
+            break
+    return sql[i:]
+
+
+def _is_staging_statement(operation: str) -> bool:
+    stripped = _strip_leading_sql_comments(operation)
+    verb = stripped.split(None, 1)[0].upper() if stripped.strip() else ""
+    return verb in ("PUT", "GET", "REMOVE")
+
+
 def _is_not_found(exc: BaseException) -> bool:
     """True iff ``exc`` is a kernel ``NotFound`` error (HTTP 404 /
     ``STATEMENT_NOT_FOUND``).
@@ -530,7 +554,14 @@ class KernelDatabricksClient(DatabricksClient):
                 allowed_paths = cursor.connection.staging_allowed_local_path
                 if isinstance(allowed_paths, str):
                     allowed_paths = [allowed_paths]
-                stmt.set_staging_allowed_local_paths(allowed_paths or [])
+                set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)
+                if callable(set_paths):
+                    set_paths(allowed_paths or [])
+                elif _is_staging_statement(operation):
+                    raise NotSupportedError(
+                        "Volume transfers require a databricks-sql-kernel wheel "
+                        "with staging_allowed_local_paths support."
+                    )
                 stmt.set_row_limit(row_limit)
                 if query_tags:
                     # Per-statement query tags. The kernel serialises the

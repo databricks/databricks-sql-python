@@ -844,6 +844,46 @@ def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_o
     (stmt.submit if async_op else stmt.execute).assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "SELECT 1",
+        "PUT 'a' INTO 'b'",
+        "-- comment\nGET 'a' TO 'b'",
+        "/* comment */ REMOVE 'a'",
+    ],
+)
+def test_execute_command_with_older_kernel(operation):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    stmt = c._kernel_session.statement.return_value
+    del stmt.set_staging_allowed_local_paths
+    stmt.execute.return_value = MagicMock(
+        statement_id="00000000-0000-0000-0000-000000000001",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    kwargs = dict(
+        operation=operation,
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=MagicMock(),
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+    if operation == "SELECT 1":
+        c.execute_command(**kwargs)
+        stmt.execute.assert_called_once()
+    else:
+        with pytest.raises(NotSupportedError, match="Volume transfers require"):
+            c.execute_command(**kwargs)
+        stmt.execute.assert_not_called()
+        stmt.close.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # Sync cancel wiring (cursor.cancel() during a blocking execute())
 # ---------------------------------------------------------------------------

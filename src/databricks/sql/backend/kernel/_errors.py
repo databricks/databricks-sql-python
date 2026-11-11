@@ -148,6 +148,7 @@ def reraise_kernel_error(
             "diagnostic-info": getattr(exc, "diagnostic_info", None),
         }
     message = getattr(exc, "message", str(exc))
+    # Local missing files have no HTTP status; remote missing files carry 404.
     if (
         file_transfer
         and code == "NotFound"

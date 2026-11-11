@@ -171,7 +171,7 @@ to change without notice.
 | `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ✅   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). Shared cursor code performs the rendering before dispatch, so both backends honor it identically. |
 | `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
 | `fetch_autocommit_from_server`| `bool`                            |   ✅   |   ✅   | `False`       | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value.                           |
-| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ❌   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. **Thrift-only** — the kernel has no Volume API yet.          |
+| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ✅   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. Kernel transfers require a wheel exposing `Statement.set_staging_allowed_local_paths` (kernel [#439](https://github.com/databricks/databricks-sql-kernel/pull/439)); older wheels reject transfer commands.          |
 
 ## Telemetry
 
@@ -206,7 +206,6 @@ installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
    `enable_query_result_lz4_compression`.
 5. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
-6. `staging_allowed_local_path` (Volume `PUT`/`GET`).
 7. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
