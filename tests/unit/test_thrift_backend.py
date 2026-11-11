@@ -509,6 +509,96 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(result.results.arrowBatches[0].batch, batch)
         self.assertEqual(thrift_backend._transport.cstringio_buf.getvalue(), b"")
 
+    @unittest.skipUnless(
+        _HAS_THRIFT_FASTBINARY, "thrift C extension (fastbinary) not built"
+    )
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
+    def test_accelerated_protocol_encodes_backend_requests_identically(
+        self, t_http_client_class
+    ):
+        """TBinaryProtocolAccelerated also moves request encoding to C. Requests
+        built by the backend must serialize byte-for-byte as with pure Python."""
+        import datetime
+        from thrift.protocol import TBinaryProtocol
+        from thrift.transport import TTransport
+        from databricks.sql.parameters import native
+
+        class Captured(Exception):
+            pass
+
+        captured = []
+
+        def capture(method, request, *args, **kwargs):
+            captured.append(request)
+            raise Captured()
+
+        thrift_backend = ThriftDatabricksClient(
+            "foobar",
+            443,
+            "path",
+            [],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            http_client=MagicMock(),
+        )
+        thrift_backend.make_request = capture
+        session_id = SessionId.from_thrift_handle(
+            ttypes.TSessionHandle(
+                sessionId=ttypes.THandleIdentifier(guid=b"g" * 16, secret=b"s" * 16)
+            )
+        )
+        params = [
+            native.IntegerParameter(value=42, name="i"),
+            native.BigIntegerParameter(value=2**40, name="b"),
+            native.StringParameter(value="héllo", name="s"),
+            native.DecimalParameter(value=Decimal("12.345"), name="d"),
+            native.TimestampParameter(
+                value=datetime.datetime(2026, 11, 11, 1, 2, 3), name="t"
+            ),
+            native.DateParameter(value=datetime.date(2026, 11, 11), name="dt"),
+            native.BooleanParameter(value=True, name="bo"),
+            native.VoidParameter(value=None, name="v"),
+            native.ArrayParameter(value=[1, 2, 3], name="a"),
+            native.MapParameter(value={"k": "v"}, name="m"),
+        ]
+        calls = [
+            lambda: thrift_backend.open_session(
+                {"use_cached_result": False, "ansi_mode": "true"}, "main", "default"
+            ),
+            lambda: thrift_backend.execute_command(
+                operation="SELECT :i, :s",
+                session_id=session_id,
+                max_rows=100000,
+                max_bytes=104857600,
+                lz4_compression=True,
+                cursor=Mock(),
+                use_cloud_fetch=True,
+                parameters=[p.as_tspark_param(named=True) for p in params],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+                row_limit=10,
+                query_tags={"team": "peco", "flag": None},
+            ),
+            lambda: thrift_backend.get_tables(
+                session_id, 100000, 104857600, Mock(), "main", "%", "t%", ["TABLE"]
+            ),
+            lambda: thrift_backend.get_columns(
+                session_id, 100000, 104857600, Mock(), "main", "%", "%", "%"
+            ),
+        ]
+        for call in calls:
+            with self.assertRaises(Captured):
+                call()
+
+        self.assertEqual(len(captured), len(calls))
+        for request in captured:
+            pure, accelerated = TTransport.TMemoryBuffer(), TTransport.TMemoryBuffer()
+            request.write(TBinaryProtocol.TBinaryProtocol(pure))
+            request.write(TBinaryProtocol.TBinaryProtocolAccelerated(accelerated))
+            self.assertEqual(
+                accelerated.getvalue(), pure.getvalue(), type(request).__name__
+            )
+
     @patch("databricks.sql.backend.thrift_backend.unsafe_logger")
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_unsafe_logger_formats_payloads_lazily(
