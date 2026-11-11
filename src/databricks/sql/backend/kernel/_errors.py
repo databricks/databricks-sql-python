@@ -17,8 +17,8 @@ The PyO3 boundary can produce two flavours of exception:
   "only PEP 249 exception types cross the boundary". Wrapped in
   ``OperationalError`` here.
 
-Local missing transfer files deliberately retain the built-in
-``FileNotFoundError`` contract.
+Local missing transfer files use the built-in ``FileNotFoundError`` class;
+the OS ``errno`` and ``filename`` attributes are unavailable.
 
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
@@ -192,7 +192,8 @@ def wrap_kernel_exception(
     """Map a PyO3 exception to the connector's public error contract.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.
-      A local missing transfer file maps to ``FileNotFoundError``.
+      A local missing transfer file maps to ``FileNotFoundError`` without
+      the OS ``errno`` or ``filename`` attributes.
     - Already-PEP-249 ``Error`` (e.g. raised by an inner caller that
       already mapped) → passed through unchanged.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3

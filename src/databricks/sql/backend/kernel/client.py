@@ -588,7 +588,11 @@ class KernelDatabricksClient(DatabricksClient):
                         "Streaming PUT is not supported by the kernel backend."
                     )
                 stmt.set_sql(operation)
-                allowed_paths = cursor.connection.staging_allowed_local_path
+                allowed_paths = (
+                    cursor.connection.staging_allowed_local_path
+                    if _is_staging_statement(operation)
+                    else None
+                )
                 if isinstance(allowed_paths, (str, os.PathLike)):
                     allowed_paths = [allowed_paths]
                 set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)

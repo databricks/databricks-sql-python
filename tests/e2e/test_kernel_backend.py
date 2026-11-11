@@ -367,9 +367,7 @@ def test_schemas_with_empty_string_filter_matches_nothing(conn):
         assert cur.fetchall() == []
 
 
-@pytest.mark.parametrize(
-    "empty_filter", ["schema_name", "table_name", "column_name"]
-)
+@pytest.mark.parametrize("empty_filter", ["schema_name", "table_name", "column_name"])
 def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
     filters = {
         "catalog_name": "system",

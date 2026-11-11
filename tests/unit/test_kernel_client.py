@@ -847,6 +847,24 @@ def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_o
     (stmt.submit if async_op else stmt.execute).assert_called_once()
 
 
+@pytest.mark.parametrize("allowed", [123, [object()]])
+def test_non_transfer_query_ignores_malformed_local_paths(allowed):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.connection.staging_allowed_local_path = allowed
+    stmt = c._kernel_session.statement.return_value
+    stmt.execute.return_value = MagicMock(
+        statement_id="00000000-0000-0000-0000-000000000001",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c.execute_command(
+        "SELECT 1", MagicMock(), 1, 1, False, cursor, False, [], False, False
+    )
+    stmt.set_staging_allowed_local_paths.assert_called_once_with([])
+    stmt.execute.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "query",
     [

@@ -1394,7 +1394,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        # The kernel completes configured transfers before reaching these handlers.
+        # Kernel backends transfer files natively and never dispatch to these handlers.
         assert self.connection.http_client is not None
         with open(local_file, "rb") as fh:
             r = self.connection.http_client.request(
