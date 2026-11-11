@@ -121,9 +121,11 @@ _CODE_TO_EXCEPTION = {
 def reraise_kernel_error(
     exc: "_kernel.KernelError",
 ) -> "Union[Error, FileNotFoundError]":
-    """Convert a ``databricks_sql_kernel.KernelError`` to a PEP 249
-    exception with the kernel's structured attributes forwarded onto
-    the new instance.
+    """Map a kernel error and forward its structured attributes.
+
+    Local ``FILE_TRANSFER_ERROR`` errors with ``NotFound`` and no HTTP
+    status use the built-in ``FileNotFoundError``; other errors use
+    PEP 249 exception classes.
 
     The returned exception is raised by callers with ``raise ... from
     exc``; the ``from`` clause is what sets ``__cause__``, so we don't
