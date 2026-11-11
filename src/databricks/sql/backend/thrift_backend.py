@@ -268,7 +268,9 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
-        self._terminal_operation_statuses = weakref.WeakKeyDictionary()
+        self._terminal_operation_statuses: weakref.WeakKeyDictionary[
+            CommandId, ttypes.TGetOperationStatusResp
+        ] = weakref.WeakKeyDictionary()
         self._session_id_hex = None
 
     @property
