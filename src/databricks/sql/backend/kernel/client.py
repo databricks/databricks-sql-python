@@ -138,6 +138,14 @@ def _async_statement_reader(owner: Any) -> Any:
     return reader()
 
 
+def _read_num_modified_rows(handle: Any) -> Optional[int]:
+    try:
+        modified = getattr(handle, "num_modified_rows", None)
+        return modified() if callable(modified) else modified
+    except Exception:
+        return None
+
+
 def _catalog_or_none(value: Optional[str]) -> Optional[str]:
     """Map supported all-catalog wildcards to the kernel's unset filter."""
     if value is None or value in ("%", "*"):
@@ -691,12 +699,7 @@ class KernelDatabricksClient(DatabricksClient):
         # default. ``getattr`` guards against an older kernel wheel that
         # predates the pyo3 getter. NB the Thrift backend also hardcodes
         # ``-1`` here, so this makes the kernel path *exceed* Thrift.
-        try:
-            modified = getattr(executed, "num_modified_rows", None)
-            if callable(modified):
-                modified = modified()
-        except Exception:
-            modified = None
+        modified = _read_num_modified_rows(executed)
         if modified is not None:
             cursor.rowcount = modified
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
@@ -969,7 +972,7 @@ class KernelDatabricksClient(DatabricksClient):
             result_set = self._make_result_set(stream, cursor, command_id)
             # Older kernel wheels do not expose this value. Keep them compatible
             # while allowing a newer binding to populate async rowcount.
-            result_set.num_modified_rows = getattr(handle, "num_modified_rows", None)
+            result_set.num_modified_rows = _read_num_modified_rows(handle)
             return result_set
         except Exception as exc:
             raise _wrap_kernel_exception("get_execution_result", exc) from exc

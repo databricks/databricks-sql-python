@@ -1233,6 +1233,25 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
+class _RaisingModifiedRows:
+    @property
+    def num_modified_rows(self):
+        raise RuntimeError("unavailable")
+
+
+@pytest.mark.parametrize(
+    ("handle", "expected"),
+    [
+        (types.SimpleNamespace(num_modified_rows=7), 7),
+        (types.SimpleNamespace(num_modified_rows=lambda: 8), 8),
+        (types.SimpleNamespace(), None),
+        (_RaisingModifiedRows(), None),
+    ],
+)
+def test_read_num_modified_rows_compatibility_shapes(handle, expected):
+    assert kernel_client._read_num_modified_rows(handle) == expected
+
+
 @pytest.mark.parametrize("count", [7, 0, None, "unavailable"])
 @pytest.mark.parametrize("source", ["owner", "reader", "attached"])
 def test_async_result_count_after_await(source, count):
