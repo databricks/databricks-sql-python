@@ -597,7 +597,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_deeply_nested_native_parameter_is_sent(self):
         """Requests are encoded in pure Python as before: thrift's C encoder rejects
         a native array nested 62+ levels once wrapped in ExecuteStatement_args.
-        Sends the full RPC through make_request and checks the bytes on the wire."""
+        Sends the full RPC through make_request and checks the bytes on the wire.
+        The protocol type checks also hold where fastbinary isn't built."""
         from thrift.protocol import TBinaryProtocol
         from thrift.transport import TTransport
         from databricks.sql.parameters import native
@@ -639,6 +640,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
             http_client=MagicMock(),
+        )
+        self.assertIsInstance(
+            thrift_backend._client._iprot, TBinaryProtocol.TBinaryProtocolAccelerated
+        )
+        self.assertNotIsInstance(
+            thrift_backend._client._oprot, TBinaryProtocol.TBinaryProtocolAccelerated
         )
         ok = Mock(status=200, reason="OK", headers={})
         ok.read.side_effect = BytesIO(reply).read
