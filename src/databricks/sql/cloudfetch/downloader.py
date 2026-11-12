@@ -133,6 +133,12 @@ class ResultSetDownloadHandler:
         start_time = time.time()
 
         for attempt in range(1, _BODY_READ_ATTEMPTS + 1):
+            if attempt > 1:
+                # Re-check before the retry's GET
+                ResultSetDownloadHandler._validate_link(
+                    self.link, self.settings.link_expiry_buffer_secs
+                )
+                self._raise_if_cancelled()
             with self._http_client.request_context(
                 method=HttpMethod.GET,
                 url=self.link.fileLink,

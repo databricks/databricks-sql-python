@@ -347,6 +347,17 @@ class DownloaderCancelTests(unittest.TestCase):
         self.assertEqual(file.file_bytes, b"abcd")
         self.assertEqual(http_client.request_context.call_count, 2)
 
+    def test_no_retry_after_a_cancel(self):
+        event = threading.Event()
+        broken = self._Response(
+            [ProtocolError("connection reset")], before_chunk=lambda i: event.set()
+        )
+        http_client = self._http_client(broken, self._Response([b"ab"]))
+
+        with self.assertRaises(OperationalError):
+            self._handler(http_client, event, False).run()
+        self.assertEqual(http_client.request_context.call_count, 1)
+
     def test_body_errors_give_up_after_three_attempts(self):
         http_client = self._http_client(
             *[self._Response([ProtocolError("connection reset")]) for _ in range(3)]
