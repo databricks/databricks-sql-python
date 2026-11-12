@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     # runtime -- which keeps the (Apache Thrift) ``thrift`` package out of the
     # cloud-fetch code path used by the SEA and kernel backends. See the
     # ``test_lazy_thrift_import`` regression test.
+    import threading
+
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,7 @@ class ResultSetDownloadHandler:
         session_id_hex: Optional[str],
         statement_id: str,
         http_client,
+        cancel_event: Optional[threading.Event] = None,
     ):
         self.settings = settings
         self.link = link
@@ -78,6 +81,11 @@ class ResultSetDownloadHandler:
         self.chunk_id = chunk_id
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
+        self._cancel_event = cancel_event
+
+    def _raise_if_cancelled(self):
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise Error("CloudFetch download cancelled: the result set was closed")
 
     @log_latency(StatementType.QUERY)
     def run(self) -> DownloadedFile:
@@ -100,6 +108,7 @@ class ResultSetDownloadHandler:
             self.link, self.settings.link_expiry_buffer_secs
         )
 
+        self._raise_if_cancelled()
         start_time = time.time()
 
         with self._http_client.request_context(
@@ -111,6 +120,8 @@ class ResultSetDownloadHandler:
             if response.status >= 400:
                 raise Exception(f"HTTP {response.status}: {response.data.decode()}")
             compressed_data = response.data
+        # Skip decompressing a file nobody will read
+        self._raise_if_cancelled()
 
         # Log download metrics
         download_duration = time.time() - start_time

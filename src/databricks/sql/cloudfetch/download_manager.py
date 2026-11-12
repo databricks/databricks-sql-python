@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from concurrent.futures import ThreadPoolExecutor, Future
-from typing import List, Union, Tuple, Optional, TYPE_CHECKING
+from typing import Callable, List, Union, Tuple, Optional, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
@@ -20,6 +21,9 @@ if TYPE_CHECKING:
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
+
+# Called with the number of free download slots; returns (new links, has more rows).
+LinkSource = Callable[[int], Tuple[List["TSparkArrowResultLink"], bool]]
 
 
 class ResultFileDownloadManager:
@@ -56,6 +60,17 @@ class ResultFileDownloadManager:
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
         self._http_client = http_client
+        self._link_source: Optional[LinkSource] = None
+        # Set on shutdown so downloads that have not started (or finished) stop early.
+        self._cancelled = threading.Event()
+
+    def set_link_source(self, link_source: LinkSource) -> None:
+        """Fetch further links on demand.
+
+        Whenever a download slot is free and no links are pending, ``link_source`` is
+        asked for more, so the next links arrive while earlier files still download.
+        """
+        self._link_source = link_source
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -98,6 +113,25 @@ class ResultFileDownloadManager:
         return file
 
     def _schedule_downloads(self):
+        self._submit_pending_links()
+        while (
+            self._link_source is not None
+            and not self._pending_links
+            and len(self._download_tasks) < self._max_download_threads
+        ):
+            links, has_more = self._link_source(
+                self._max_download_threads - len(self._download_tasks)
+            )
+            if not has_more:
+                self._link_source = None
+            for link in links:
+                self.add_link(link)
+            self._submit_pending_links()
+            if not links and self._download_tasks:
+                # Ask again on the next call instead of polling the server now
+                break
+
+    def _submit_pending_links(self):
         """
         While download queue has a capacity, peek pending links and submit them to thread pool.
         """
@@ -119,6 +153,7 @@ class ResultFileDownloadManager:
                 session_id_hex=self.session_id_hex,
                 statement_id=self.statement_id,
                 http_client=self._http_client,
+                cancel_event=self._cancelled,
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
@@ -144,6 +179,8 @@ class ResultFileDownloadManager:
 
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool
+        self._link_source = None
         self._pending_links = []
         self._download_tasks = []
-        self._thread_pool.shutdown(wait=False)
+        self._cancelled.set()
+        self._thread_pool.shutdown(wait=False, cancel_futures=True)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING, Tuple
+from typing import List, Optional, TYPE_CHECKING, Tuple, cast
 
 import logging
 import pandas
@@ -214,6 +214,7 @@ class ThriftResultSet(ResultSet):
         max_download_threads: int = 10,
         ssl_options=None,
         has_more_rows: bool = True,
+        cloudfetch_prefetch: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -230,6 +231,8 @@ class ThriftResultSet(ResultSet):
             :param max_download_threads: Maximum number of download threads for cloud fetch
             :param ssl_options: SSL options for cloud fetch
             :param has_more_rows: Whether there are more rows to fetch
+            :param cloudfetch_prefetch: Request further CloudFetch links while earlier
+                files still download, instead of one batch at a time
         """
         self.num_chunks = 0
 
@@ -238,6 +241,8 @@ class ThriftResultSet(ResultSet):
         self.has_more_rows = has_more_rows
         self._max_download_threads = max_download_threads
         self._max_link_bytes = 0
+        self._cloudfetch_prefetch = cloudfetch_prefetch
+        self._links_end_offset = 0
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -283,6 +288,51 @@ class ThriftResultSet(ResultSet):
         # Initialize results queue if not provided
         if not self.results:
             self._fill_results_buffer()
+        else:
+            self._start_prefetch()
+
+    def _start_prefetch(self) -> None:
+        # Hand the remaining CloudFetch links to the queue: its download manager then
+        # asks for more links whenever a download slot frees up, rather than this result
+        # set fetching the next batch only after the current one is fully consumed.
+        queue = self.results
+        if (
+            not self._cloudfetch_prefetch
+            or not isinstance(queue, ThriftCloudFetchQueue)
+            or not queue.result_links
+            or not self.has_more_rows
+            or self.has_been_closed_server_side
+        ):
+            return
+        self._links_end_offset = max(
+            link.startRowOffset + link.rowCount for link in queue.result_links
+        )
+        queue.download_manager.set_link_source(self._fetch_more_links)
+        self.has_more_rows = False
+
+    def _fetch_more_links(self, free_slots: int):
+        # One link per free slot plus half a pool queued ahead, so slots refill without a
+        # round trip each time. A queued link waits for at most that many files to be
+        # consumed before it starts downloading.
+        wanted = (free_slots + self._max_download_threads // 2) * self._max_link_bytes
+        max_bytes = min(
+            max(self.buffer_size_bytes, wanted),
+            _CLOUDFETCH_MAX_BUFFERS_PER_FETCH * self.buffer_size_bytes,
+        )
+        backend = cast("ThriftDatabricksClient", self.backend)
+        links, has_more_rows = backend.fetch_result_links(
+            command_id=self.command_id,
+            max_rows=self.arraysize,
+            max_bytes=max_bytes,
+            expected_row_start_offset=self._links_end_offset,
+        )
+        if links:
+            self._note_link_sizes(links)
+            self.num_chunks += len(links)
+            self._links_end_offset = max(
+                link.startRowOffset + link.rowCount for link in links
+            )
+        return links, has_more_rows
 
     def _note_link_sizes(self, links) -> None:
         for link in links:
@@ -322,6 +372,7 @@ class ThriftResultSet(ResultSet):
         self.num_chunks += result_links_count
         if isinstance(results, ThriftCloudFetchQueue):
             self._note_link_sizes(results.result_links)
+        self._start_prefetch()
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]

@@ -6,7 +6,7 @@ import math
 import re
 import time
 import threading
-from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
@@ -160,6 +160,9 @@ class ThriftDatabricksClient(DatabricksClient):
         #  (defaults to None)
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
+        # _cloudfetch_prefetch
+        #  Request the next CloudFetch links while earlier files still download.
+        #  False fetches one batch of links at a time. Defaults to True
 
         logger.debug(
             "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)"
@@ -192,6 +195,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         # Cloud fetch
         self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self._cloudfetch_prefetch = bool(kwargs.get("_cloudfetch_prefetch", True))
 
         self._ssl_options = ssl_options
         self._auth_provider = auth_provider
@@ -1001,6 +1005,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=resp.results,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            cloudfetch_prefetch=self._cloudfetch_prefetch,
             has_more_rows=has_more_rows,
         )
 
@@ -1155,6 +1160,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 t_row_set=t_row_set,
                 max_download_threads=self.max_download_threads,
                 ssl_options=self._ssl_options,
+                cloudfetch_prefetch=self._cloudfetch_prefetch,
                 has_more_rows=has_more_rows,
             )
 
@@ -1193,6 +1199,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            cloudfetch_prefetch=self._cloudfetch_prefetch,
             has_more_rows=has_more_rows,
         )
 
@@ -1239,6 +1246,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            cloudfetch_prefetch=self._cloudfetch_prefetch,
             has_more_rows=has_more_rows,
         )
 
@@ -1289,6 +1297,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            cloudfetch_prefetch=self._cloudfetch_prefetch,
             has_more_rows=has_more_rows,
         )
 
@@ -1339,6 +1348,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            cloudfetch_prefetch=self._cloudfetch_prefetch,
             has_more_rows=has_more_rows,
         )
 
@@ -1374,17 +1384,13 @@ class ThriftDatabricksClient(DatabricksClient):
         cursor.active_command_id = command_id
         self._check_direct_results_for_error(resp.directResults, self._host)
 
-    def fetch_results(
+    def _fetch_next(
         self,
         command_id: CommandId,
         max_rows: int,
         max_bytes: int,
         expected_row_start_offset: int,
-        lz4_compressed: bool,
-        arrow_schema_bytes,
-        description,
-        chunk_id: int,
-        use_cloud_fetch=True,
+        retryable: bool,
     ):
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -1404,7 +1410,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
 
         # Fetch results in Inline mode with FETCH_NEXT orientation are not idempotent and hence not retried
-        resp = self.make_request(self._client.FetchResults, req, use_cloud_fetch)
+        resp = self.make_request(self._client.FetchResults, req, retryable)
         if resp.results.startRowOffset > expected_row_start_offset:
             raise DataError(
                 "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
@@ -1412,6 +1418,36 @@ class ThriftDatabricksClient(DatabricksClient):
                 ),
                 host_url=self._host,
             )
+        return resp
+
+    def fetch_result_links(
+        self,
+        command_id: CommandId,
+        max_rows: int,
+        max_bytes: int,
+        expected_row_start_offset: int,
+    ) -> Tuple[List[ttypes.TSparkArrowResultLink], bool]:
+        """Fetch the next CloudFetch links of a result: (links, has_more_rows)."""
+        resp = self._fetch_next(
+            command_id, max_rows, max_bytes, expected_row_start_offset, True
+        )
+        return resp.results.resultLinks or [], resp.hasMoreRows
+
+    def fetch_results(
+        self,
+        command_id: CommandId,
+        max_rows: int,
+        max_bytes: int,
+        expected_row_start_offset: int,
+        lz4_compressed: bool,
+        arrow_schema_bytes,
+        description,
+        chunk_id: int,
+        use_cloud_fetch=True,
+    ):
+        resp = self._fetch_next(
+            command_id, max_rows, max_bytes, expected_row_start_offset, use_cloud_fetch
+        )
 
         queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
