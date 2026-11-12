@@ -74,6 +74,7 @@ logger = logging.getLogger(__name__)
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
+
 def _strip_leading_sql_comments(sql: str) -> str:
     """Strip leading whitespace and SQL comments (``-- …`` line and
     ``/* … */`` block, possibly several) from ``sql``, returning the
