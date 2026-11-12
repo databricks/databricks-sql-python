@@ -315,6 +315,35 @@ class TestConvertArrowBasedSet:
             assert flags & mmap.MAP_PRIVATE
             assert not flags & mmap.MAP_SHARED
 
+    def test_map_grows_when_the_size_estimate_is_too_small(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
+            utils.mmap, "mmap", wraps=mmap.mmap
+        ) as mmap_spy:
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        mmap_spy.assert_called_once()
+        assert result.equals(table)
+
+    def test_falls_back_to_the_heap_when_the_map_cannot_grow(self):
+        class NoResize(mmap.mmap):
+            def resize(self, newsize):
+                raise SystemError("mmap: resizing not available--no mremap()")
+
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
+            utils.mmap, "mmap", NoResize
+        ):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        assert result.equals(table)
+
     def test_table_keeps_the_mapping_alive(self):
         table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
 

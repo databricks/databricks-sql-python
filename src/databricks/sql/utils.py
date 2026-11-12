@@ -1013,53 +1013,74 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
 
 
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
-    parts = [schema_bytes]
+    compressed_size = sum(len(arrow_batch.batch) for arrow_batch in arrow_batches)
+    stream = _ArrowStreamBuffer(
+        len(schema_bytes)
+        + compressed_size * (_LZ4_RATIO_ESTIMATE if lz4_compressed else 1)
+    )
+    stream.append(schema_bytes)
     n_rows = 0
     for arrow_batch in arrow_batches:
         n_rows += arrow_batch.rowCount
-        parts.append(
+        stream.append(
             lz4.frame.decompress(arrow_batch.batch)
             if lz4_compressed
             else arrow_batch.batch
         )
-    arrow_table = pyarrow.ipc.open_stream(_join_arrow_stream(parts)).read_all()
+    arrow_table = pyarrow.ipc.open_stream(stream.getbuffer()).read_all()
     return arrow_table, n_rows
 
 
 # Below glibc's default mmap threshold a dedicated mapping only adds a syscall.
 _INLINE_ARROW_MMAP_MIN_BYTES = 128 * 1024
+# Untouched pages of the reservation cost no memory; overflow grows the map.
+_LZ4_RATIO_ESTIMATE = 4
 
 
-def _join_arrow_stream(parts: List[bytes]):
-    """Concatenate an inline Arrow IPC stream into its own memory map.
+class _ArrowStreamBuffer:
+    """Accumulates an inline Arrow IPC stream in a private anonymous memory map.
 
     The table reads the stream zero-copy, so this buffer lives as long as the result.
     On the malloc heap such buffers often stayed resident after the result was freed
-    (~1 GB per 1 GB of inline results); a private mapping is returned to the OS.
+    (~1 GB per 1 GB of inline results); a mapping is returned to the OS. Small streams
+    and mmap failures use a bytearray, as before.
     """
-    size = sum(len(part) for part in parts)
-    if size >= _INLINE_ARROW_MMAP_MIN_BYTES:
-        try:
-            out = _populated_private_mmap(size)
-        except (OSError, ValueError):
-            pass
+
+    def __init__(self, size_estimate: int):
+        self._map: Optional[mmap.mmap] = None
+        self._bytes = bytearray()
+        self._size = 0
+        if size_estimate >= _INLINE_ARROW_MMAP_MIN_BYTES:
+            try:
+                self._map = _private_anonymous_mmap(size_estimate)
+            except (OSError, ValueError):
+                pass
+
+    def append(self, data: bytes) -> None:
+        end = self._size + len(data)
+        if self._map is not None and end > len(self._map):
+            try:
+                self._map.resize(max(end, 2 * len(self._map)))
+            except (OSError, SystemError, ValueError):
+                # No mremap (e.g. macOS): continue on the heap
+                self._bytes += self._map[: self._size]
+                self._map = None
+        if self._map is not None:
+            self._map[self._size : end] = data
         else:
-            view = memoryview(out)
-            pos = 0
-            for part in parts:
-                view[pos : pos + len(part)] = part
-                pos += len(part)
-            view.release()
-            return pyarrow.py_buffer(out)
-    return b"".join(parts)
+            self._bytes += data
+        self._size = end
+
+    def getbuffer(self):
+        if self._map is None:
+            return self._bytes
+        return pyarrow.py_buffer(self._map).slice(0, self._size)
 
 
-def _populated_private_mmap(size: int) -> mmap.mmap:
+def _private_anonymous_mmap(size: int) -> mmap.mmap:
     # Python defaults anonymous maps to MAP_SHARED (shmem, shared with forked children).
-    # The whole map is written right away, so pre-faulting it is cheaper.
     if hasattr(mmap, "MAP_PRIVATE"):
-        flags = mmap.MAP_PRIVATE | getattr(mmap, "MAP_POPULATE", 0)
-        return mmap.mmap(-1, size, flags=flags)
+        return mmap.mmap(-1, size, flags=mmap.MAP_PRIVATE)
     return mmap.mmap(-1, size)
 
 
