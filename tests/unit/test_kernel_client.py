@@ -2756,6 +2756,7 @@ def test_file_transfer_error_matches_thrift_exception(
     assert result.http_status == http_status
     if issubclass(expected, OSError):
         assert result.errno is None
+        assert result.filename is None
 
 
 @pytest.mark.parametrize(
@@ -2782,10 +2783,11 @@ def test_local_transfer_error_preserves_os_code(code, error_code, raw, expected)
     if os.name == "nt":
         raw = 2 if expected is FileNotFoundError else 5
     error.os_error_code = raw
+    error.os_error_filename = "local-file.bin"
     result = kernel_client._reraise_kernel_error(error)
     assert type(result) is expected
     assert result.os_error_code == raw
-    assert result.filename is None
+    assert result.filename == "local-file.bin"
     if os.name == "nt":
         assert result.winerror == raw
         assert result.errno == (errno.ENOENT if raw == 2 else errno.EACCES)

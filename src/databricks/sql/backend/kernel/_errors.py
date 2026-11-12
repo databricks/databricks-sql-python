@@ -17,8 +17,8 @@ The PyO3 boundary can produce two flavours of exception:
   ``OperationalError`` here.
 
 Local missing transfer files use the built-in ``FileNotFoundError`` class;
-the original OS error code is preserved when available. The ``filename``
-attribute is unavailable.
+the original OS error code and requested local filename are preserved
+when available.
 
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
@@ -163,13 +163,14 @@ def reraise_kernel_error(
         }
     message = getattr(exc, "message", str(exc))
     os_error_code = getattr(exc, "os_error_code", None)
+    os_error_filename = getattr(exc, "os_error_filename", None)
     file_error_args: tuple
     if os_error_code is None:
         file_error_args = (message,)
     elif os.name == "nt":
-        file_error_args = (0, message, None, os_error_code)
+        file_error_args = (0, message, os_error_filename, os_error_code)
     else:
-        file_error_args = (os_error_code, message)
+        file_error_args = (os_error_code, message, os_error_filename)
     new: Union[Error, OSError]
     # Local missing files have no HTTP status; remote missing files carry 404.
     if (
@@ -192,6 +193,7 @@ def reraise_kernel_error(
         "error_code",
         "vendor_code",
         "os_error_code",
+        "os_error_filename",
         "http_status",
         "retryable",
         "query_id",
@@ -211,7 +213,7 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSErro
 
     - ``KernelError`` → mapped class with structured attrs forwarded.
       A local missing transfer file maps to ``FileNotFoundError`` with
-      its original OS error code when available, without ``filename``.
+      its original OS error code and requested filename when available.
     - Already-mapped PEP 249 or local transfer errors → passed through
       unchanged so nested callers preserve their class and attributes.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3
