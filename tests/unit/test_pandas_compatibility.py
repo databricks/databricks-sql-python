@@ -6,7 +6,9 @@ including nullable integers, floats, booleans, strings, decimal, dates,
 timestamps, binary, and nested types.
 """
 
+import copy
 import datetime
+import pickle
 import unittest
 from decimal import Decimal
 from unittest.mock import Mock, patch
@@ -22,6 +24,7 @@ except ImportError:
 
 from databricks.sql import result_set
 from databricks.sql.result_set import ThriftResultSet
+from databricks.sql.types import Row
 
 
 def _make_result_set(description, disable_pandas=False):
@@ -547,6 +550,73 @@ class TestConvertArrowTableInSlices(unittest.TestCase):
         table = self._table()
         self.assertEqual(self._to_numpy_row_counts(table, 7), [7])
         self.assertEqual(self._to_numpy_row_counts(table.select([7, 8]), 3), [7])
+
+    def test_rows_behave_like_rows_built_by_the_row_factory(self):
+        names = ["a", "b", "a", "c"]
+        table = pa.table(
+            [
+                pa.array([1, None, 3, 4, 5], pa.int64()),
+                pa.array(["x", "y", None, "z", "w"]),
+                pa.array([1.5, 2.5, None, 4.5, 5.5]),
+                pa.array([Decimal("1.10"), None, Decimal("3.30"), None, None]),
+            ],
+            names=names,
+        )
+        description = [(n, "string", None, None, None, None, None) for n in names]
+        for disable_pandas in (False, True):
+            for rows_per_conversion in (2, 100):
+                rs = _make_result_set(description, disable_pandas=disable_pandas)
+                with patch.object(
+                    result_set, "_ROWS_PER_CONVERSION", rows_per_conversion
+                ):
+                    rows = rs._convert_arrow_table(table)
+                self.assertEqual(len(rows), table.num_rows)
+                self.assertTrue(all(r.__fields__ is rows[0].__fields__ for r in rows))
+                for row in rows:
+                    self._assert_same_as_factory_row(names, row)
+
+    def test_more_values_than_column_names_raises_like_row(self):
+        table = pa.table({"a": [1], "b": [2]})
+        rs = _make_result_set([("a", "bigint", None, None, None, None, None)])
+        with self.assertRaises(ValueError) as raised:
+            rs._convert_arrow_table(table)
+        with self.assertRaises(ValueError) as expected:
+            Row("a")(1, 2)
+        self.assertEqual(str(raised.exception), str(expected.exception))
+
+    def _assert_same_as_factory_row(self, names, row):
+        expected = Row(*names)(*tuple(row))
+        self.assertIs(type(row), Row)
+        self.assertIsInstance(row, tuple)
+        self.assertIs(type(row.__fields__), type(expected.__fields__))
+        self.assertEqual(row.__fields__, expected.__fields__)
+        self.assertEqual(vars(row).keys(), vars(expected).keys())
+        self.assertEqual(row, expected)
+        self.assertEqual(hash(row), hash(expected))
+        self.assertEqual(repr(row), repr(expected))
+        self.assertEqual(row.asDict(), expected.asDict())
+        self.assertEqual(row.asDict(recursive=True), expected.asDict(recursive=True))
+        for i, name in enumerate(names):
+            self.assertIs(row[i], expected[i])
+            self.assertIs(row[name], expected[name])
+            self.assertIs(getattr(row, name), getattr(expected, name))
+            self.assertIn(name, row)
+        self.assertEqual(row[1:], expected[1:])
+        self.assertIs(type(row[1:]), type(expected[1:]))
+        self.assertNotIn("missing", row)
+        with self.assertRaises(AttributeError):
+            row.missing
+        with self.assertRaises(RuntimeError):
+            row.a = 1
+        self.assertEqual(pickle.dumps(row), pickle.dumps(expected))
+        for clone in (
+            pickle.loads(pickle.dumps(row)),
+            copy.copy(row),
+            copy.deepcopy(row),
+        ):
+            self.assertIs(type(clone), Row)
+            self.assertEqual(clone, expected)
+            self.assertEqual(repr(clone), repr(expected))
 
     def test_duration_next_to_nested_column(self):
         table = self._table().select([9, 7])

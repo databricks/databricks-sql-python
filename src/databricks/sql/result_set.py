@@ -44,6 +44,21 @@ def _converts_per_value(arrow_type) -> bool:
     )
 
 
+def _make_rows(ResultRow: Row, values) -> List[Row]:
+    """The rows ``[ResultRow(*v) for v in values]``, without three Python calls per
+    row. ``values`` is a 2-D object array."""
+    if values.shape[1] > len(ResultRow):
+        return [ResultRow(*v) for v in values]  # raises Row's usual error
+    new_row = tuple.__new__
+    rows: List[Row] = []
+    append = rows.append
+    for v in values:
+        row = new_row(Row, v)
+        row.__fields__ = ResultRow
+        append(row)
+    return rows
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -157,7 +172,7 @@ class ResultSet(ABC):
         # element is NULL) are converted whole, as before.
         per_value = [_converts_per_value(f.type) for f in table.schema]
         if table.num_rows <= _ROWS_PER_CONVERSION or not any(per_value):
-            return [ResultRow(*v) for v in to_object_array(table_renamed)]
+            return _make_rows(ResultRow, to_object_array(table_renamed))
 
         whole = [i for i, ok in enumerate(per_value) if not ok]
         whole_values = to_object_array(table_renamed.select(whole)) if whole else None
@@ -173,7 +188,7 @@ class ResultSet(ABC):
             res = to_object_array(sliced_table.slice(offset, _ROWS_PER_CONVERSION))
             if whole_values is not None:
                 res[:, whole] = whole_values[offset : offset + len(res)]
-            rows.extend([ResultRow(*v) for v in res])
+            rows.extend(_make_rows(ResultRow, res))
         return rows
 
     @property
