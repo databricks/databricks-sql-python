@@ -13,8 +13,11 @@ client touches (``Session``, ``KernelError``, ``Statement``,
 
 from __future__ import annotations
 
+import errno
+import os
 import sys
 import types
+from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -393,9 +396,7 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_open_session_passes_geospatial_representation_to_kernel(
-    monkeypatch, enabled
-):
+def test_open_session_passes_geospatial_representation_to_kernel(monkeypatch, enabled):
     captured = {}
 
     def fake_session(*, enable_geospatial_support=True, **kw):
@@ -833,70 +834,162 @@ def test_execute_command_forwards_row_limit(row_limit):
     stmt.set_row_limit.assert_called_once_with(row_limit)
 
 
-# ---------------------------------------------------------------------------
-# Staging / volume operations — fail loud (not silently no-op)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
-    "operation",
+    "operation, allowed, expected, async_op",
     [
-        "PUT '/local/f.csv' INTO '/Volumes/c/s/v/f.csv'",
-        "  put '/local/f' into '/Volumes/...'",  # leading ws + lowercase
-        "GET '/Volumes/c/s/v/f' TO '/local/f'",
-        "REMOVE '/Volumes/c/s/v/f'",
+        ("PUT 'input' INTO '/Volumes/c/s/v/file'", None, [], False),
+        ("PUT 'input' INTO '/Volumes/c/s/v/file'", "/tmp/files", ["/tmp/files"], False),
+        ("GET '/Volumes/c/s/v/file' TO 'output'", [], [], False),
+        (
+            "GET '/Volumes/c/s/v/file' TO 'output'",
+            [Path("/tmp/a"), Path("/tmp/b")],
+            ["/tmp/a", "/tmp/b"],
+            False,
+        ),
+        (
+            "/* outer /* inner */ outer */ GET '/Volumes/c/s/v/file' TO 'output'",
+            ["/tmp/a", "/tmp/b"],
+            ["/tmp/a", "/tmp/b"],
+            True,
+        ),
+        ("PUT 'input' INTO '/Volumes/c/s/v/file'", "/tmp/files", ["/tmp/files"], True),
+        ("REMOVE '/Volumes/c/s/v/file'", object(), [], False),
+        ("SELECT 1", object(), [], False),
     ],
 )
-def test_staging_operation_raises_not_supported(operation):
-    """Volume/staging PUT/GET/REMOVE must FAIL LOUD on the kernel path
-    (the kernel can't perform the presigned-URL transfer; silently
-    no-opping would make ETL ingest stale/missing data)."""
+def test_execute_command_forwards_allowed_local_paths(
+    operation, allowed, expected, async_op
+):
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
+    cursor.connection.staging_allowed_local_path = allowed
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
+    stmt = c._kernel_session.statement.return_value
 
-    with pytest.raises(NotSupportedError, match="staging"):
-        c.execute_command(
-            operation=operation,
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            lz4_compression=False,
-            cursor=cursor,
-            use_cloud_fetch=False,
-            parameters=[],
-            async_op=False,
-            enforce_embedded_schema_correctness=False,
-        )
+    executed = MagicMock(
+        statement_id="00000000-0000-0000-0000-000000000001",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    stmt.execute.return_value = executed
+    stmt.submit.return_value = executed
+    c.execute_command(
+        operation=operation,
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=async_op,
+        enforce_embedded_schema_correctness=False,
+    )
+    stmt.set_staging_allowed_local_paths.assert_called_once_with(
+        expected, input_stream_token="__input_stream__"
+    )
+    (stmt.submit if async_op else stmt.execute).assert_called_once()
 
 
 @pytest.mark.parametrize(
-    "operation, is_staging",
+    "allowed",
     [
-        ("PUT '/f' INTO '/v'", True),
-        ("get '/v' to '/f'", True),
-        ("REMOVE '/v'", True),
-        # Comment-prefixed staging ops MUST still be caught — otherwise
-        # they slip into the silent-no-op bug this guard exists to close
-        # (regression: review #1 on PR #825). ETL scripts commonly
-        # prefix statements with comments.
-        ("-- upload the file\nPUT '/f' INTO '/v'", True),
-        ("/* staging */ PUT '/f' INTO '/v'", True),
-        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", True),  # mixed, multiple
-        ("   \n\t PUT '/f' INTO '/v'", True),  # leading whitespace only
-        ("SELECT 'GET' AS x", False),  # word appears but not leading verb
-        ("SELECT * FROM puts", False),
-        ("-- PUT in a comment\nSELECT 1", False),  # verb only in comment
-        ("/* PUT */ SELECT 1", False),
-        ("INSERT INTO t VALUES (1)", False),
-        ("", False),
-        ("-- just a comment", False),  # comment only, no statement
+        123,
+        [object()],
+        ["/tmp/files", b"/tmp/other"],
+        Path("/tmp/files"),
+        ("/tmp/files",),
     ],
 )
-def test_is_staging_statement(operation, is_staging):
-    assert kernel_client._is_staging_statement(operation) is is_staging
+def test_execute_command_rejects_malformed_local_paths(allowed):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.connection.staging_allowed_local_path = allowed
+    stmt = c._kernel_session.statement.return_value
+    stmt.execute.return_value = MagicMock(
+        statement_id="00000000-0000-0000-0000-000000000001",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+
+    with pytest.raises(ProgrammingError, match="staging_allowed_local_path"):
+        c.execute_command(
+            "PUT 'input' INTO '/Volumes/c/s/v/file'",
+            MagicMock(),
+            1,
+            1,
+            False,
+            cursor,
+            False,
+            [],
+            False,
+            False,
+        )
+    stmt.execute.assert_not_called()
+    stmt.set_staging_allowed_local_paths.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "operation, expected",
+    [
+        ("PUT '/f' INTO '/v'", "PUT"),
+        ("get '/v' to '/f'", "GET"),
+        ("REMOVE '/v'", "REMOVE"),
+        ("-- upload the file\nPUT '/f' INTO '/v'", "PUT"),
+        ("/* staging */ PUT '/f' INTO '/v'", "PUT"),
+        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", "GET"),
+        ("/* outer /* inner */ outer */ PUT '/f' INTO '/v'", "PUT"),
+        ("/* a /* b /* c */ b */ a */ GET '/v' TO '/f'", "GET"),
+        ("/* outer /* closed */ PUT '/f' INTO '/v'", None),
+        ("   \n\t PUT '/f' INTO '/v'", "PUT"),
+        ("SELECT 'GET' AS x", None),
+        ("SELECT * FROM puts", None),
+        ("-- PUT in a comment\nSELECT 1", None),
+        ("/* PUT */ SELECT 1", None),
+        ("INSERT INTO t VALUES (1)", None),
+        ("", None),
+        ("-- just a comment", None),
+        ("/* just a comment */", None),
+        ("PUTTER", None),
+        ("GETTING", None),
+        ("REMOVED", None),
+    ],
+)
+def test_staging_verb_matches_only_the_leading_statement(operation, expected):
+    stripped = kernel_client._strip_leading_sql_comments(operation)
+    assert kernel_client._staging_verb(stripped) == expected
+
+
+def test_kernel_rejects_decoded_streaming_put():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    stmt = c._kernel_session.statement.return_value
+    error = _FakeKernelError(
+        code="InvalidArgument", message="Streaming PUT is not supported"
+    )
+    error.error_code = "FILE_TRANSFER_UNSUPPORTED_STREAM"
+    stmt.execute.side_effect = error
+    cursor = MagicMock()
+    cursor.connection.staging_allowed_local_path = None
+    with pytest.raises(NotSupportedError, match="Streaming PUT"):
+        c.execute_command(
+            "PUT r'__input_stream__' INTO '/Volumes/c/s/v/file'",
+            MagicMock(),
+            1,
+            1,
+            False,
+            cursor,
+            False,
+            [],
+            False,
+            False,
+        )
+    stmt.set_staging_allowed_local_paths.assert_called_once_with(
+        [], input_stream_token="__input_stream__"
+    )
+    stmt.execute.assert_called_once()
+    stmt.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -2608,3 +2701,117 @@ class TestKernelHttpHeadersForwarding:
             monkeypatch, [("Authorization", "Bearer x"), ("x-databricks-org-id", "1")]
         )
         assert "http_headers" not in captured
+
+
+@pytest.mark.parametrize(
+    "code, http_status, error_code, expected",
+    [
+        ("PermissionDenied", None, "FILE_TRANSFER_ERROR", ProgrammingError),
+        ("InvalidArgument", None, "FILE_TRANSFER_ERROR", ProgrammingError),
+        ("InvalidArgument", 400, "FILE_TRANSFER_ERROR", OperationalError),
+        ("PermissionDenied", 403, "FILE_TRANSFER_ERROR", OperationalError),
+        ("NotFound", None, "FILE_TRANSFER_ERROR", FileNotFoundError),
+        ("NotFound", 404, "FILE_TRANSFER_ERROR", OperationalError),
+        ("PermissionDenied", None, "FILE_TRANSFER_PERMISSION_ERROR", PermissionError),
+        ("PermissionDenied", 403, "FILE_TRANSFER_PERMISSION_ERROR", OperationalError),
+        ("NetworkError", None, "FILE_TRANSFER_ERROR", OperationalError),
+        ("Internal", None, "FILE_TRANSFER_ERROR", OperationalError),
+        ("Internal", None, None, DatabaseError),
+    ],
+)
+def test_file_transfer_error_matches_thrift_exception(
+    code, http_status, error_code, expected
+):
+    error = _FakeKernelError(code=code, message="File transfer failed")
+    error.error_code = error_code
+    error.http_status = http_status
+    error.os_error_filename = "local-file.bin"
+    result = kernel_client._reraise_kernel_error(error)
+    assert type(result) is expected
+    assert result.error_code == error_code
+    assert result.code == code
+    assert result.http_status == http_status
+    if issubclass(expected, OSError):
+        assert result.errno is None
+        assert result.filename == "local-file.bin"
+
+
+@pytest.mark.parametrize(
+    "code,error_code,raw,windows_raw,expected",
+    [
+        ("NotFound", "FILE_TRANSFER_ERROR", errno.ENOENT, 2, FileNotFoundError),
+        (
+            "PermissionDenied",
+            "FILE_TRANSFER_PERMISSION_ERROR",
+            errno.EACCES,
+            5,
+            PermissionError,
+        ),
+        (
+            "PermissionDenied",
+            "FILE_TRANSFER_PERMISSION_ERROR",
+            errno.EPERM,
+            5,
+            PermissionError,
+        ),
+        ("Internal", "FILE_TRANSFER_ERROR", errno.ENOTDIR, 267, NotADirectoryError),
+        ("Internal", "FILE_TRANSFER_ERROR", errno.EISDIR, 5, IsADirectoryError),
+        ("ResourceExhausted", "FILE_TRANSFER_ERROR", errno.ENOSPC, 112, OSError),
+    ],
+)
+def test_local_transfer_error_preserves_os_code(
+    code, error_code, raw, windows_raw, expected
+):
+    error = _FakeKernelError(code=code, message="File transfer failed")
+    error.error_code = error_code
+    if os.name == "nt":
+        raw = windows_raw
+        if expected is IsADirectoryError:
+            expected = PermissionError
+    error.os_error_code = raw
+    error.os_error_filename = "local-file.bin"
+    result = kernel_client._reraise_kernel_error(error)
+    assert type(result) is expected
+    assert result.os_error_code == raw
+    assert result.filename == "local-file.bin"
+    if os.name == "nt":
+        assert result.winerror == raw
+        assert result.errno == OSError(0, "", None, raw).errno
+    else:
+        assert result.errno == raw
+
+
+@pytest.mark.parametrize(
+    "code,error_code,raw",
+    [
+        ("NotFound", "FILE_TRANSFER_ERROR", None),
+        ("PermissionDenied", "FILE_TRANSFER_PERMISSION_ERROR", None),
+        ("Internal", "FILE_TRANSFER_ERROR", errno.ENOTDIR),
+        ("ResourceExhausted", "FILE_TRANSFER_ERROR", errno.ENOSPC),
+    ],
+)
+def test_nested_wrapping_preserves_mapped_local_transfer_error(code, error_code, raw):
+    from databricks.sql.backend.kernel._errors import wrap_kernel_exception
+
+    error = _FakeKernelError(code=code, sql_state="HY000", query_id="transfer-id")
+    error.error_code = error_code
+    error.os_error_code = raw
+    mapped = wrap_kernel_exception("inner", error)
+    assert isinstance(mapped, OSError)
+    wrapped = wrap_kernel_exception("outer", mapped)
+    assert wrapped is mapped
+    assert wrapped.code == code
+    assert wrapped.error_code == error_code
+    assert wrapped.sql_state == "HY000"
+    assert wrapped.query_id == "transfer-id"
+
+
+@pytest.mark.parametrize(
+    "error", [FileNotFoundError("missing"), PermissionError("denied")]
+)
+def test_raw_local_errors_keep_unexpected_error_wrapping(error):
+    from databricks.sql.backend.kernel._errors import wrap_kernel_exception
+
+    wrapped = wrap_kernel_exception("execute_command", error)
+    assert type(wrapped) is OperationalError
+    assert "execute_command" in str(wrapped)

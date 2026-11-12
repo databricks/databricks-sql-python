@@ -13,9 +13,12 @@ The PyO3 boundary can produce two flavours of exception:
 - Anything else — ``TypeError`` / ``OverflowError`` /
   ``ValueError`` from PyO3 argument conversion, or arbitrary
   extension-internal Python errors. These would otherwise propagate
-  raw to connector callers, breaking the DB-API contract that says
-  "only PEP 249 exception types cross the boundary". Wrapped in
+  raw to connector callers. Wrapped in
   ``OperationalError`` here.
+
+Local transfer failures use built-in ``OSError`` classes, including
+``FileNotFoundError``, ``PermissionError`` and other platform subclasses.
+The original OS error code and requested filename are preserved when available.
 
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
@@ -39,10 +42,13 @@ flow is visible at the call site, the helper is a pure function
 from __future__ import annotations
 
 import logging
+import os
+from typing import Union
 
 from databricks.sql.exc import (
     DatabaseError,
     Error,
+    NotSupportedError,
     OperationalError,
     ProgrammingError,
     ServerOperationError,
@@ -115,10 +121,14 @@ _CODE_TO_EXCEPTION = {
 }
 
 
-def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
-    """Convert a ``databricks_sql_kernel.KernelError`` to a PEP 249
-    exception with the kernel's structured attributes forwarded onto
-    the new instance.
+def reraise_kernel_error(
+    exc: "_kernel.KernelError",
+) -> "Union[Error, OSError]":
+    """Map a kernel error and forward its structured attributes.
+
+    Local transfer failures use built-in ``OSError`` classes, including
+    missing-file, permission, directory and disk-full errors. Non-local
+    errors use PEP 249 classes.
 
     The returned exception is raised by callers with ``raise ... from
     exc``; the ``from`` clause is what sets ``__cause__``, so we don't
@@ -126,6 +136,20 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     """
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
+    error_code = getattr(exc, "error_code", None)
+    if error_code == "FILE_TRANSFER_UNSUPPORTED_STREAM":
+        cls = NotSupportedError
+    file_transfer = error_code in (
+        "FILE_TRANSFER_ERROR",
+        "FILE_TRANSFER_PERMISSION_ERROR",
+    )
+    if file_transfer:
+        cls = (
+            ProgrammingError
+            if code in ("PermissionDenied", "InvalidArgument")
+            and getattr(exc, "http_status", None) is None
+            else OperationalError
+        )
 
     # For ServerOperationError, reproduce the Thrift backend's
     # ``context`` dict so callers that read
@@ -141,13 +165,49 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
             "operation-id": getattr(exc, "query_id", None),
             "diagnostic-info": getattr(exc, "diagnostic_info", None),
         }
-    new = cls(getattr(exc, "message", str(exc)), context)
+    message = getattr(exc, "message", str(exc))
+    os_error_code = getattr(exc, "os_error_code", None)
+    os_error_filename = getattr(exc, "os_error_filename", None)
+    file_error_args: tuple
+    if os_error_code is None:
+        file_error_args = (
+            (None, message, os_error_filename)
+            if os_error_filename is not None
+            else (message,)
+        )
+    elif os.name == "nt":
+        file_error_args = (0, message, os_error_filename, os_error_code)
+    else:
+        file_error_args = (os_error_code, message, os_error_filename)
+    new: Union[Error, OSError]
+    # Local missing files have no HTTP status; remote missing files carry 404.
+    if (
+        file_transfer
+        and os_error_code is not None
+        and getattr(exc, "http_status", None) is None
+    ):
+        new = OSError(*file_error_args)
+    elif (
+        error_code == "FILE_TRANSFER_PERMISSION_ERROR"
+        and getattr(exc, "http_status", None) is None
+    ):
+        new = PermissionError(*file_error_args)
+    elif (
+        file_transfer
+        and code == "NotFound"
+        and getattr(exc, "http_status", None) is None
+    ):
+        new = FileNotFoundError(*file_error_args)
+    else:
+        new = cls(message, context)
 
     for attr in (
         "code",
         "sql_state",
         "error_code",
         "vendor_code",
+        "os_error_code",
+        "os_error_filename",
         "http_status",
         "retryable",
         "query_id",
@@ -162,12 +222,14 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     return new
 
 
-def wrap_kernel_exception(what: str, exc: BaseException) -> "Error":
-    """Map any exception from a PyO3 call site to a PEP 249 exception.
+def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSError]":
+    """Map a PyO3 exception to the connector's public error contract.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.
-    - Already-PEP-249 ``Error`` (e.g. raised by an inner caller that
-      already mapped) → passed through unchanged.
+      Local transfer failures map to built-in ``OSError`` classes with
+      their original OS error code and requested filename when available.
+    - Already-mapped PEP 249 or local transfer errors → passed through
+      unchanged so nested callers preserve their class and attributes.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3
       argument conversion, extension-internal errors) → wrapped in
       ``OperationalError``.
@@ -179,6 +241,11 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Error":
     if isinstance(exc, _kernel.KernelError):
         return reraise_kernel_error(exc)
     if isinstance(exc, Error):
+        return exc
+    if isinstance(exc, OSError) and getattr(exc, "error_code", None) in (
+        "FILE_TRANSFER_ERROR",
+        "FILE_TRANSFER_PERMISSION_ERROR",
+    ):
         return exc
     return OperationalError(
         f"Unexpected error from databricks_sql_kernel during {what}: {exc!r}"

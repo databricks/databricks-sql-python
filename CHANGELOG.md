@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Support SQL PUT, GET, and REMOVE file transfers on the kernel backend with local-path permission checks and native filesystem exceptions. Streaming PUT remains unsupported in kernel mode.
 - Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
 - Speed up Thrift response handling: read replies in 1 MiB chunks and decode them with Thrift's C-accelerated protocol, and stop stringifying every request/response for the default no-op debug logger. Wide result schemas, metadata calls with many rows, and inline Arrow results benefit most.
 

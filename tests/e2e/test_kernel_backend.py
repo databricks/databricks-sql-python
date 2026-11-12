@@ -32,6 +32,7 @@ from databricks.sql.exc import (
     DatabaseError,
     NotSupportedError,
     OperationalError,
+    ProgrammingError,
     ServerOperationError,
 )
 
@@ -366,9 +367,7 @@ def test_schemas_with_empty_string_filter_matches_nothing(conn):
         assert cur.fetchall() == []
 
 
-@pytest.mark.parametrize(
-    "empty_filter", ["schema_name", "table_name", "column_name"]
-)
+@pytest.mark.parametrize("empty_filter", ["schema_name", "table_name", "column_name"])
 def test_columns_with_empty_string_filter_matches_nothing(conn, empty_filter):
     filters = {
         "catalog_name": "system",
@@ -777,28 +776,72 @@ def test_scientific_notation_decimal_parameter_binds(conn):
         assert int(cur.fetchall()[0][0]) == 100
 
 
-# ── Staging / volume — fail loud, not silent no-op ────────────────
+@pytest.mark.parametrize("async_op", [False, True])
+def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    source = allowed / "input's.bin"
+    destination = allowed / "output's.bin"
+    payload = bytes(range(256)) * 4096
+    source.write_bytes(payload)
+    denied = tmp_path / "denied.bin"
+    denied.write_bytes(payload)
+    catalog = catalog or "main"
+    namespace = f"volume_{uuid4().hex}"
+    qualified = f"`{catalog.replace('`', '``')}`.`{namespace}`"
+    remote = f"/Volumes/{catalog}/{namespace}/files/input.bin"
 
+    def literal(path):
+        return "'" + str(path).replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-def test_staging_put_raises_not_supported(conn):
-    """A PUT (volume/staging) statement fails loud on the kernel path
-    rather than silently no-opping (which would make ETL ingest
-    stale/missing data). (CUJ-gap audit)"""
-    with conn.cursor() as cur:
-        with pytest.raises(NotSupportedError, match="staging"):
-            cur.execute("PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'")
+    with sql.connect(
+        **kernel_conn_params, staging_allowed_local_path=str(allowed)
+    ) as connection:
+        with connection.cursor() as cur:
+            cur.execute(f"CREATE SCHEMA {qualified}")
+            try:
+                cur.execute(f"CREATE VOLUME {qualified}.files")
 
+                with sql.connect(**kernel_conn_params) as no_paths:
+                    with no_paths.cursor() as denied_cursor:
+                        with pytest.raises(ProgrammingError):
+                            denied_cursor.execute(
+                                f"PUT {literal(source)} INTO {literal(remote)} OVERWRITE"
+                            )
 
-def test_comment_prefixed_staging_put_raises_not_supported(conn):
-    """A comment-prefixed staging op (common in ETL scripts) must also
-    fail loud — the leading-verb detection strips SQL comments first, so
-    it can't slip past into the silent-no-op bug (PR #825 review #1)."""
-    with conn.cursor() as cur:
-        with pytest.raises(NotSupportedError, match="staging"):
-            cur.execute(
-                "-- upload the daily extract\n"
-                "PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'"
-            )
+                def execute(query):
+                    if async_op:
+                        cur.execute_async(query)
+                        cur.get_async_execution_result()
+                    else:
+                        cur.execute(query)
+                    return cur.fetchall()
+
+                assert (
+                    execute(
+                        f"-- upload\nPUT {literal(source)} INTO {literal(remote)} OVERWRITE"
+                    )
+                    == []
+                )
+                with pytest.raises(NotSupportedError, match="Streaming PUT"):
+                    execute(f"PUT r'__input_stream__' INTO {literal(remote)} OVERWRITE")
+                assert execute(f"GET {literal(remote)} TO {literal(destination)}") == []
+                assert destination.read_bytes() == payload
+                with pytest.raises(ProgrammingError):
+                    execute(f"PUT {literal(denied)} INTO {literal(remote)} OVERWRITE")
+                with pytest.raises(FileNotFoundError):
+                    execute(
+                        f"PUT {literal(allowed / 'missing.bin')} INTO {literal(remote)} OVERWRITE"
+                    )
+                assert execute(f"REMOVE {literal(remote)}") == []
+                assert execute(f"REMOVE {literal(remote)}") == []
+                with pytest.raises(OperationalError, match="404"):
+                    execute(
+                        f"GET {literal(remote)} TO {literal(allowed / 'deleted.bin')}"
+                    )
+                assert execute("SELECT 1")[0][0] == 1
+            finally:
+                cur.execute(f"DROP SCHEMA {qualified} CASCADE")
 
 
 # ── Error fidelity — diagnostic-info reaches .context ─────────────
