@@ -1015,6 +1015,13 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
 
 _PYARROW_HAS_LZ4 = pyarrow is not None and pyarrow.Codec.is_available("lz4")
 _LZ4_MAX_READ_BYTES = 16 * 1024 * 1024
+# Each live map is one VMA (vm.max_map_count, 65530 by default), so smaller streams
+# stay on the heap: reaching that limit takes over 64 GB of inline results held at once.
+_INLINE_ARROW_MMAP_MIN_BYTES = 1024 * 1024
+# Untouched pages of the reservation cost no memory; overflow grows the map.
+_LZ4_RATIO_ESTIMATE = 4
+# The heap retention this works around was measured with glibc.
+_INLINE_ARROW_USE_MMAP = sys.platform.startswith("linux")
 
 
 def _decompress_lz4_frames_into(out: "_ArrowStreamBuffer", frames: List[bytes]) -> None:
@@ -1036,7 +1043,8 @@ def _decompress_lz4_frames_into(out: "_ArrowStreamBuffer", frames: List[bytes]) 
 
 
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
-    # The batches' total size is a lower bound on the decompressed stream size
+    # Roughly a lower bound on the stream size (LZ4 framing adds a few bytes to
+    # incompressible data)
     min_size = len(schema_bytes) + sum(len(b.batch) for b in arrow_batches)
     stream = _ArrowStreamBuffer(
         min_size,
@@ -1060,15 +1068,6 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
             )
     arrow_table = pyarrow.ipc.open_stream(stream.getbuffer()).read_all()
     return arrow_table, n_rows
-
-
-# Each live map is one VMA (vm.max_map_count, 65530 by default), so smaller streams
-# stay on the heap: reaching that limit takes over 64 GB of inline results held at once.
-_INLINE_ARROW_MMAP_MIN_BYTES = 1024 * 1024
-# Untouched pages of the reservation cost no memory; overflow grows the map.
-_LZ4_RATIO_ESTIMATE = 4
-# The heap retention this works around was measured with glibc.
-_INLINE_ARROW_USE_MMAP = sys.platform.startswith("linux")
 
 
 class _ArrowStreamBuffer:
