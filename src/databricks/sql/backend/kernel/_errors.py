@@ -163,6 +163,7 @@ def reraise_kernel_error(
         }
     message = getattr(exc, "message", str(exc))
     os_error_code = getattr(exc, "os_error_code", None)
+    file_error_args: tuple
     if os_error_code is None:
         file_error_args = (message,)
     elif os.name == "nt":
