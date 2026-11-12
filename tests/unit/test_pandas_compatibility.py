@@ -704,6 +704,21 @@ class TestRowBuildingGCPause(unittest.TestCase):
             self.assertFalse(gc.isenabled())
         self.assertTrue(gc.isenabled())
 
+    def test_interrupt_while_ending_a_pause_keeps_state_consistent(self):
+        real_enable = gc.enable
+
+        def enable_then_interrupt():
+            real_enable()
+            raise KeyboardInterrupt
+
+        pause = result_set._GCPause(10**6)
+        pause.__enter__()
+        with patch.object(result_set.gc, "enable", enable_then_interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                pause.__exit__(None, None, None)
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+
     def test_gc_is_reenabled_when_building_fails(self):
         with self.assertRaises(ZeroDivisionError):
             with result_set._GCPause(10**6):

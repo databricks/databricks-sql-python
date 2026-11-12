@@ -99,6 +99,8 @@ class _GCPause:
                     _GCPause.started = now
                 elif now - _GCPause.started > _GC_PAUSE_MAX_SECONDS:
                     return
+                # No call between these two lines, so no async exception can
+                # split them.
                 _GCPause.active += 1
                 self._joined = True
                 gc.disable()
@@ -110,8 +112,9 @@ class _GCPause:
     def __exit__(self, *exc_info) -> None:
         if not self._joined:
             return
-        self._joined = False
         with _GCPause.lock:
+            # No call between these two lines, so no async exception can split them.
+            self._joined = False
             _GCPause.active -= 1
             if _GCPause.active:
                 return
