@@ -4,7 +4,7 @@ import logging
 import threading
 
 from concurrent.futures import CancelledError, ThreadPoolExecutor, Future
-from typing import Callable, List, Union, Tuple, Optional, TYPE_CHECKING
+from typing import Callable, List, NoReturn, Union, Tuple, Optional, TYPE_CHECKING
 
 from databricks.sql.exc import OperationalError
 from databricks.sql.cloudfetch.downloader import (
@@ -66,8 +66,9 @@ class ResultFileDownloadManager:
         self._cancelled = threading.Event()
         # Set by cancel(): reads fail once they need data the cancel stopped.
         self._cancel_requested = False
-        # A failed link fetch, raised again by every later read (see _schedule_downloads)
+        # A failed link fetch, raised once the downloaded files run out
         self._link_error: Optional[BaseException] = None
+        self._link_error_raised = False
 
     def cancel(self) -> None:
         """Stop downloading because the statement was cancelled.
@@ -108,17 +109,14 @@ class ResultFileDownloadManager:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
 
-        if self._link_error is not None:
-            raise OperationalError(
-                "Fetching more CloudFetch results failed earlier; the result can't "
-                "be read further, execute the statement again"
-            ) from self._link_error
-        if not self._cancel_requested:
+        if not self._cancel_requested and self._link_error is None:
             # Make sure the download queue is always full
             self._schedule_downloads()
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
+            if self._link_error is not None:
+                self._raise_link_error(self._link_error)
             if self._cancel_requested and (
                 self._pending_links or self._link_source is not None
             ):
@@ -146,6 +144,18 @@ class ResultFileDownloadManager:
 
         return file
 
+    def _raise_link_error(self, error: BaseException) -> NoReturn:
+        # That read loses the rows it had collected, so every later read fails too
+        # and a retry can't continue past them.
+        self._shutdown_manager()
+        if not self._link_error_raised:
+            self._link_error_raised = True
+            raise error
+        raise OperationalError(
+            "Fetching more CloudFetch results failed earlier; the result can't "
+            "be read further, execute the statement again"
+        ) from error
+
     def _schedule_downloads(self):
         self._submit_pending_links()
         while (
@@ -159,12 +169,10 @@ class ResultFileDownloadManager:
                     self._max_download_threads - scheduled
                 )
             except Exception as e:
-                # This read is failing part-way, so the caller loses the rows it had
-                # collected. Fail every later read too, so a retry cannot skip them,
-                # and stop the downloads nobody will read.
+                # Stop scheduling; files already downloading are still returned and
+                # the read that needs rows past them raises (_raise_link_error)
                 self._link_error = e
-                self._shutdown_manager()
-                raise
+                return
             if self._cancelled.is_set():
                 # Shut down while the request was in flight
                 return

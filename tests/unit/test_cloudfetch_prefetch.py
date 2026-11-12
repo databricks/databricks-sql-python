@@ -140,23 +140,33 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertIsNone(manager.get_next_downloaded_file(20))
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
-    def test_a_failed_link_fetch_fails_every_later_read(self):
+    def test_a_failed_link_fetch_fails_reads_once_downloaded_files_run_out(self):
         manager = self._manager([_link(0)], max_download_threads=2)
         error = RuntimeError("FetchResults failed")
         source = Mock(side_effect=[error, ([_link(10)], False)])
         manager.set_link_source(source)
 
+        # The file already downloading is still returned
+        self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
         with self.assertRaises(RuntimeError) as raised:
-            manager.get_next_downloaded_file(0)
+            manager.get_next_downloaded_file(10)
         self.assertIs(raised.exception, error)
-        # Downloads nobody can read any more are stopped
         self.assertTrue(manager._cancelled.is_set())
         # Later reads raise a fresh error that points at the original one
         for _ in range(2):
             with self.assertRaises(OperationalError) as raised:
-                manager.get_next_downloaded_file(0)
+                manager.get_next_downloaded_file(10)
             self.assertIs(raised.exception.__cause__, error)
         self.assertEqual(source.call_count, 1)
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_with_nothing_in_flight_empty_replies_are_retried_at_once(self):
+        manager = self._manager([], max_download_threads=2)
+        source = Mock(side_effect=[([], True), ([], True), ([_link(0)], False)])
+        manager.set_link_source(source)
+
+        self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
+        self.assertEqual(source.call_count, 3)
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
     def test_shutdown_during_a_link_fetch_ends_the_stream_cleanly(self):
@@ -590,6 +600,16 @@ class ResultSetPrefetchEndToEndTests(unittest.TestCase):
 
         with self.assertRaises(OperationalError):
             rs.fetchall_arrow()
+
+    def test_a_reader_that_never_needs_the_failed_links_is_not_failed(self):
+        rs, backend, _ = self._result_set()
+        backend.fetch_result_links.side_effect = DataError("FetchResults failed")
+
+        # Rows 0-14 come from the two initial links, which were already downloading
+        table = rs.fetchmany_arrow(15)
+
+        self.assertEqual(table.column(0).to_pylist(), list(range(15)))
+        rs.close()
 
     def test_a_retry_after_a_failed_link_fetch_fails_instead_of_skipping_rows(self):
         rs, backend, _ = self._result_set()
