@@ -13,6 +13,8 @@ client touches (``Session``, ``KernelError``, ``Statement``,
 
 from __future__ import annotations
 
+import errno
+import os
 import sys
 import types
 from pathlib import Path
@@ -820,6 +822,7 @@ def test_execute_command_forwards_row_limit(row_limit):
     "operation, uses_paths",
     [
         ("PUT '/tmp/files/input' INTO '/Volumes/c/s/v/input'", True),
+        ("PUT '__INPUT_STREAM__' INTO '/Volumes/c/s/v/input'", True),
         ("GET '/Volumes/c/s/v/input' TO '/tmp/files/output'", True),
         ("/* download */ GET '/Volumes/c/s/v/input' TO '/tmp/files/output'", True),
         (
@@ -948,6 +951,7 @@ def test_staging_verb_matches_only_the_leading_statement(operation, expected):
     "query",
     [
         "PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
+        "put '__input_stream__' INTO '/Volumes/c/s/v/file'",
         "PUT '__input_stream__'INTO '/Volumes/c/s/v/file'",
         'PUT"__input_stream__"INTO "/Volumes/c/s/v/file"',
         "/* upload */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
@@ -2750,6 +2754,43 @@ def test_file_transfer_error_matches_thrift_exception(
     assert result.error_code == error_code
     assert result.code == code
     assert result.http_status == http_status
+    if issubclass(expected, OSError):
+        assert result.errno is None
+
+
+@pytest.mark.parametrize(
+    "code,error_code,raw,expected",
+    [
+        ("NotFound", "FILE_TRANSFER_ERROR", errno.ENOENT, FileNotFoundError),
+        (
+            "PermissionDenied",
+            "FILE_TRANSFER_PERMISSION_ERROR",
+            errno.EACCES,
+            PermissionError,
+        ),
+        (
+            "PermissionDenied",
+            "FILE_TRANSFER_PERMISSION_ERROR",
+            errno.EPERM,
+            PermissionError,
+        ),
+    ],
+)
+def test_local_transfer_error_preserves_os_code(code, error_code, raw, expected):
+    error = _FakeKernelError(code=code, message="File transfer failed")
+    error.error_code = error_code
+    if os.name == "nt":
+        raw = 2 if expected is FileNotFoundError else 5
+    error.os_error_code = raw
+    result = kernel_client._reraise_kernel_error(error)
+    assert type(result) is expected
+    assert result.os_error_code == raw
+    assert result.filename is None
+    if os.name == "nt":
+        assert result.winerror == raw
+        assert result.errno == (errno.ENOENT if raw == 2 else errno.EACCES)
+    else:
+        assert result.errno == raw
 
 
 @pytest.mark.parametrize(

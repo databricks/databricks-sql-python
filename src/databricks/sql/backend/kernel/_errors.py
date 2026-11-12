@@ -17,7 +17,8 @@ The PyO3 boundary can produce two flavours of exception:
   ``OperationalError`` here.
 
 Local missing transfer files use the built-in ``FileNotFoundError`` class;
-the OS ``errno`` and ``filename`` attributes are unavailable.
+the original OS error code is preserved when available. The ``filename``
+attribute is unavailable.
 
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
@@ -41,6 +42,7 @@ flow is visible at the call site, the helper is a pure function
 from __future__ import annotations
 
 import logging
+import os
 from typing import Union
 
 from databricks.sql.exc import (
@@ -160,19 +162,26 @@ def reraise_kernel_error(
             "diagnostic-info": getattr(exc, "diagnostic_info", None),
         }
     message = getattr(exc, "message", str(exc))
+    os_error_code = getattr(exc, "os_error_code", None)
+    if os_error_code is None:
+        file_error_args = (message,)
+    elif os.name == "nt":
+        file_error_args = (0, message, None, os_error_code)
+    else:
+        file_error_args = (os_error_code, message)
     new: Union[Error, OSError]
     # Local missing files have no HTTP status; remote missing files carry 404.
     if (
         error_code == "FILE_TRANSFER_PERMISSION_ERROR"
         and getattr(exc, "http_status", None) is None
     ):
-        new = PermissionError(message)
+        new = PermissionError(*file_error_args)
     elif (
         file_transfer
         and code == "NotFound"
         and getattr(exc, "http_status", None) is None
     ):
-        new = FileNotFoundError(message)
+        new = FileNotFoundError(*file_error_args)
     else:
         new = cls(message, context)
 
@@ -181,6 +190,7 @@ def reraise_kernel_error(
         "sql_state",
         "error_code",
         "vendor_code",
+        "os_error_code",
         "http_status",
         "retryable",
         "query_id",
@@ -199,8 +209,8 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSErro
     """Map a PyO3 exception to the connector's public error contract.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.
-      A local missing transfer file maps to ``FileNotFoundError`` without
-      the OS ``errno`` or ``filename`` attributes.
+      A local missing transfer file maps to ``FileNotFoundError`` with
+      its original OS error code when available, without ``filename``.
     - Already-mapped PEP 249 or local transfer errors → passed through
       unchanged so nested callers preserve their class and attributes.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3

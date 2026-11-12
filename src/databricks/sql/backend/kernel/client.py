@@ -575,7 +575,6 @@ class KernelDatabricksClient(DatabricksClient):
                 if staging_verb == "PUT" and re.match(
                     r"""(['"])__input_stream__\1""",
                     _strip_leading_sql_comments(stripped_sql[3:]),
-                    re.IGNORECASE,
                 ):
                     raise NotSupportedError(
                         "Streaming PUT is not supported by the kernel backend."
