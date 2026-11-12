@@ -1014,10 +1014,13 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
 
 
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
-    compressed_size = sum(len(arrow_batch.batch) for arrow_batch in arrow_batches)
+    # The batches' total size is a lower bound on the decompressed stream size
+    min_size = len(schema_bytes) + sum(len(b.batch) for b in arrow_batches)
     stream = _ArrowStreamBuffer(
+        min_size,
         len(schema_bytes)
-        + compressed_size * (_LZ4_RATIO_ESTIMATE if lz4_compressed else 1)
+        + (min_size - len(schema_bytes))
+        * (_LZ4_RATIO_ESTIMATE if lz4_compressed else 1),
     )
     stream.append(schema_bytes)
     n_rows = 0
@@ -1050,13 +1053,13 @@ class _ArrowStreamBuffer:
     mmap failures and non-Linux platforms use a bytearray, as before.
     """
 
-    def __init__(self, size_estimate: int):
+    def __init__(self, min_size: int, size_estimate: int):
         self._map: Optional[mmap.mmap] = None
         self._bytes = bytearray()
         self._size = 0
         if (
             _INLINE_ARROW_USE_MMAP
-            and size_estimate >= _INLINE_ARROW_MMAP_MIN_BYTES
+            and min_size >= _INLINE_ARROW_MMAP_MIN_BYTES
             and hasattr(mmap, "MAP_PRIVATE")
         ):
             try:

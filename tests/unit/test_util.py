@@ -514,6 +514,24 @@ class TestConvertArrowBasedSet:
         gc.collect()
         assert maps[0]() is None
 
+    @linux_only
+    def test_floor_applies_to_the_compressed_size_not_the_estimate(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 15000, True)
+        compressed = sum(len(b.batch) for b in batches)
+        assert (
+            compressed
+            < utils._INLINE_ARROW_MMAP_MIN_BYTES
+            <= compressed * utils._LZ4_RATIO_ESTIMATE
+        )
+
+        with _patch_map(Mock()) as patched:
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        patched.mmap.assert_not_called()
+        assert result.equals(table)
+
     def test_small_set_stays_on_the_heap(self):
         table, schema_bytes, batches = _inline_arrow_set(2, 10, True)
 
