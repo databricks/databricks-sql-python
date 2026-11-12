@@ -35,7 +35,8 @@ def _file_signature(path) -> Optional[Tuple]:
         st = os.stat(path)
     except (OSError, TypeError, ValueError):
         return (path, None)
-    return (path, st.st_ino, st.st_size, st.st_mtime_ns)
+    # ctime too: in-place rewrites that preserve mtime (cp -p, rsync -t) still change it.
+    return (path, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
 
 def _cache_key(kind: str, ssl_options: "SSLOptions") -> tuple:

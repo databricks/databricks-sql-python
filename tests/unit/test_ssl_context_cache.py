@@ -1,5 +1,6 @@
 import os
 import ssl
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -93,6 +94,29 @@ class TestGetSslContext:
 
         assert before is not after
         assert ssl_context_cache.get_ssl_context("k", options, build) is after
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="st_ctime is the creation time on Windows"
+    )
+    def test_in_place_rewrite_keeping_mtime_gets_a_new_context(self, tmp_path):
+        ca_file = tmp_path / "ca.pem"
+        ca_file.write_text("old")
+        original = ca_file.stat()
+        options = SSLOptions(tls_trusted_ca_file=str(ca_file))
+        build, built = counting_builder()
+        before = ssl_context_cache.get_ssl_context("k", options, build)
+
+        time.sleep(0.05)  # filesystem timestamps can be jiffy-granular
+        ca_file.write_text("new")  # same inode and size, like `cp -p`
+        os.utime(ca_file, ns=(original.st_atime_ns, original.st_mtime_ns))
+        rewritten = ca_file.stat()
+
+        assert (rewritten.st_ino, rewritten.st_size, rewritten.st_mtime_ns) == (
+            original.st_ino,
+            original.st_size,
+            original.st_mtime_ns,
+        )
+        assert ssl_context_cache.get_ssl_context("k", options, build) is not before
 
     def test_default_bundle_env_change_gets_a_new_context(self, tmp_path, monkeypatch):
         bundle = tmp_path / "bundle.pem"
