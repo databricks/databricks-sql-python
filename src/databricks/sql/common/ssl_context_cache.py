@@ -58,8 +58,11 @@ def get_ssl_context(
 ) -> ssl.SSLContext:
     """Return the shared context for ``kind`` and ``ssl_options``, building it once.
 
-    ``kind`` separates builders that configure contexts differently. Callers
-    must not modify the returned context.
+    ``kind`` separates builders that configure contexts differently. urllib3
+    writes a pool's ``cert_reqs`` and ALPN protocols back onto its context on
+    every connection, so every pool sharing a context must use TLS pool kwargs
+    derived only from ``ssl_options`` (and no ``assert_hostname``). Do not
+    otherwise modify the returned context.
     """
     if not is_cacheable(ssl_options):
         return build()

@@ -210,6 +210,7 @@ class TestThriftTransportContext:
     def test_context_matches_what_urllib3_builds(self, tls_verify, cert_reqs):
         context, pool = self.pool_context(SSLOptions(tls_verify=tls_verify))
         expected = create_urllib3_context(cert_reqs=cert_reqs)
+        expected.load_default_certs()
 
         assert pool.cert_reqs == cert_reqs
         assert context.verify_mode == expected.verify_mode
@@ -220,7 +221,7 @@ class TestThriftTransportContext:
         assert context.hostname_checks_common_name == (
             expected.hostname_checks_common_name
         )
-        assert context.cert_store_stats()["x509_ca"] > 0
+        assert context.cert_store_stats() == expected.cert_store_stats()
 
     def test_connections_share_the_context(self):
         first, _ = self.pool_context(SSLOptions())
