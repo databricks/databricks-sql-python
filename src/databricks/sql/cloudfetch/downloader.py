@@ -23,7 +23,17 @@ if TYPE_CHECKING:
 
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
+from urllib3.exceptions import HTTPError as Urllib3HTTPError
+
+from databricks.sql.exc import OperationalError
+
 logger = logging.getLogger(__name__)
+
+# Bodies are read in chunks so a download stops soon after its result set is closed.
+_READ_CHUNK_BYTES = 1024 * 1024
+# urllib3 retries a failed body read only when it reads the body itself, so a GET
+# interrupted mid-body is retried here.
+_BODY_READ_ATTEMPTS = 3
 
 
 @dataclass
@@ -85,7 +95,18 @@ class ResultSetDownloadHandler:
 
     def _raise_if_cancelled(self):
         if self._cancel_event is not None and self._cancel_event.is_set():
-            raise Error("CloudFetch download cancelled: the result set was closed")
+            raise OperationalError("CloudFetch download cancelled")
+
+    def _read_body(self, response) -> Optional[bytes]:
+        """Returns None if cancelled part-way; the unread connection is then closed."""
+        chunks = []
+        for chunk in response.stream(_READ_CHUNK_BYTES):
+            if self._cancel_event is not None and self._cancel_event.is_set():
+                return None
+            chunks.append(chunk)
+        # Fully read, so the connection can be reused for the next download
+        response.release_conn()
+        return b"".join(chunks)
 
     @log_latency(StatementType.QUERY)
     def run(self) -> DownloadedFile:
@@ -111,17 +132,28 @@ class ResultSetDownloadHandler:
         self._raise_if_cancelled()
         start_time = time.time()
 
-        with self._http_client.request_context(
-            method=HttpMethod.GET,
-            url=self.link.fileLink,
-            timeout=self.settings.download_timeout,
-            headers=self.link.httpHeaders,
-        ) as response:
-            if response.status >= 400:
-                raise Exception(f"HTTP {response.status}: {response.data.decode()}")
-            compressed_data = response.data
-        # Skip decompressing a file nobody will read
+        for attempt in range(1, _BODY_READ_ATTEMPTS + 1):
+            with self._http_client.request_context(
+                method=HttpMethod.GET,
+                url=self.link.fileLink,
+                timeout=self.settings.download_timeout,
+                headers=self.link.httpHeaders,
+                preload_content=False,
+            ) as response:
+                if response.status >= 400:
+                    raise Exception(f"HTTP {response.status}: {response.data.decode()}")
+                try:
+                    compressed_data = self._read_body(response)
+                    break
+                except Urllib3HTTPError as e:
+                    if attempt == _BODY_READ_ATTEMPTS:
+                        raise
+                    logger.debug("CloudFetch download interrupted, retrying: %s", e)
+        # Raised outside request_context, which would log it as an HTTP error.
+        # Also skips decompressing a file nobody will read.
         self._raise_if_cancelled()
+        if compressed_data is None:
+            raise OperationalError("CloudFetch download cancelled")
 
         # Log download metrics
         download_duration = time.time() - start_time

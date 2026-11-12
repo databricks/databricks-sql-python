@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 import threading
 
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import CancelledError, ThreadPoolExecutor, Future
 from typing import Callable, List, Union, Tuple, Optional, TYPE_CHECKING
 
+from databricks.sql.exc import OperationalError
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
     DownloadableResultSettings,
@@ -63,6 +64,22 @@ class ResultFileDownloadManager:
         self._link_source: Optional[LinkSource] = None
         # Set on shutdown so downloads that have not started (or finished) stop early.
         self._cancelled = threading.Event()
+        # Set by cancel(): the result is incomplete, so reads must fail, not just end.
+        self._cancel_requested = False
+
+    def cancel(self) -> None:
+        """Stop downloading because the statement was cancelled.
+
+        May be called from another thread while the consumer is reading. Later reads
+        raise instead of reporting the end of the result.
+        """
+        self._cancel_requested = True
+        self._cancelled.set()
+        self._thread_pool.shutdown(wait=False, cancel_futures=True)
+
+    def _raise_if_cancel_requested(self) -> None:
+        if self._cancel_requested:
+            raise OperationalError("CloudFetch download cancelled")
 
     def set_link_source(self, link_source: LinkSource) -> bool:
         """Fetch further links on demand.
@@ -92,8 +109,10 @@ class ResultFileDownloadManager:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
 
+        self._raise_if_cancel_requested()
         # Make sure the download queue is always full
         self._schedule_downloads()
+        self._raise_if_cancel_requested()
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
@@ -104,7 +123,10 @@ class ResultFileDownloadManager:
         # Future's `result()` method will wait for the call to complete, and return
         # the value returned by the call. If the call throws an exception - `result()`
         # will throw the same exception
-        file = task.result()
+        try:
+            file = task.result()
+        except CancelledError:
+            raise OperationalError("CloudFetch download cancelled") from None
         if (next_row_offset < file.start_row_offset) or (
             next_row_offset > file.start_row_offset + file.row_count
         ):
@@ -162,7 +184,13 @@ class ResultFileDownloadManager:
                 http_client=self._http_client,
                 cancel_event=self._cancelled,
             )
-            task = self._thread_pool.submit(handler.run)
+            try:
+                task = self._thread_pool.submit(handler.run)
+            except RuntimeError:
+                # cancel() shut the pool down from another thread
+                if self._cancel_requested:
+                    return
+                raise
             self._download_tasks.append(task)
 
     def add_link(self, link: TSparkArrowResultLink):

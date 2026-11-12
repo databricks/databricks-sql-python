@@ -1959,6 +1959,10 @@ class Cursor:
         """
         if self.active_command_id is not None:
             self.backend.cancel_command(self.active_command_id)
+            result_set = self.active_result_set
+            if result_set is not None:
+                # Stop downloads already under way; reads then fail like the server would
+                result_set._cancel_downloads()
             return
         # No command id yet. A backend whose synchronous ``execute()``
         # blocks without first publishing a command id (the kernel

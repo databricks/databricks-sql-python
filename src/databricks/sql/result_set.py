@@ -172,6 +172,9 @@ class ResultSet(ABC):
         """Fetch all remaining rows as an Arrow table."""
         pass
 
+    def _cancel_downloads(self) -> None:
+        """Stop client-side downloads after Cursor.cancel(); may run on another thread."""
+
     def close(self) -> None:
         """
         Close the result set.
@@ -333,6 +336,11 @@ class ThriftResultSet(ResultSet):
                 link.startRowOffset + link.rowCount for link in links
             )
         return links, has_more_rows
+
+    def _cancel_downloads(self) -> None:
+        queue = self.results
+        if isinstance(queue, ThriftCloudFetchQueue):
+            queue.download_manager.cancel()
 
     def _note_link_sizes(self, links) -> None:
         for link in links:

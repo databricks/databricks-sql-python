@@ -2,9 +2,12 @@
 
 import threading
 import unittest
+from concurrent.futures import Future
+from contextlib import nullcontext
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from urllib3.exceptions import ProtocolError
 
 try:
     import pyarrow as pa
@@ -16,8 +19,9 @@ import databricks.sql.cloudfetch.downloader as downloader
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.client import Cursor
 from databricks.sql.cloudfetch.downloader import DownloadedFile
-from databricks.sql.exc import DataError, Error
+from databricks.sql.exc import DataError, OperationalError
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -166,6 +170,50 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertEqual(manager._pending_links, [])
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_cancel_makes_later_reads_fail_instead_of_ending(self):
+        manager = self._manager([_link(0), _link(10)], max_download_threads=2)
+        self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
+
+        manager.cancel()
+
+        self.assertTrue(manager._cancelled.is_set())
+        with self.assertRaises(OperationalError):
+            manager.get_next_downloaded_file(10)
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_cancel_during_a_link_fetch_fails_the_read(self):
+        manager = self._manager([_link(0)], max_download_threads=2)
+
+        def source(free):
+            manager.cancel()  # Cursor.cancel() running on another thread
+            return [_link(10)], True
+
+        manager.set_link_source(source)
+
+        with self.assertRaises(OperationalError):
+            manager.get_next_downloaded_file(0)
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_scheduling_after_cancel_does_not_raise_runtime_error(self):
+        manager = self._manager([_link(0), _link(10)], max_download_threads=2)
+        manager.cancel()
+
+        manager._submit_pending_links()
+
+        self.assertEqual(manager._download_tasks, [])
+        with self.assertRaises(OperationalError):
+            manager.get_next_downloaded_file(0)
+
+    def test_download_cancelled_before_it_started_fails_the_read(self):
+        manager = self._manager([], max_download_threads=1)
+        future = Future()
+        future.cancel()
+        manager._download_tasks.append(future)
+
+        with self.assertRaises(OperationalError):
+            manager.get_next_downloaded_file(0)
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
     def test_link_source_is_refused_after_shutdown(self):
         # No schedulable links: the first request already shuts the manager down
         manager = self._manager([_link(0, rows=0)], max_download_threads=2)
@@ -183,9 +231,39 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
 
 
 class DownloaderCancelTests(unittest.TestCase):
-    def _handler(self, http_client, event):
+    class _Response:
+        """Streams the given chunks; a chunk that is an exception is raised instead."""
+
+        status = 200
+
+        def __init__(self, chunks, before_chunk=None):
+            self.chunks = chunks
+            self.before_chunk = before_chunk or (lambda i: None)
+            self.read = 0
+            self.released = False
+
+        def stream(self, amt):
+            for i, chunk in enumerate(self.chunks):
+                self.before_chunk(i)
+                if isinstance(chunk, Exception):
+                    raise chunk
+                self.read += 1
+                yield chunk
+
+        def release_conn(self):
+            self.released = True
+
+    def _http_client(self, *responses):
+        http_client = MagicMock()
+        pending = list(responses)
+        http_client.request_context.side_effect = lambda **_: nullcontext(
+            pending.pop(0)
+        )
+        return http_client
+
+    def _handler(self, http_client, event, lz4_compressed=True):
         return downloader.ResultSetDownloadHandler(
-            downloader.DownloadableResultSettings(is_lz4_compressed=True),
+            downloader.DownloadableResultSettings(is_lz4_compressed=lz4_compressed),
             _link(0),
             ssl_options=SSLOptions(),
             chunk_id=0,
@@ -200,29 +278,54 @@ class DownloaderCancelTests(unittest.TestCase):
         event = threading.Event()
         event.set()
 
-        with self.assertRaises(Error):
+        with self.assertRaises(OperationalError):
             self._handler(http_client, event).run()
         http_client.request_context.assert_not_called()
 
-    def test_cancelled_during_the_download_skips_decompression(self):
+    def test_body_is_read_in_chunks_and_the_connection_released(self):
+        response = self._Response([b"ab", b"cd"])
+        http_client = self._http_client(response)
+
+        file = self._handler(http_client, threading.Event(), False).run()
+
+        self.assertEqual(file.file_bytes, b"abcd")
+        self.assertTrue(response.released)
+        self.assertIs(
+            http_client.request_context.call_args.kwargs["preload_content"], False
+        )
+
+    def test_cancel_mid_body_stops_reading_and_skips_decompression(self):
         event = threading.Event()
-
-        class Response:
-            status = 200
-
-            @property
-            def data(self):
-                event.set()
-                return b"compressed"
-
-        http_client = MagicMock()
-        http_client.request_context.return_value.__enter__.return_value = Response()
+        response = self._Response(
+            [b"a", b"b", b"c", b"d"], before_chunk=lambda i: i == 1 and event.set()
+        )
         with patch.object(
             downloader.ResultSetDownloadHandler, "_decompress_data"
         ) as decompress:
-            with self.assertRaises(Error):
-                self._handler(http_client, event).run()
+            with self.assertRaises(OperationalError):
+                self._handler(self._http_client(response), event).run()
+
+        self.assertEqual(response.read, 2)
+        self.assertFalse(response.released)
         decompress.assert_not_called()
+
+    def test_interrupted_body_is_retried(self):
+        broken = self._Response([b"ab", ProtocolError("connection reset")])
+        http_client = self._http_client(broken, self._Response([b"ab", b"cd"]))
+
+        file = self._handler(http_client, threading.Event(), False).run()
+
+        self.assertEqual(file.file_bytes, b"abcd")
+        self.assertEqual(http_client.request_context.call_count, 2)
+
+    def test_body_errors_give_up_after_three_attempts(self):
+        http_client = self._http_client(
+            *[self._Response([ProtocolError("connection reset")]) for _ in range(3)]
+        )
+
+        with self.assertRaises(ProtocolError):
+            self._handler(http_client, threading.Event(), False).run()
+        self.assertEqual(http_client.request_context.call_count, 3)
 
 
 class ResultSetPrefetchTests(unittest.TestCase):
@@ -426,6 +529,15 @@ class ResultSetPrefetchEndToEndTests(unittest.TestCase):
         self.assertIsNone(manager._link_source)
         backend.close_command.assert_called_once()
 
+    def test_cancelled_downloads_fail_the_next_fetch_instead_of_truncating(self):
+        rs, _, _ = self._result_set()
+        rs.fetchmany_arrow(15)
+
+        rs._cancel_downloads()
+
+        with self.assertRaises(OperationalError):
+            rs.fetchall_arrow()
+
     def test_link_fetch_errors_propagate_out_of_the_fetch_call(self):
         rs, backend, _ = self._result_set()
         backend.fetch_result_links.side_effect = DataError("FetchResults failed")
@@ -531,6 +643,28 @@ class ThriftClientPrefetchTests(unittest.TestCase):
                     max_bytes=1,
                     expected_row_start_offset=0,
                 )
+
+
+class CursorCancelTests(unittest.TestCase):
+    def test_cancel_stops_the_active_result_sets_downloads(self):
+        backend = Mock()
+        cursor = Cursor(Mock(), backend)
+        cursor.active_command_id = Mock()
+        cursor.active_result_set = Mock()
+
+        cursor.cancel()
+
+        backend.cancel_command.assert_called_once_with(cursor.active_command_id)
+        cursor.active_result_set._cancel_downloads.assert_called_once_with()
+
+    def test_thrift_result_set_cancels_its_cloudfetch_downloads(self):
+        queue = Mock(spec=ThriftCloudFetchQueue)
+        queue.download_manager = Mock()
+        rs = Mock(spec=ThriftResultSet, results=queue)
+
+        ThriftResultSet._cancel_downloads(rs)
+
+        queue.download_manager.cancel.assert_called_once_with()
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ class DownloaderTests(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status = status
         mock_response.data = data
+        mock_response.stream.side_effect = lambda *args, **kwargs: iter([data])
         mock_context_manager = MagicMock()
         mock_context_manager.__enter__.return_value = mock_response
         mock_context_manager.__exit__.return_value = None
