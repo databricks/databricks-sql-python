@@ -1,8 +1,17 @@
 import unittest
 from unittest.mock import patch, MagicMock, Mock
+
+import lz4.frame
+import pytest
 import requests
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 import databricks.sql.cloudfetch.downloader as downloader
+from databricks.sql.utils import convert_arrow_based_file_to_arrow_table
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 
@@ -160,11 +169,16 @@ class DownloaderTests(unittest.TestCase):
         result_link.fileLink = "https://s3.amazonaws.com/bucket/file.arrow?token=xyz789"
 
         # Setup mock HTTP response using helper method
-        self._setup_mock_http_response(mock_http_client, status=200, data=compressed_bytes)
+        self._setup_mock_http_response(
+            mock_http_client, status=200, data=compressed_bytes
+        )
 
         # Mock the decompression method and log metrics to avoid issues
-        with patch.object(downloader.ResultSetDownloadHandler, '_decompress_data', return_value=file_bytes), \
-             patch.object(downloader.ResultSetDownloadHandler, '_log_download_metrics'):
+        with patch.object(
+            downloader.ResultSetDownloadHandler,
+            "_decompress_data",
+            return_value=file_bytes,
+        ), patch.object(downloader.ResultSetDownloadHandler, "_log_download_metrics"):
             d = downloader.ResultSetDownloadHandler(
                 settings,
                 result_link,
@@ -178,6 +192,9 @@ class DownloaderTests(unittest.TestCase):
             self.assertEqual(file.file_bytes, file_bytes)
             self.assertEqual(file.start_row_offset, result_link.startRowOffset)
             self.assertEqual(file.row_count, result_link.rowCount)
+            downloader.ResultSetDownloadHandler._decompress_data.assert_called_once_with(
+                compressed_bytes, len(file_bytes)
+            )
 
     @patch("time.time", return_value=1000)
     def test_download_connection_error(self, mock_time):
@@ -222,3 +239,95 @@ class DownloaderTests(unittest.TestCase):
         )
         with self.assertRaises(TimeoutError):
             d.run()
+
+
+def _arrow_ipc_stream(num_rows=5000):
+    table = pyarrow.table(
+        {"id": list(range(num_rows)), "s": [f"row-{i}" for i in range(num_rows)]}
+    )
+    sink = pyarrow.BufferOutputStream()
+    with pyarrow.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table, max_chunksize=1000)
+    return table, sink.getvalue().to_pybytes()
+
+
+@pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+class DecompressDataTests(unittest.TestCase):
+    def setUp(self):
+        self.table, self.raw = _arrow_ipc_stream()
+        self.compressed = lz4.frame.compress(self.raw)
+        self.decompress = downloader.ResultSetDownloadHandler._decompress_data
+
+    def test_expected_size_decompresses_into_private_memory_map(self):
+        with patch.object(
+            downloader.mmap, "mmap", wraps=downloader.mmap.mmap
+        ) as mmap_spy:
+            result = self.decompress(self.compressed, len(self.raw))
+
+        mmap_spy.assert_called_once_with(-1, len(self.raw), **downloader._MMAP_PRIVATE)
+        if hasattr(downloader.mmap, "MAP_PRIVATE"):
+            self.assertEqual(
+                downloader._MMAP_PRIVATE, {"flags": downloader.mmap.MAP_PRIVATE}
+            )
+        self.assertIsInstance(result, pyarrow.Buffer)
+        self.assertEqual(result.to_pybytes(), self.raw)
+        self.assertTrue(
+            convert_arrow_based_file_to_arrow_table(result).equals(self.table)
+        )
+
+    def test_mmap_failure_falls_back_to_python_lz4(self):
+        with patch.object(downloader.mmap, "mmap", side_effect=OSError("ENOMEM")):
+            result = self.decompress(self.compressed, len(self.raw))
+
+        self.assertIsInstance(result, bytes)
+        self.assertEqual(result, self.raw)
+
+    def test_oversized_expected_size_returns_exact_length(self):
+        result = self.decompress(self.compressed, len(self.raw) + 4096)
+
+        self.assertIsInstance(result, pyarrow.Buffer)
+        self.assertEqual(result.to_pybytes(), self.raw)
+
+    def test_undersized_expected_size_falls_back_to_python_lz4(self):
+        result = self.decompress(self.compressed, len(self.raw) - 1)
+
+        self.assertIsInstance(result, bytes)
+        self.assertEqual(result, self.raw)
+
+    def test_unknown_expected_size_uses_python_lz4(self):
+        # SEA links carry the compressed size, which is not a usable output size
+        for expected_size in (None, 0, len(self.compressed)):
+            with patch.object(downloader.mmap, "mmap") as mmap_mock:
+                result = self.decompress(self.compressed, expected_size)
+            mmap_mock.assert_not_called()
+            self.assertIsInstance(result, bytes)
+            self.assertEqual(result, self.raw)
+
+    def test_concatenated_frames(self):
+        middle = len(self.raw) // 2
+        compressed = lz4.frame.compress(self.raw[:middle]) + lz4.frame.compress(
+            self.raw[middle:]
+        )
+        for expected_size in (len(self.raw), None):
+            result = self.decompress(compressed, expected_size)
+            self.assertEqual(bytes(result), self.raw)
+
+    def test_corrupt_data_raises_python_lz4_error(self):
+        # Databricks frames carry block and content checksums
+        compressed = lz4.frame.compress(
+            self.raw, block_checksum=True, content_checksum=True
+        )
+        corrupt = bytearray(compressed)
+        corrupt[len(corrupt) // 2] ^= 0xFF
+        truncated = compressed[:-10]
+        for data in (bytes(corrupt), truncated):
+            for expected_size in (len(self.raw), None):
+                with self.assertRaises(RuntimeError):
+                    self.decompress(data, expected_size)
+
+    def test_without_arrow_lz4_codec_uses_python_lz4(self):
+        with patch.object(downloader, "_ARROW_LZ4_AVAILABLE", False):
+            result = self.decompress(self.compressed, len(self.raw))
+
+        self.assertIsInstance(result, bytes)
+        self.assertEqual(result, self.raw)
