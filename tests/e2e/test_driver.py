@@ -702,6 +702,44 @@ class TestPySQLCoreSuite(
                 ("TABLE_CAT", "string", None, None, None, None, None)
             ]
 
+    @pytest.mark.parametrize(
+        "extra_params, expect_rows",
+        [({}, False), ({"escape_catalog_name": False}, True)],
+        ids=["default", "wildcard-opt-out"],
+    )
+    def test_catalog_name_underscore_is_literal_by_default(
+        self, extra_params, expect_rows
+    ):
+        # No catalog is named "syste_"; only the opt-out lets `_` match "system".
+        with self.cursor(extra_params) as cursor:
+            cursor.schemas(catalog_name="syste_", schema_name="information_schema")
+            rows = cursor.fetchall()
+        assert bool(rows) == expect_rows
+        assert all(row[1] == "system" for row in rows)
+
+    def test_escaped_catalog_name_matches_exact_catalog(self):
+        with self.cursor({}) as cursor:
+            cursor.catalogs()
+            names = [row[0] for row in cursor.fetchall()]
+        candidates = [
+            n
+            for n in names
+            if "_" in n and not n.startswith("__") and n != "hive_metastore"
+        ]
+        if not candidates:
+            pytest.skip("no catalog with `_` in its name is visible")
+        name = candidates[0]
+
+        with self.cursor({"escape_catalog_name": False}) as cursor:
+            cursor.schemas(catalog_name=name)
+            unescaped = sorted(tuple(r) for r in cursor.fetchall() if r[1] == name)
+        if not unescaped:
+            pytest.skip(f"no schemas visible in catalog {name}")
+        with self.cursor({}) as cursor:
+            cursor.schemas(catalog_name=name)
+            escaped = sorted(tuple(r) for r in cursor.fetchall())
+        assert escaped == unescaped
+
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
     @pytest.mark.parametrize(
         "extra_params",

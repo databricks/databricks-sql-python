@@ -1946,8 +1946,14 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
 
 
 @pytest.mark.parametrize(
-    "options",
-    [{}, {"escape_catalog_name": False}, {"escape_catalog_name": True}],
+    "options, expect_escaped",
+    [
+        # Escaping is on by default; it only changes tables(), because kernel
+        # schemas()/columns() already take an exact catalog identifier.
+        ({}, True),
+        ({"escape_catalog_name": False}, False),
+        ({"escape_catalog_name": True}, True),
+    ],
     ids=["default", "disabled", "enabled"],
 )
 @pytest.mark.parametrize(
@@ -2008,7 +2014,14 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
     ],
 )
 def test_metadata_catalog_escaping(
-    monkeypatch, options, method, filters, kernel_filters, catalog_name, escaped
+    monkeypatch,
+    options,
+    expect_escaped,
+    method,
+    filters,
+    kernel_filters,
+    catalog_name,
+    escaped,
 ):
     from databricks import sql
 
@@ -2031,11 +2044,7 @@ def test_metadata_catalog_escaping(
         cursor = connection.cursor()
         assert getattr(cursor, method)(catalog_name=catalog_name, **filters) is cursor
 
-    expected = (
-        escaped
-        if method == "tables" and options.get("escape_catalog_name", False)
-        else catalog_name
-    )
+    expected = escaped if method == "tables" and expect_escaped else catalog_name
     if expected in ("%", "*"):
         expected = None
     rpc.assert_called_once_with(catalog=expected, **kernel_filters)

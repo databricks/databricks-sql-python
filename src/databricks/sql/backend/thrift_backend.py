@@ -179,7 +179,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise ValueError("No valid connection settings.")
 
         self._host = server_hostname
-        self._escape_catalog_name = kwargs.get("escape_catalog_name", False)
+        self._escape_catalog_name = kwargs.get("escape_catalog_name", True)
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True

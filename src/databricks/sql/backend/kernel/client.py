@@ -322,7 +322,7 @@ class KernelDatabricksClient(DatabricksClient):
         )
         self._catalog = catalog
         self._schema = schema
-        self._escape_catalog_name = kwargs.get("escape_catalog_name", False)
+        self._escape_catalog_name = kwargs.get("escape_catalog_name", True)
         # ``_use_arrow_native_complex_types`` is the connector-side
         # toggle for whether complex columns (ARRAY / MAP / STRUCT)
         # are surfaced as native Arrow shapes or as compact JSON
