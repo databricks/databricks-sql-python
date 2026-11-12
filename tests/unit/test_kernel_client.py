@@ -518,6 +518,7 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
         telemetry_options={
             "enable_telemetry": True,
             "telemetry_batch_size": 17,
+            "telemetry_flush_interval_ms": 300_000,
             "telemetry_circuit_breaker_enabled": False,
         },
     )
@@ -537,7 +538,28 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     assert captured["process_name"] is None
     assert captured["telemetry_enabled"] is True
     assert captured["telemetry_batch_size"] == 17
+    assert captured["telemetry_flush_interval_ms"] == 300_000
     assert captured["telemetry_circuit_breaker_enabled"] is False
+
+
+@pytest.mark.parametrize("value", [0, -1, "300000", 1.5, True])
+def test_invalid_telemetry_flush_interval_is_rejected(value):
+    with pytest.raises(ValueError, match="telemetry_flush_interval_ms"):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            telemetry_options={"telemetry_flush_interval_ms": value},
+        )
+
+
+def test_unset_telemetry_flush_interval_is_not_forwarded(monkeypatch):
+    monkeypatch.setattr(kernel_client, "_kernel_session_accepts_kwarg", lambda _: True)
+    kwargs = kernel_client._kernel_telemetry_kwargs(
+        {"enable_telemetry": True, "telemetry_flush_interval_ms": None}
+    )
+    assert "telemetry_flush_interval_ms" not in kwargs
 
 
 def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
@@ -612,7 +634,11 @@ def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
     # The kwargs the client builds must be filtered to what fake_session
     # accepts, so open_session succeeds instead of raising TypeError.
     kwargs = kernel_client._kernel_telemetry_kwargs(
-        {"enable_telemetry": True, "telemetry_batch_size": 17}
+        {
+            "enable_telemetry": True,
+            "telemetry_batch_size": 17,
+            "telemetry_flush_interval_ms": 300_000,
+        }
     )
     assert kwargs == {}, f"expected no unsupported phase-7 kwargs, got {kwargs}"
 
