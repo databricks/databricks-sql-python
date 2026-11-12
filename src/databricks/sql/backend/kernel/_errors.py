@@ -162,7 +162,10 @@ def reraise_kernel_error(
     message = getattr(exc, "message", str(exc))
     new: Union[Error, OSError]
     # Local missing files have no HTTP status; remote missing files carry 404.
-    if error_code == "FILE_TRANSFER_PERMISSION_ERROR":
+    if (
+        error_code == "FILE_TRANSFER_PERMISSION_ERROR"
+        and getattr(exc, "http_status", None) is None
+    ):
         new = PermissionError(message)
     elif (
         file_transfer

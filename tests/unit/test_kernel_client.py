@@ -2684,6 +2684,7 @@ class TestKernelHttpHeadersForwarding:
         ("NotFound", None, "FILE_TRANSFER_ERROR", FileNotFoundError),
         ("NotFound", 404, "FILE_TRANSFER_ERROR", OperationalError),
         ("PermissionDenied", None, "FILE_TRANSFER_PERMISSION_ERROR", PermissionError),
+        ("PermissionDenied", 403, "FILE_TRANSFER_PERMISSION_ERROR", OperationalError),
         ("NetworkError", None, "FILE_TRANSFER_ERROR", OperationalError),
         ("Internal", None, "FILE_TRANSFER_ERROR", OperationalError),
         ("Internal", None, None, DatabaseError),
