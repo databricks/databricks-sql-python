@@ -780,8 +780,8 @@ def test_scientific_notation_decimal_parameter_binds(conn):
 def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
     allowed = tmp_path / "allowed"
     allowed.mkdir()
-    source = allowed / "input.bin"
-    destination = allowed / "output.bin"
+    source = allowed / "input's.bin"
+    destination = allowed / "output's.bin"
     payload = bytes(range(256)) * 4096
     source.write_bytes(payload)
     denied = tmp_path / "denied.bin"
@@ -790,6 +790,10 @@ def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
     namespace = f"volume_{uuid4().hex}"
     qualified = f"`{catalog.replace('`', '``')}`.`{namespace}`"
     remote = f"/Volumes/{catalog}/{namespace}/files/input.bin"
+
+    def literal(path):
+        return "'" + str(path).replace("\\", "\\\\").replace("'", "\\'") + "'"
+
     with sql.connect(
         **kernel_conn_params, staging_allowed_local_path=str(allowed)
     ) as connection:
@@ -802,7 +806,7 @@ def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
                     with no_paths.cursor() as denied_cursor:
                         with pytest.raises(ProgrammingError):
                             denied_cursor.execute(
-                                f"PUT '{source}' INTO '{remote}' OVERWRITE"
+                                f"PUT {literal(source)} INTO {literal(remote)} OVERWRITE"
                             )
 
                 def execute(query):
@@ -814,23 +818,27 @@ def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
                     return cur.fetchall()
 
                 assert (
-                    execute(f"-- upload\nPUT '{source}' INTO '{remote}' OVERWRITE")
+                    execute(
+                        f"-- upload\nPUT {literal(source)} INTO {literal(remote)} OVERWRITE"
+                    )
                     == []
                 )
                 with pytest.raises(NotSupportedError, match="Streaming PUT"):
-                    execute(f"PUT r'__input_stream__' INTO '{remote}' OVERWRITE")
-                assert execute(f"GET '{remote}' TO '{destination}'") == []
+                    execute(f"PUT r'__input_stream__' INTO {literal(remote)} OVERWRITE")
+                assert execute(f"GET {literal(remote)} TO {literal(destination)}") == []
                 assert destination.read_bytes() == payload
                 with pytest.raises(ProgrammingError):
-                    execute(f"PUT '{denied}' INTO '{remote}' OVERWRITE")
+                    execute(f"PUT {literal(denied)} INTO {literal(remote)} OVERWRITE")
                 with pytest.raises(FileNotFoundError):
                     execute(
-                        f"PUT '{allowed / 'missing.bin'}' INTO '{remote}' OVERWRITE"
+                        f"PUT {literal(allowed / 'missing.bin')} INTO {literal(remote)} OVERWRITE"
                     )
-                assert execute(f"REMOVE '{remote}'") == []
-                assert execute(f"REMOVE '{remote}'") == []
+                assert execute(f"REMOVE {literal(remote)}") == []
+                assert execute(f"REMOVE {literal(remote)}") == []
                 with pytest.raises(OperationalError, match="404"):
-                    execute(f"GET '{remote}' TO '{allowed / 'deleted.bin'}'")
+                    execute(
+                        f"GET {literal(remote)} TO {literal(allowed / 'deleted.bin')}"
+                    )
                 assert execute("SELECT 1")[0][0] == 1
             finally:
                 cur.execute(f"DROP SCHEMA {qualified} CASCADE")
