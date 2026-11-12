@@ -300,6 +300,21 @@ def _stream_size(schema_bytes, batches):
     return len(schema_bytes) + sum(len(lz4.frame.decompress(b.batch)) for b in batches)
 
 
+def _large_inline_arrow_set(lz4_compressed=True):
+    table, schema_bytes, batches = _inline_arrow_set(4, 50000, lz4_compressed)
+    # The map-path tests need streams above the mmap floor even with a 1x estimate
+    assert sum(len(b.batch) for b in batches) >= utils._INLINE_ARROW_MMAP_MIN_BYTES
+    return table, schema_bytes, batches
+
+
+def _patch_map(map_factory):
+    """Replace the mmap module seen by utils only, not the stdlib module itself."""
+    fake = SimpleNamespace(
+        mmap=map_factory, MAP_PRIVATE=getattr(mmap, "MAP_PRIVATE", 0)
+    )
+    return patch.object(utils, "mmap", fake)
+
+
 linux_only = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="inline Arrow maps are Linux-only"
 )
@@ -318,9 +333,10 @@ class TestConvertArrowBasedSet:
     @linux_only
     @pytest.mark.parametrize("lz4_compressed", [True, False])
     def test_large_set_is_read_from_a_private_memory_map(self, lz4_compressed):
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, lz4_compressed)
+        table, schema_bytes, batches = _large_inline_arrow_set(lz4_compressed)
 
-        with patch.object(utils.mmap, "mmap", wraps=mmap.mmap) as mmap_spy:
+        mmap_spy = Mock(wraps=mmap.mmap)
+        with _patch_map(mmap_spy):
             result, n_rows = convert_arrow_based_set_to_arrow_table(
                 batches, lz4_compressed, schema_bytes
             )
@@ -337,12 +353,10 @@ class TestConvertArrowBasedSet:
 
     @linux_only
     def test_map_grows_when_the_size_estimate_is_too_small(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
         _RecordingMap.resizes = []
 
-        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
-            utils.mmap, "mmap", _RecordingMap
-        ):
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), _patch_map(_RecordingMap):
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
@@ -353,10 +367,10 @@ class TestConvertArrowBasedSet:
 
     @linux_only
     def test_map_is_shrunk_to_the_stream_size(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
         _RecordingMap.resizes = []
 
-        with patch.object(utils.mmap, "mmap", _RecordingMap):
+        with _patch_map(_RecordingMap):
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
@@ -374,7 +388,7 @@ class TestConvertArrowBasedSet:
                     raise SystemError("mmap: resizing not available--no mremap()")
                 return super().resize(newsize)
 
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
         buffers = []
         getbuffer = utils._ArrowStreamBuffer.getbuffer
 
@@ -383,7 +397,7 @@ class TestConvertArrowBasedSet:
             buffers.append((len(stream._map), len(buffer)))
             return buffer
 
-        with patch.object(utils.mmap, "mmap", NoShrink), patch.object(
+        with _patch_map(NoShrink), patch.object(
             utils._ArrowStreamBuffer, "getbuffer", recording_getbuffer
         ):
             result, _ = convert_arrow_based_set_to_arrow_table(
@@ -403,7 +417,7 @@ class TestConvertArrowBasedSet:
                 attempts.append((len(self), newsize))
                 raise SystemError("mmap: resizing not available--no mremap()")
 
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
         states = []
         getbuffer = utils._ArrowStreamBuffer.getbuffer
 
@@ -411,8 +425,8 @@ class TestConvertArrowBasedSet:
             states.append((stream._map, len(stream._bytes)))
             return getbuffer(stream)
 
-        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
-            utils.mmap, "mmap", NoResize
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), _patch_map(
+            NoResize
         ), patch.object(utils._ArrowStreamBuffer, "getbuffer", recording_getbuffer):
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
@@ -423,7 +437,7 @@ class TestConvertArrowBasedSet:
         assert states == [(None, _stream_size(schema_bytes, batches))]
 
     def test_non_posix_platform_stays_on_the_heap(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
         no_map_private = SimpleNamespace(mmap=Mock(side_effect=AssertionError))
 
         with patch.object(utils, "mmap", no_map_private):
@@ -435,16 +449,16 @@ class TestConvertArrowBasedSet:
         assert result.equals(table)
 
     def test_non_linux_platform_stays_on_the_heap(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
 
-        with patch.object(utils, "_INLINE_ARROW_USE_MMAP", False), patch.object(
-            utils.mmap, "mmap"
-        ) as mmap_mock:
+        with patch.object(utils, "_INLINE_ARROW_USE_MMAP", False), _patch_map(
+            Mock()
+        ) as patched:
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
 
-        mmap_mock.assert_not_called()
+        patched.mmap.assert_not_called()
         assert result.equals(table)
 
     @linux_only
@@ -458,7 +472,7 @@ class TestConvertArrowBasedSet:
                     raise OSError("ENOMEM")
                 return super().resize(newsize)
 
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
         states = []
         getbuffer = utils._ArrowStreamBuffer.getbuffer
 
@@ -466,8 +480,8 @@ class TestConvertArrowBasedSet:
             states.append(stream._map is not None)
             return getbuffer(stream)
 
-        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
-            utils.mmap, "mmap", NoDoubling
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), _patch_map(
+            NoDoubling
         ), patch.object(utils._ArrowStreamBuffer, "getbuffer", recording_getbuffer):
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
@@ -485,9 +499,9 @@ class TestConvertArrowBasedSet:
             def __init__(self, *args, **kwargs):
                 maps.append(weakref.ref(self))
 
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
 
-        with patch.object(utils.mmap, "mmap", TrackedMap):
+        with _patch_map(TrackedMap):
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
@@ -502,27 +516,25 @@ class TestConvertArrowBasedSet:
     def test_small_set_stays_on_the_heap(self):
         table, schema_bytes, batches = _inline_arrow_set(2, 10, True)
 
-        with patch.object(utils.mmap, "mmap") as mmap_mock:
+        with _patch_map(Mock()) as patched:
             result, n_rows = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
 
-        mmap_mock.assert_not_called()
+        patched.mmap.assert_not_called()
         assert n_rows == 20
         assert result.equals(table)
 
     @linux_only
     def test_mmap_failure_falls_back_to_bytes(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
+        table, schema_bytes, batches = _large_inline_arrow_set()
 
-        with patch.object(
-            utils.mmap, "mmap", side_effect=OSError("ENOMEM")
-        ) as mmap_mock:
+        with _patch_map(Mock(side_effect=OSError("ENOMEM"))) as patched:
             result, n_rows = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
 
-        mmap_mock.assert_called_once()
+        patched.mmap.assert_called_once()
         assert n_rows == table.num_rows
         assert result.equals(table)
 
