@@ -624,7 +624,7 @@ class ThriftClientPrefetchTests(unittest.TestCase):
             self.assertFalse(
                 self._client(_cloudfetch_prefetch=off)._cloudfetch_prefetch
             )
-        for on in (True, "true", "1"):
+        for on in (True, "true", "1", None):
             self.assertTrue(self._client(_cloudfetch_prefetch=on)._cloudfetch_prefetch)
 
     # get_schemas/get_tables/get_columns import ThriftResultSet locally

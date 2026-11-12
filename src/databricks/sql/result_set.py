@@ -233,7 +233,9 @@ class ThriftResultSet(ResultSet):
             :param t_row_set: The TRowSet containing result data (if available)
             :param max_download_threads: Maximum number of download threads for cloud fetch
             :param ssl_options: SSL options for cloud fetch
-            :param has_more_rows: Whether there are more rows to fetch
+            :param has_more_rows: Whether this result set still has to fetch more rows
+                itself. Set to False once CloudFetch link fetching moves to the
+                download manager, which then fetches the rest.
             :param cloudfetch_prefetch: Request further CloudFetch links while earlier
                 files still download, instead of one batch at a time
         """
