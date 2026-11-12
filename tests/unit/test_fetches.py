@@ -393,7 +393,7 @@ class FetchTests(unittest.TestCase):
 
 
 class CloudFetchBatchSizeTests(unittest.TestCase):
-    """maxBytes sent by ThriftResultSet._fill_results_buffer."""
+    """maxBytes sent by ThriftResultSet._fill_results_buffer (prefetch disabled)."""
 
     MIB = 2**20
     BUFFER = 100 * MIB
@@ -457,6 +457,7 @@ class CloudFetchBatchSizeTests(unittest.TestCase):
                 arraysize=1000,
                 t_row_set=t_row_set,
                 max_download_threads=max_download_threads,
+                cloudfetch_prefetch=False,
             )
         return rs, calls
 

@@ -1958,7 +1958,17 @@ class Cursor:
         This method can be called from another thread.
         """
         if self.active_command_id is not None:
-            self.backend.cancel_command(self.active_command_id)
+            try:
+                self.backend.cancel_command(self.active_command_id)
+            finally:
+                result_set = self.active_result_set
+                if result_set is not None:
+                    # Stop downloads already under way; reads then fail like the server
+                    # would. Done even if the cancel RPC fails, without hiding its error.
+                    try:
+                        result_set._cancel_downloads()
+                    except Exception as e:
+                        logger.debug("Failed to cancel CloudFetch downloads: %s", e)
             return
         # No command id yet. A backend whose synchronous ``execute()``
         # blocks without first publishing a command id (the kernel

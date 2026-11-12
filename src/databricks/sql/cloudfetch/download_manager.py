@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import threading
 
-from concurrent.futures import ThreadPoolExecutor, Future
-from typing import List, Union, Tuple, Optional, TYPE_CHECKING
+from concurrent.futures import CancelledError, ThreadPoolExecutor, Future
+from typing import Callable, List, NoReturn, Union, Tuple, Optional, TYPE_CHECKING
 
+from databricks.sql.exc import OperationalError
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
     DownloadableResultSettings,
@@ -20,6 +22,9 @@ if TYPE_CHECKING:
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
+
+# Called with the number of free download slots; returns (new links, has more rows).
+LinkSource = Callable[[int], Tuple[List["TSparkArrowResultLink"], bool]]
 
 
 class ResultFileDownloadManager:
@@ -56,6 +61,37 @@ class ResultFileDownloadManager:
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
         self._http_client = http_client
+        self._link_source: Optional[LinkSource] = None
+        # Set on shutdown so downloads that have not started (or finished) stop early.
+        self._cancelled = threading.Event()
+        # Set by cancel(): reads fail once they need data the cancel stopped.
+        self._cancel_requested = False
+        # A failed link fetch, raised once the downloaded files run out
+        self._link_error: Optional[BaseException] = None
+        self._link_error_raised = False
+
+    def cancel(self) -> None:
+        """Stop downloading because the statement was cancelled.
+
+        May be called from another thread while the consumer is reading. Files that
+        finished downloading are still returned; a read that needs anything else
+        raises instead of reporting the end of the result.
+        """
+        self._cancel_requested = True
+        self._cancelled.set()
+        self._thread_pool.shutdown(wait=False, cancel_futures=True)
+
+    def set_link_source(self, link_source: LinkSource) -> bool:
+        """Fetch further links on demand.
+
+        Whenever a download slot is free and no links are pending, ``link_source`` is
+        asked for more, so the next links arrive while earlier files still download.
+        Returns False, without attaching it, if the manager is already shut down.
+        """
+        if self._cancelled.is_set():
+            return False
+        self._link_source = link_source
+        return True
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -73,11 +109,19 @@ class ResultFileDownloadManager:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
 
-        # Make sure the download queue is always full
-        self._schedule_downloads()
+        if not self._cancel_requested and self._link_error is None:
+            # Make sure the download queue is always full
+            self._schedule_downloads()
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
+            if self._link_error is not None:
+                self._raise_link_error(self._link_error)
+            if self._cancel_requested and (
+                self._pending_links or self._link_source is not None
+            ):
+                # The cancel stopped part of the result: fail rather than end early
+                raise OperationalError("CloudFetch download cancelled")
             self._shutdown_manager()
             return None
 
@@ -85,7 +129,10 @@ class ResultFileDownloadManager:
         # Future's `result()` method will wait for the call to complete, and return
         # the value returned by the call. If the call throws an exception - `result()`
         # will throw the same exception
-        file = task.result()
+        try:
+            file = task.result()
+        except CancelledError:
+            raise OperationalError("CloudFetch download cancelled") from None
         if (next_row_offset < file.start_row_offset) or (
             next_row_offset > file.start_row_offset + file.row_count
         ):
@@ -97,7 +144,49 @@ class ResultFileDownloadManager:
 
         return file
 
+    def _raise_link_error(self, error: BaseException) -> NoReturn:
+        # That read loses the rows it had collected, so every later read fails too
+        # and a retry can't continue past them.
+        self._shutdown_manager()
+        if not self._link_error_raised:
+            self._link_error_raised = True
+            raise error
+        raise OperationalError(
+            "Fetching more CloudFetch results failed earlier; the result can't "
+            "be read further, execute the statement again"
+        ) from error
+
     def _schedule_downloads(self):
+        self._submit_pending_links()
+        while (
+            self._link_source is not None
+            and not self._pending_links
+            and len(self._download_tasks) < self._max_download_threads
+        ):
+            scheduled = len(self._download_tasks)
+            try:
+                links, has_more = self._link_source(
+                    self._max_download_threads - scheduled
+                )
+            except Exception as e:
+                # Stop scheduling; files already downloading are still returned and
+                # the read that needs rows past them raises (_raise_link_error)
+                self._link_error = e
+                return
+            if self._cancelled.is_set():
+                # Shut down while the request was in flight
+                return
+            if not has_more:
+                self._link_source = None
+            for link in links:
+                self.add_link(link)
+            self._submit_pending_links()
+            if self._download_tasks and len(self._download_tasks) == scheduled:
+                # Nothing new to download (no links, or only empty ones): ask again
+                # on the next call instead of polling the server now
+                break
+
+    def _submit_pending_links(self):
         """
         While download queue has a capacity, peek pending links and submit them to thread pool.
         """
@@ -119,8 +208,17 @@ class ResultFileDownloadManager:
                 session_id_hex=self.session_id_hex,
                 statement_id=self.statement_id,
                 http_client=self._http_client,
+                cancel_event=self._cancelled,
             )
-            task = self._thread_pool.submit(handler.run)
+            try:
+                task = self._thread_pool.submit(handler.run)
+            except RuntimeError:
+                # cancel() shut the pool down from another thread; keep the link so
+                # the result still counts as incomplete
+                if self._cancel_requested:
+                    self._pending_links.insert(0, (chunk_id, link))
+                    return
+                raise
             self._download_tasks.append(task)
 
     def add_link(self, link: TSparkArrowResultLink):
@@ -144,6 +242,8 @@ class ResultFileDownloadManager:
 
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool
+        self._link_source = None
         self._pending_links = []
         self._download_tasks = []
-        self._thread_pool.shutdown(wait=False)
+        self._cancelled.set()
+        self._thread_pool.shutdown(wait=False, cancel_futures=True)
