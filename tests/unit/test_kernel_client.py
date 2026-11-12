@@ -906,7 +906,7 @@ def test_malformed_local_paths_only_reject_transfers(allowed, operation):
         "PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
         "/* upload */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
         "PUT'__input_stream__' INTO '/Volumes/c/s/v/file'",
-        '/* upload */ PUT"__input_stream__" INTO \'/Volumes/c/s/v/file\'',
+        "/* upload */ PUT\"__input_stream__\" INTO '/Volumes/c/s/v/file'",
     ],
 )
 def test_kernel_rejects_streaming_put(query):
