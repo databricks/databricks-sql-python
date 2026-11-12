@@ -80,12 +80,8 @@ def _strip_leading_sql_comments(sql: str) -> str:
     ``/* … */`` block, possibly several) from ``sql``, returning the
     remainder.
 
-    Needed so staging detection sees the real leading verb: a
-    comment-prefixed staging op (``-- upload\\nPUT …`` or
-    ``/* c */ PUT …``, common in ETL scripts) must still be classified
-    as staging, or it would slip past the guard into the silent-no-op
-    bug. Block comments do not nest in Databricks SQL, so a simple
-    scan-to-``*/`` is correct.
+    Comment-prefixed PUT/GET statements need the permitted local paths
+    just as statements that begin with the verb do.
     """
     i = 0
     n = len(sql)
