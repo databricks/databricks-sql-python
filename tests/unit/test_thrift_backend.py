@@ -2202,7 +2202,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     @staticmethod
-    def _arrow_set(n_batches, rows_per_batch, lz4_compressed, zeros=False):
+    def _arrow_set(n_batches, rows_per_batch, lz4_compressed, zeros=False, **lz4_kw):
         n = n_batches * rows_per_batch
         table = pyarrow.table(
             {
@@ -2215,7 +2215,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
             data = record_batch.serialize().to_pybytes()
             arrow_batches.append(
                 ttypes.TSparkArrowBatch(
-                    batch=lz4.frame.compress(data) if lz4_compressed else data,
+                    batch=(
+                        lz4.frame.compress(data, **lz4_kw) if lz4_compressed else data
+                    ),
                     rowCount=record_batch.num_rows,
                 )
             )
@@ -2264,10 +2266,35 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertTrue(result.equals(table))
 
     def test_convert_arrow_based_set_corrupt_lz4_raises_runtime_error(self):
+        def truncate(batch):
+            return batch[:-20]
+
+        def flip_byte(batch):
+            corrupted = bytearray(batch)
+            corrupted[len(corrupted) // 2] ^= 0xFF
+            return bytes(corrupted)
+
+        # Checksums as the warehouse sets them, so flipped bytes are detected.
         for n_batches in (1, 72):
-            _, arrow_batches, schema = self._arrow_set(n_batches, 14, True)
-            arrow_batches[-1].batch = arrow_batches[-1].batch[:-20]
-            with self.assertRaises(RuntimeError, msg=n_batches):
+            for which in (n_batches // 2, -1):
+                for corrupt in (truncate, flip_byte):
+                    _, arrow_batches, schema = self._arrow_set(
+                        n_batches, 14, True, block_checksum=True, content_checksum=True
+                    )
+                    arrow_batches[which].batch = corrupt(arrow_batches[which].batch)
+                    with self.assertRaises(
+                        RuntimeError, msg=(n_batches, which, corrupt.__name__)
+                    ):
+                        utils.convert_arrow_based_set_to_arrow_table(
+                            arrow_batches, True, schema
+                        )
+
+    def test_convert_arrow_based_set_lz4_memory_error_is_not_wrapped(self):
+        _, arrow_batches, schema = self._arrow_set(72, 14, True)
+        with patch.object(
+            utils.pyarrow, "CompressedInputStream", side_effect=pyarrow.ArrowMemoryError
+        ):
+            with self.assertRaises(MemoryError):
                 utils.convert_arrow_based_set_to_arrow_table(
                     arrow_batches, True, schema
                 )

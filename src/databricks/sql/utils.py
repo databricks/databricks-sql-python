@@ -1027,6 +1027,8 @@ def _decompress_lz4_frames_into(out: bytearray, frames: List[bytes]) -> None:
             if not chunk:
                 return
             out += chunk
+    except MemoryError:
+        raise
     except (OSError, pyarrow.ArrowException) as e:
         # Raise what python-lz4 raises, so the error type doesn't depend on batch count.
         raise RuntimeError(f"LZ4 decompression failed: {e}") from e
