@@ -20,6 +20,7 @@ from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
+    ThriftCloudFetchQueue,
     concat_table_chunks,
 )
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
@@ -229,6 +230,8 @@ class ThriftResultSet(ResultSet):
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
         self.has_more_rows = has_more_rows
+        self._max_download_threads = max_download_threads
+        self._max_link_bytes = 0
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -251,6 +254,7 @@ class ThriftResultSet(ResultSet):
             )
             if t_row_set.resultLinks:
                 self.num_chunks += len(t_row_set.resultLinks)
+                self._note_link_sizes(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -274,11 +278,25 @@ class ThriftResultSet(ResultSet):
         if not self.results:
             self._fill_results_buffer()
 
+    def _note_link_sizes(self, links) -> None:
+        for link in links:
+            if link.bytesNum > self._max_link_bytes:
+                self._max_link_bytes = link.bytesNum
+
+    def _fetch_max_bytes(self) -> int:
+        # The server packs CloudFetch links into a FetchResults reply up to maxBytes of
+        # file data, so buffer_size_bytes alone yields only a few links per round trip.
+        # Ask for about one link per download thread: every link in the batch then starts
+        # downloading immediately, so none sits waiting while it ages towards expiry.
+        return max(
+            self.buffer_size_bytes, self._max_download_threads * self._max_link_bytes
+        )
+
     def _fill_results_buffer(self):
         results, has_more_rows, result_links_count = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
-            max_bytes=self.buffer_size_bytes,
+            max_bytes=self._fetch_max_bytes(),
             expected_row_start_offset=self._next_row_index,
             lz4_compressed=self.lz4_compressed,
             arrow_schema_bytes=self._arrow_schema_bytes,
@@ -289,6 +307,8 @@ class ThriftResultSet(ResultSet):
         self.results = results
         self.has_more_rows = has_more_rows
         self.num_chunks += result_links_count
+        if isinstance(results, ThriftCloudFetchQueue):
+            self._note_link_sizes(results.result_links)
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]

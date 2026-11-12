@@ -1,6 +1,6 @@
 import unittest
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 try:
     import pyarrow as pa
@@ -9,9 +9,10 @@ except ImportError:
 
 import databricks.sql.client as client
 from databricks.sql.backend.types import ExecuteResponse
-from databricks.sql.utils import ArrowQueue
+from databricks.sql.utils import ArrowQueue, ThriftCloudFetchQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
+from databricks.sql.thrift_api.TCLIService import ttypes
 
 
 class _StubArrowQueue:
@@ -389,6 +390,132 @@ class FetchTests(unittest.TestCase):
 
         self.assertIsInstance(result, pa.Table)
         self.assertEqual(result.num_rows, 0)
+
+
+class CloudFetchBatchSizeTests(unittest.TestCase):
+    """maxBytes sent by ThriftResultSet._fill_results_buffer."""
+
+    MIB = 2**20
+    BUFFER = 100 * MIB
+
+    @staticmethod
+    def _link(bytes_num):
+        return ttypes.TSparkArrowResultLink(
+            fileLink="https://example.com/file",
+            expiryTime=0,
+            startRowOffset=0,
+            rowCount=1,
+            bytesNum=bytes_num,
+        )
+
+    @classmethod
+    def _cloudfetch_queue(cls, *link_sizes):
+        queue = Mock(spec=ThriftCloudFetchQueue)
+        queue.result_links = [cls._link(b) for b in link_sizes]
+        return queue
+
+    def _make_result_set(
+        self, initial_link_sizes=None, fetched_queues=(), max_download_threads=10
+    ):
+        """Returns the result set and the kwargs of every fetch_results call."""
+        calls = []
+        queues = list(fetched_queues)
+
+        def fetch_results(**kwargs):
+            calls.append(kwargs)
+            queue = queues.pop(0)
+            return queue, bool(queues), len(getattr(queue, "result_links", []))
+
+        backend = Mock(spec=ThriftDatabricksClient)
+        backend.fetch_results = fetch_results
+        t_row_set = None
+        if initial_link_sizes is not None:
+            t_row_set = ttypes.TRowSet(
+                startRowOffset=0,
+                rows=[],
+                resultLinks=[self._link(b) for b in initial_link_sizes],
+            )
+        with patch(
+            "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",
+            return_value=Mock(),
+        ):
+            rs = ThriftResultSet(
+                connection=Mock(),
+                execute_response=ExecuteResponse(
+                    command_id=Mock(),
+                    status=None,
+                    has_been_closed_server_side=False,
+                    description=[],
+                    result_format=ttypes.TSparkRowSetType.URL_BASED_SET,
+                ),
+                thrift_client=backend,
+                buffer_size_bytes=self.BUFFER,
+                arraysize=1000,
+                t_row_set=t_row_set,
+                max_download_threads=max_download_threads,
+            )
+        return rs, calls
+
+    def test_requests_one_link_per_download_thread(self):
+        rs, calls = self._make_result_set(
+            initial_link_sizes=[20 * self.MIB, 20 * self.MIB, 5 * self.MIB],
+            fetched_queues=[
+                self._cloudfetch_queue(21 * self.MIB),
+                self._cloudfetch_queue(),
+            ],
+        )
+
+        rs._fill_results_buffer()
+        rs._fill_results_buffer()
+
+        self.assertEqual(
+            [c["max_bytes"] for c in calls], [200 * self.MIB, 210 * self.MIB]
+        )
+        self.assertEqual([c["max_rows"] for c in calls], [1000, 1000])
+
+    def test_scales_with_max_download_threads(self):
+        rs, calls = self._make_result_set(
+            initial_link_sizes=[20 * self.MIB],
+            fetched_queues=[self._cloudfetch_queue()],
+            max_download_threads=25,
+        )
+
+        rs._fill_results_buffer()
+
+        self.assertEqual(calls[0]["max_bytes"], 500 * self.MIB)
+
+    def test_never_requests_less_than_buffer_size(self):
+        rs, calls = self._make_result_set(
+            initial_link_sizes=[20 * self.MIB],
+            fetched_queues=[self._cloudfetch_queue()],
+            max_download_threads=2,
+        )
+
+        rs._fill_results_buffer()
+
+        self.assertEqual(calls[0]["max_bytes"], self.BUFFER)
+
+    def test_inline_results_keep_buffer_size(self):
+        # No initial rows: the constructor fetches the first batch itself.
+        rs, calls = self._make_result_set(
+            fetched_queues=[Mock(spec=ArrowQueue), Mock(spec=ArrowQueue)]
+        )
+
+        rs._fill_results_buffer()
+
+        self.assertEqual([c["max_bytes"] for c in calls], [self.BUFFER, self.BUFFER])
+
+    def test_first_fetch_without_links_uses_buffer_size(self):
+        rs, calls = self._make_result_set(
+            fetched_queues=[
+                self._cloudfetch_queue(20 * self.MIB),
+                self._cloudfetch_queue(),
+            ]
+        )
+
+        rs._fill_results_buffer()
+
+        self.assertEqual([c["max_bytes"] for c in calls], [self.BUFFER, 200 * self.MIB])
 
 
 if __name__ == "__main__":
