@@ -25,6 +25,25 @@ from databricks.sql.utils import (
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 from databricks.sql.telemetry.models.event import StatementType
 
+# Rows per to_pandas() call when converting an Arrow table to rows.
+_ROWS_PER_CONVERSION = 100_000
+
+
+def _converts_per_value(arrow_type) -> bool:
+    """Whether to_pandas() converts each value of this type independently."""
+    types = pyarrow.types
+    return (
+        types.is_primitive(arrow_type)
+        or types.is_null(arrow_type)
+        or types.is_string(arrow_type)
+        or types.is_large_string(arrow_type)
+        or types.is_binary(arrow_type)
+        or types.is_large_binary(arrow_type)
+        or types.is_fixed_size_binary(arrow_type)
+        or types.is_decimal(arrow_type)
+    )
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,16 +140,41 @@ class ResultSet(ABC):
             pyarrow.string(): pandas.StringDtype(),
         }
 
+        def to_object_array(t):
+            df = t.to_pandas(
+                types_mapper=dtype_mapping.get,
+                date_as_object=True,
+                timestamp_as_object=True,
+            )
+            return df.to_numpy(na_value=None, dtype="object")
+
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
 
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
+        # Convert in slices so that only one slice's DataFrame and object array are
+        # alive next to the rows. Columns whose conversion depends on the column's
+        # other values (pyarrow makes every list<int> value a float array if any
+        # element is NULL) are converted whole, as before.
+        per_value = [_converts_per_value(f.type) for f in table.schema]
+        if table.num_rows <= _ROWS_PER_CONVERSION or not any(per_value):
+            return [ResultRow(*v) for v in to_object_array(table_renamed)]
+
+        whole = [i for i, ok in enumerate(per_value) if not ok]
+        whole_values = to_object_array(table_renamed.select(whole)) if whole else None
+        # Keep an object column where those columns were: pandas' to_numpy converts
+        # some dtypes (e.g. durations) differently for a single-block DataFrame.
+        sliced_table = table_renamed
+        for i in whole:
+            sliced_table = sliced_table.set_column(
+                i, str(i), pyarrow.nulls(table.num_rows)
+            )
+        rows = []
+        for offset in range(0, table.num_rows, _ROWS_PER_CONVERSION):
+            res = to_object_array(sliced_table.slice(offset, _ROWS_PER_CONVERSION))
+            if whole_values is not None:
+                res[:, whole] = whole_values[offset : offset + len(res)]
+            rows.extend([ResultRow(*v) for v in res])
+        return rows
 
     @property
     def rownumber(self):
