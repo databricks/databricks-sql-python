@@ -629,14 +629,16 @@ class ThriftClientPrefetchTests(unittest.TestCase):
         for on in (True, "true", "1", "yes", "on", None):
             self.assertTrue(self._client(_cloudfetch_prefetch=on)._cloudfetch_prefetch)
 
-    def test_unrecognized_strings_keep_prefetch_on_with_a_warning(self):
-        with self.assertLogs(
-            "databricks.sql.backend.thrift_backend", level="WARNING"
-        ) as logs:
-            client = self._client(_cloudfetch_prefetch="disabled")
+    def test_unrecognized_strings_turn_prefetch_off_with_a_warning(self):
+        for value in ("disabled", "flase", ""):
+            with self.subTest(value):
+                with self.assertLogs(
+                    "databricks.sql.backend.thrift_backend", level="WARNING"
+                ) as logs:
+                    client = self._client(_cloudfetch_prefetch=value)
 
-        self.assertTrue(client._cloudfetch_prefetch)
-        self.assertIn("_cloudfetch_prefetch='disabled'", logs.output[0])
+                self.assertFalse(client._cloudfetch_prefetch)
+                self.assertIn(f"_cloudfetch_prefetch={value!r}", logs.output[0])
 
     # get_schemas/get_tables/get_columns import ThriftResultSet locally
     @patch("databricks.sql.result_set.ThriftResultSet")

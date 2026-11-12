@@ -205,12 +205,13 @@ class ThriftDatabricksClient(DatabricksClient):
             elif value in ("true", "1", "yes", "on"):
                 prefetch = True
             else:
+                # Someone setting the kill switch likely wants it off: fail safe
                 logger.warning(
-                    "Unrecognized _cloudfetch_prefetch=%r; keeping CloudFetch "
-                    "prefetch on (use 'false' to turn it off)",
+                    "Unrecognized _cloudfetch_prefetch=%r; turning CloudFetch "
+                    "prefetch off (use 'true' or 'false')",
                     prefetch,
                 )
-                prefetch = True
+                prefetch = False
         self._cloudfetch_prefetch = bool(prefetch)
 
         self._ssl_options = ssl_options
