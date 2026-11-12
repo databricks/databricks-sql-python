@@ -64,22 +64,19 @@ class ResultFileDownloadManager:
         self._link_source: Optional[LinkSource] = None
         # Set on shutdown so downloads that have not started (or finished) stop early.
         self._cancelled = threading.Event()
-        # Set by cancel(): the result is incomplete, so reads must fail, not just end.
+        # Set by cancel(): reads fail once they need data the cancel stopped.
         self._cancel_requested = False
 
     def cancel(self) -> None:
         """Stop downloading because the statement was cancelled.
 
-        May be called from another thread while the consumer is reading. Later reads
-        raise instead of reporting the end of the result.
+        May be called from another thread while the consumer is reading. Files that
+        finished downloading are still returned; a read that needs anything else
+        raises instead of reporting the end of the result.
         """
         self._cancel_requested = True
         self._cancelled.set()
         self._thread_pool.shutdown(wait=False, cancel_futures=True)
-
-    def _raise_if_cancel_requested(self) -> None:
-        if self._cancel_requested:
-            raise OperationalError("CloudFetch download cancelled")
 
     def set_link_source(self, link_source: LinkSource) -> bool:
         """Fetch further links on demand.
@@ -109,13 +106,17 @@ class ResultFileDownloadManager:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
 
-        self._raise_if_cancel_requested()
-        # Make sure the download queue is always full
-        self._schedule_downloads()
-        self._raise_if_cancel_requested()
+        if not self._cancel_requested:
+            # Make sure the download queue is always full
+            self._schedule_downloads()
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
+            if self._cancel_requested and (
+                self._pending_links or self._link_source is not None
+            ):
+                # The cancel stopped part of the result: fail rather than end early
+                raise OperationalError("CloudFetch download cancelled")
             self._shutdown_manager()
             return None
 
@@ -187,8 +188,10 @@ class ResultFileDownloadManager:
             try:
                 task = self._thread_pool.submit(handler.run)
             except RuntimeError:
-                # cancel() shut the pool down from another thread
+                # cancel() shut the pool down from another thread; keep the link so
+                # the result still counts as incomplete
                 if self._cancel_requested:
+                    self._pending_links.insert(0, (chunk_id, link))
                     return
                 raise
             self._download_tasks.append(task)

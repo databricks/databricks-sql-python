@@ -170,37 +170,55 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertEqual(manager._pending_links, [])
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
-    def test_cancel_makes_later_reads_fail_instead_of_ending(self):
+    def test_cancel_after_the_whole_result_arrived_still_returns_it(self):
         manager = self._manager([_link(0), _link(10)], max_download_threads=2)
         self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
+        manager._download_tasks[0].result()  # the last file finished downloading
 
         manager.cancel()
 
         self.assertTrue(manager._cancelled.is_set())
+        self.assertEqual(manager.get_next_downloaded_file(10).start_row_offset, 10)
+        self.assertIsNone(manager.get_next_downloaded_file(20))
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_cancel_with_links_not_yet_downloaded_fails_the_read(self):
+        manager = self._manager(
+            [_link(0), _link(10), _link(20)], max_download_threads=1
+        )
+        self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
+
+        manager.cancel()
+
         with self.assertRaises(OperationalError):
             manager.get_next_downloaded_file(10)
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
-    def test_cancel_during_a_link_fetch_fails_the_read(self):
+    def test_cancel_during_a_link_fetch_fails_once_the_downloaded_files_run_out(
+        self,
+    ):
         manager = self._manager([_link(0)], max_download_threads=2)
 
         def source(free):
+            manager._download_tasks[0].result()  # the first file is downloaded
             manager.cancel()  # Cursor.cancel() running on another thread
             return [_link(10)], True
 
         manager.set_link_source(source)
 
+        self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
         with self.assertRaises(OperationalError):
-            manager.get_next_downloaded_file(0)
+            manager.get_next_downloaded_file(10)
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
-    def test_scheduling_after_cancel_does_not_raise_runtime_error(self):
-        manager = self._manager([_link(0), _link(10)], max_download_threads=2)
+    def test_link_whose_submit_raced_with_cancel_still_counts_as_missing(self):
+        manager = self._manager([_link(0)], max_download_threads=2)
         manager.cancel()
 
-        manager._submit_pending_links()
+        manager._submit_pending_links()  # submit fails: the pool is shut down
 
         self.assertEqual(manager._download_tasks, [])
+        self.assertEqual(len(manager._pending_links), 1)
         with self.assertRaises(OperationalError):
             manager.get_next_downloaded_file(0)
 
