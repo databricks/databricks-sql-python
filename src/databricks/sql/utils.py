@@ -1049,27 +1049,38 @@ class _ArrowStreamBuffer:
 
     The table reads the stream zero-copy, so this buffer lives as long as the result.
     On the glibc heap such buffers often stayed resident after the result was freed
-    (~1 GB per 1 GB of inline results); a mapping is returned to the OS. Small streams,
-    mmap failures and non-Linux platforms use a bytearray, as before.
+    (~1 GB per 1 GB of inline results); a mapping is returned to the OS. A stream starts
+    on the heap and moves to a map once it reaches the floor (up front when its
+    compressed size already does). Small streams, mmap failures and non-Linux
+    platforms use a bytearray, as before.
     """
 
     def __init__(self, min_size: int, size_estimate: int):
         self._map: Optional[mmap.mmap] = None
         self._bytes = bytearray()
         self._size = 0
-        if (
-            _INLINE_ARROW_USE_MMAP
-            and min_size >= _INLINE_ARROW_MMAP_MIN_BYTES
-            and hasattr(mmap, "MAP_PRIVATE")
-        ):
-            try:
-                # Python defaults anonymous maps to MAP_SHARED (shmem, shared on fork).
-                self._map = mmap.mmap(-1, size_estimate, flags=mmap.MAP_PRIVATE)
-            except (OSError, ValueError):
-                pass
+        self._size_estimate = size_estimate
+        self._can_map = _INLINE_ARROW_USE_MMAP and hasattr(mmap, "MAP_PRIVATE")
+        if min_size >= _INLINE_ARROW_MMAP_MIN_BYTES:
+            self._start_map(size_estimate)
+
+    def _start_map(self, size: int) -> None:
+        if not self._can_map:
+            return
+        self._can_map = False
+        try:
+            # Python defaults anonymous maps to MAP_SHARED (shmem, shared on fork).
+            self._map = mmap.mmap(-1, size, flags=mmap.MAP_PRIVATE)
+        except (OSError, ValueError):
+            return
+        if self._size:
+            self._map[: self._size] = self._bytes
+            self._bytes = bytearray()
 
     def append(self, data: bytes) -> None:
         end = self._size + len(data)
+        if self._map is None and end >= _INLINE_ARROW_MMAP_MIN_BYTES:
+            self._start_map(max(self._size_estimate, 2 * end))
         if self._map is not None and end > len(self._map):
             for new_size in (max(end, 2 * len(self._map)), end):
                 try:

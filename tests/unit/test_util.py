@@ -276,11 +276,12 @@ class TestUtils:
         assert result == "key1,key2,key3"
 
 
-def _inline_arrow_set(num_batches, rows_per_batch, lz4_compressed):
+def _inline_arrow_set(num_batches, rows_per_batch, lz4_compressed, constant=False):
+    n = num_batches * rows_per_batch
     table = pyarrow.table(
         {
-            "id": list(range(num_batches * rows_per_batch)),
-            "s": [f"row-{i}" for i in range(num_batches * rows_per_batch)],
+            "id": [0] * n if constant else list(range(n)),
+            "s": ["x" * 20] * n if constant else [f"row-{i}" for i in range(n)],
         }
     )
     schema_bytes = table.schema.serialize().to_pybytes()
@@ -515,11 +516,11 @@ class TestConvertArrowBasedSet:
         assert maps[0]() is None
 
     @linux_only
-    def test_floor_applies_to_the_compressed_size_not_the_estimate(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 15000, True)
+    def test_stream_under_the_floor_stays_on_the_heap(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 10000, True)
         compressed = sum(len(b.batch) for b in batches)
         assert (
-            compressed
+            _stream_size(schema_bytes, batches)
             < utils._INLINE_ARROW_MMAP_MIN_BYTES
             <= compressed * utils._LZ4_RATIO_ESTIMATE
         )
@@ -531,6 +532,31 @@ class TestConvertArrowBasedSet:
 
         patched.mmap.assert_not_called()
         assert result.equals(table)
+
+    @linux_only
+    def test_compressible_stream_moves_to_a_map_past_the_floor(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 50000, True, constant=True)
+        compressed = sum(len(b.batch) for b in batches)
+        stream_size = _stream_size(schema_bytes, batches)
+        assert compressed < utils._INLINE_ARROW_MMAP_MIN_BYTES < stream_size
+        _RecordingMap.resizes = []
+        states = []
+        getbuffer = utils._ArrowStreamBuffer.getbuffer
+
+        def recording_getbuffer(stream):
+            states.append((stream._map is not None, len(stream._bytes)))
+            return getbuffer(stream)
+
+        with _patch_map(_RecordingMap), patch.object(
+            utils._ArrowStreamBuffer, "getbuffer", recording_getbuffer
+        ):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        assert result.equals(table)
+        assert states == [(True, 0)]
+        assert _RecordingMap.resizes[-1][1] == stream_size
 
     def test_small_set_stays_on_the_heap(self):
         table, schema_bytes, batches = _inline_arrow_set(2, 10, True)
