@@ -120,12 +120,11 @@ _CODE_TO_EXCEPTION = {
 
 def reraise_kernel_error(
     exc: "_kernel.KernelError",
-) -> "Union[Error, FileNotFoundError]":
+) -> "Union[Error, OSError]":
     """Map a kernel error and forward its structured attributes.
 
-    Local ``FILE_TRANSFER_ERROR`` errors with ``NotFound`` and no HTTP
-    status use the built-in ``FileNotFoundError``; other errors use
-    PEP 249 exception classes.
+    Local missing files use ``FileNotFoundError``; filesystem permission
+    failures use ``PermissionError``. Other errors use PEP 249 classes.
 
     The returned exception is raised by callers with ``raise ... from
     exc``; the ``from`` clause is what sets ``__cause__``, so we don't
@@ -133,7 +132,11 @@ def reraise_kernel_error(
     """
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
-    file_transfer = getattr(exc, "error_code", None) == "FILE_TRANSFER_ERROR"
+    error_code = getattr(exc, "error_code", None)
+    file_transfer = error_code in (
+        "FILE_TRANSFER_ERROR",
+        "FILE_TRANSFER_PERMISSION_ERROR",
+    )
     if file_transfer:
         cls = (
             ProgrammingError
@@ -157,9 +160,11 @@ def reraise_kernel_error(
             "diagnostic-info": getattr(exc, "diagnostic_info", None),
         }
     message = getattr(exc, "message", str(exc))
-    new: Union[Error, FileNotFoundError]
+    new: Union[Error, OSError]
     # Local missing files have no HTTP status; remote missing files carry 404.
-    if (
+    if error_code == "FILE_TRANSFER_PERMISSION_ERROR":
+        new = PermissionError(message)
+    elif (
         file_transfer
         and code == "NotFound"
         and getattr(exc, "http_status", None) is None
@@ -187,9 +192,7 @@ def reraise_kernel_error(
     return new
 
 
-def wrap_kernel_exception(
-    what: str, exc: BaseException
-) -> "Union[Error, FileNotFoundError]":
+def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSError]":
     """Map a PyO3 exception to the connector's public error contract.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.

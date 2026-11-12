@@ -74,10 +74,6 @@ logger = logging.getLogger(__name__)
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
-# Transfer detection controls local-path forwarding and the older-wheel guard.
-_STAGING_VERBS = ("PUT", "GET", "REMOVE")
-
-
 def _strip_leading_sql_comments(sql: str) -> str:
     """Strip leading whitespace and SQL comments (``-- …`` line and
     ``/* … */`` block, possibly several) from ``sql``, returning the
@@ -143,19 +139,10 @@ def _catalog_or_none(value: Optional[str]) -> Optional[str]:
     return value
 
 
-def _is_staging_statement(operation: str) -> bool:
-    """True iff ``operation`` is a volume/staging statement (PUT / GET /
-    REMOVE).
-
-    Strips leading whitespace + SQL comments first (so a comment-
-    prefixed staging op is still caught), then matches the leading token
-    only — so a normal query that merely *contains* the word (e.g.
-    ``SELECT 'GET' AS x``) isn't misflagged.
-    """
-    stripped = _strip_leading_sql_comments(operation)
-    # First whitespace-delimited token, uppercased.
-    verb = stripped.split(None, 1)[0].upper() if stripped.strip() else ""
-    return verb in _STAGING_VERBS
+def _staging_verb(stripped_sql: str) -> Optional[str]:
+    """Match a leading verb so SELECT 'GET' cannot enable local file access."""
+    match = re.match(r"(PUT|GET|REMOVE)\b", stripped_sql, re.IGNORECASE)
+    return match.group(1).upper() if match else None
 
 
 def _kernel_session_accepts_kwarg(name: str) -> bool:
@@ -576,9 +563,11 @@ class KernelDatabricksClient(DatabricksClient):
         close_stmt = True
         try:
             try:
+                stripped_sql = _strip_leading_sql_comments(operation)
+                staging_verb = _staging_verb(stripped_sql)
                 if re.match(
                     r"""PUT\s+(['"])__input_stream__\1(?:\s|$)""",
-                    _strip_leading_sql_comments(operation),
+                    stripped_sql,
                     re.IGNORECASE,
                 ):
                     raise NotSupportedError(
@@ -587,11 +576,7 @@ class KernelDatabricksClient(DatabricksClient):
                 stmt.set_sql(operation)
                 allowed_paths = (
                     cursor.connection.staging_allowed_local_path
-                    if re.match(
-                        r"(?:PUT|GET)\b",
-                        _strip_leading_sql_comments(operation),
-                        re.IGNORECASE,
-                    )
+                    if staging_verb in ("PUT", "GET")
                     else None
                 )
                 set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)
@@ -613,7 +598,7 @@ class KernelDatabricksClient(DatabricksClient):
                             "staging_allowed_local_path must be a string or a list of paths"
                         ) from exc
                     set_paths(normalized_paths)
-                elif _is_staging_statement(operation):
+                elif staging_verb is not None:
                     raise NotSupportedError(
                         "Volume transfers require a databricks-sql-kernel wheel "
                         "with staging_allowed_local_paths support."

@@ -926,6 +926,8 @@ def test_kernel_rejects_streaming_put(query):
         "PUT 'a' INTO 'b'",
         "-- comment\nGET 'a' TO 'b'",
         "/* comment */ REMOVE 'a'",
+        "GET'/Volumes/c/s/v/file' TO '/tmp/file'",
+        "/* comment */ REMOVE'/Volumes/c/s/v/file'",
     ],
 )
 def test_execute_command_with_older_kernel(operation):
@@ -2679,6 +2681,7 @@ class TestKernelHttpHeadersForwarding:
         ("PermissionDenied", 403, "FILE_TRANSFER_ERROR", OperationalError),
         ("NotFound", None, "FILE_TRANSFER_ERROR", FileNotFoundError),
         ("NotFound", 404, "FILE_TRANSFER_ERROR", OperationalError),
+        ("PermissionDenied", None, "FILE_TRANSFER_PERMISSION_ERROR", PermissionError),
         ("NetworkError", None, "FILE_TRANSFER_ERROR", OperationalError),
         ("Internal", None, "FILE_TRANSFER_ERROR", OperationalError),
         ("Internal", None, None, DatabaseError),
