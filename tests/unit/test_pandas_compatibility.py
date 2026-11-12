@@ -686,6 +686,24 @@ class TestRowBuildingGCPause(unittest.TestCase):
         self.assertEqual(self._convert(), (0, 0))
         self.assertFalse(gc.isenabled())
 
+    def test_interrupt_while_joining_a_pause_is_undone(self):
+        real_disable = gc.disable
+
+        def disable_then_interrupt():
+            real_disable()
+            raise KeyboardInterrupt
+
+        with patch.object(result_set.gc, "disable", disable_then_interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                with result_set._GCPause(10**6):
+                    self.fail("the batch should not start")
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+        # Later pauses still work.
+        with result_set._GCPause(10**6):
+            self.assertFalse(gc.isenabled())
+        self.assertTrue(gc.isenabled())
+
     def test_gc_is_reenabled_when_building_fails(self):
         with self.assertRaises(ZeroDivisionError):
             with result_set._GCPause(10**6):

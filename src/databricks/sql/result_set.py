@@ -90,21 +90,27 @@ class _GCPause:
     def __enter__(self) -> None:
         if self._num_rows < _GC_PAUSE_MIN_ROWS:
             return
-        with _GCPause.lock:
-            now = time.monotonic()
-            if _GCPause.active == 0:
-                if not gc.isenabled():
+        try:
+            with _GCPause.lock:
+                now = time.monotonic()
+                if _GCPause.active == 0:
+                    if not gc.isenabled():
+                        return
+                    _GCPause.started = now
+                elif now - _GCPause.started > _GC_PAUSE_MAX_SECONDS:
                     return
-                _GCPause.started = now
-            elif now - _GCPause.started > _GC_PAUSE_MAX_SECONDS:
-                return
-            _GCPause.active += 1
-            self._joined = True
-            gc.disable()
+                _GCPause.active += 1
+                self._joined = True
+                gc.disable()
+        except BaseException:
+            # E.g. a KeyboardInterrupt after joining: __exit__ won't be called.
+            self.__exit__(None, None, None)
+            raise
 
     def __exit__(self, *exc_info) -> None:
         if not self._joined:
             return
+        self._joined = False
         with _GCPause.lock:
             _GCPause.active -= 1
             if _GCPause.active:
