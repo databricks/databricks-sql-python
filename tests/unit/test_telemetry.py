@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 import textwrap
@@ -586,12 +587,10 @@ class TestDaemonThreadPoolExecutor:
 
 class TestTelemetryExitWait:
     def test_exit_wait_is_bounded_and_covers_shut_down_executors(self, monkeypatch):
-        monkeypatch.setattr(TelemetryClientFactory, "_executors", weakref.WeakSet())
+        monkeypatch.setattr(_DaemonThreadPoolExecutor, "_instances", weakref.WeakSet())
         monkeypatch.setattr(TelemetryClientFactory, "EXIT_FLUSH_TIMEOUT_SECONDS", 0.3)
         quick = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
         stuck = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
-        TelemetryClientFactory._executors.add(quick)
-        TelemetryClientFactory._executors.add(stuck)
         release = threading.Event()
         try:
             sent = quick.submit(time.sleep, 0.1)
@@ -634,6 +633,32 @@ class TestTelemetryExitWait:
         assert "quick-sent" in proc.stdout
         assert "stuck-sent" not in proc.stdout
         assert time.monotonic() - start < 15
+
+    @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires os.fork")
+    def test_forked_child_does_not_wait_for_parent_sends(self):
+        script = textwrap.dedent(
+            """
+            import os, sys, threading, time
+            from databricks.sql.telemetry.telemetry_client import _DaemonThreadPoolExecutor
+
+            executor = _DaemonThreadPoolExecutor(max_workers=2, thread_name_prefix="t")
+            release = threading.Event()
+            executor.submit(release.wait, 30)  # in flight in the parent at fork time
+            pid = os.fork()
+            if pid == 0:
+                sent = executor.submit(time.sleep, 0.05)
+                start = time.monotonic()
+                idle = executor.wait_until_idle(5)
+                os._exit(0 if idle and sent.done() and time.monotonic() - start < 2 else 1)
+            _, status = os.waitpid(pid, 0)
+            release.set()
+            sys.exit(os.waitstatus_to_exitcode(status))
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
+        )
+        assert proc.returncode == 0, proc.stderr
 
 
 @patch("databricks.sql.client.Session")
