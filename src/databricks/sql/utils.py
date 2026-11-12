@@ -23,6 +23,7 @@ from enum import Enum
 import mmap
 import re
 import secrets
+import sys
 
 import lz4.frame
 
@@ -1035,6 +1036,8 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
 _INLINE_ARROW_MMAP_MIN_BYTES = 128 * 1024
 # Untouched pages of the reservation cost no memory; overflow grows the map.
 _LZ4_RATIO_ESTIMATE = 4
+# The heap retention this works around was measured with glibc.
+_INLINE_ARROW_USE_MMAP = sys.platform.startswith("linux")
 
 
 class _ArrowStreamBuffer:
@@ -1043,15 +1046,17 @@ class _ArrowStreamBuffer:
     The table reads the stream zero-copy, so this buffer lives as long as the result.
     On the glibc heap such buffers often stayed resident after the result was freed
     (~1 GB per 1 GB of inline results); a mapping is returned to the OS. Small streams,
-    mmap failures and non-POSIX platforms use a bytearray, as before.
+    mmap failures and non-Linux platforms use a bytearray, as before.
     """
 
     def __init__(self, size_estimate: int):
         self._map: Optional[mmap.mmap] = None
         self._bytes = bytearray()
         self._size = 0
-        if size_estimate >= _INLINE_ARROW_MMAP_MIN_BYTES and hasattr(
-            mmap, "MAP_PRIVATE"
+        if (
+            _INLINE_ARROW_USE_MMAP
+            and size_estimate >= _INLINE_ARROW_MMAP_MIN_BYTES
+            and hasattr(mmap, "MAP_PRIVATE")
         ):
             try:
                 # Python defaults anonymous maps to MAP_SHARED (shmem, shared on fork).
@@ -1065,8 +1070,9 @@ class _ArrowStreamBuffer:
             try:
                 self._map.resize(max(end, 2 * len(self._map)))
             except (OSError, SystemError, ValueError):
-                # No mremap (e.g. macOS): continue on the heap
-                self._bytes += self._map[: self._size]
+                # The map can't grow: continue on the heap
+                with memoryview(self._map) as view:
+                    self._bytes += view[: self._size]
                 self._map = None
         if self._map is not None:
             self._map[self._size : end] = data

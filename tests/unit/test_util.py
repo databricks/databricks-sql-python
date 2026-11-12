@@ -395,6 +395,19 @@ class TestConvertArrowBasedSet:
         no_map_private.mmap.assert_not_called()
         assert result.equals(table)
 
+    def test_non_linux_platform_stays_on_the_heap(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+
+        with patch.object(utils, "_INLINE_ARROW_USE_MMAP", False), patch.object(
+            utils.mmap, "mmap"
+        ) as mmap_mock:
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        mmap_mock.assert_not_called()
+        assert result.equals(table)
+
     def test_table_keeps_the_mapping_alive(self):
         table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
 
