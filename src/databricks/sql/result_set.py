@@ -3,7 +3,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING, Tuple
 
+import gc
 import logging
+import os
+import threading
+import time
+
 import pandas
 
 try:
@@ -55,6 +60,71 @@ def _converts_in_slices(arrow_type) -> bool:
     )
 
 
+# Each Row and its __dict__ are tracked by the cyclic GC, whose collections rescan
+# all rows built so far (about a third of the conversion time of a large result),
+# so rows are built with the GC paused, one bounded batch at a time.
+_GC_PAUSE_BATCH_ROWS = 100_000
+_GC_PAUSE_MIN_ROWS = 10_000
+_GC_PAUSE_MAX_SECONDS = 0.5
+
+
+class _GCPause:
+    """Pauses the cyclic GC while one batch of rows is built.
+
+    Threads share the pause: the first batch disables the GC (only if it is
+    enabled) and the last one re-enables it and collects the young generation, so
+    other threads' cyclic garbage is still freed between batches. Batches stop
+    joining a pause once it is _GC_PAUSE_MAX_SECONDS old; it ends when the batches
+    already in it finish. Other code that disables the GC while a pause is running
+    has it re-enabled when the pause ends: the gc module can't tell who disabled it.
+    """
+
+    lock = threading.Lock()
+    active = 0
+    started = 0.0
+
+    def __init__(self, num_rows: int):
+        self._num_rows = num_rows
+        self._joined = False
+
+    def __enter__(self) -> None:
+        if self._num_rows < _GC_PAUSE_MIN_ROWS:
+            return
+        with _GCPause.lock:
+            now = time.monotonic()
+            if _GCPause.active == 0:
+                if not gc.isenabled():
+                    return
+                _GCPause.started = now
+            elif now - _GCPause.started > _GC_PAUSE_MAX_SECONDS:
+                return
+            _GCPause.active += 1
+            self._joined = True
+            gc.disable()
+
+    def __exit__(self, *exc_info) -> None:
+        if not self._joined:
+            return
+        with _GCPause.lock:
+            _GCPause.active -= 1
+            if _GCPause.active:
+                return
+            gc.enable()
+        gc.collect(0)
+
+
+def _end_gc_pause_in_child() -> None:
+    # Batches running in other threads of the parent never finish in the child.
+    if _GCPause.active:
+        _GCPause.active = 0
+        gc.enable()
+    _GCPause.lock = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_end_gc_pause_in_child)
+
+
 def _make_rows(ResultRow: Row, values) -> List[Row]:
     """The rows ``[ResultRow(*v) for v in values]``, built with one Python call per
     row (``Row.__setattr__``) instead of three. ``values`` is a 2-D object array."""
@@ -63,10 +133,13 @@ def _make_rows(ResultRow: Row, values) -> List[Row]:
     new_row = tuple.__new__
     rows: List[Row] = []
     append = rows.append
-    for v in values:
-        row = new_row(Row, v)
-        row.__fields__ = ResultRow
-        append(row)
+    for start in range(0, len(values), _GC_PAUSE_BATCH_ROWS):
+        batch = values[start : start + _GC_PAUSE_BATCH_ROWS]
+        with _GCPause(len(values)):
+            for v in batch:
+                row = new_row(Row, v)
+                row.__fields__ = ResultRow
+                append(row)
     return rows
 
 
