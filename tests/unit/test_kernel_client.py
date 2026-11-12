@@ -862,7 +862,16 @@ def test_execute_command_forwards_allowed_local_paths(
 
 @pytest.mark.parametrize(
     "allowed",
-    [123, [object()], Path("/tmp/files"), ("/tmp/files",), (), {"/tmp/files": True}],
+    [
+        123,
+        [object()],
+        [b"/tmp/files"],
+        ["/tmp/files", b"/tmp/other"],
+        Path("/tmp/files"),
+        ("/tmp/files",),
+        (),
+        {"/tmp/files": True},
+    ],
 )
 @pytest.mark.parametrize(
     "operation",

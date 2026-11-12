@@ -582,17 +582,19 @@ class KernelDatabricksClient(DatabricksClient):
                         allowed_paths, (str, list)
                     ):
                         raise ProgrammingError(
-                            "staging_allowed_local_path must be a string or a list of paths"
+                            "staging_allowed_local_path must be a string or a list of strings or os.PathLike objects"
                         )
                     if isinstance(allowed_paths, str):
                         allowed_paths = [allowed_paths]
                     try:
                         normalized_paths = [
-                            os.fsdecode(path) for path in allowed_paths or []
+                            os.fspath(path) for path in allowed_paths or []
                         ]
+                        if any(not isinstance(path, str) for path in normalized_paths):
+                            raise TypeError("Local paths must resolve to strings")
                     except (TypeError, ValueError) as exc:
                         raise ProgrammingError(
-                            "staging_allowed_local_path must be a string or a list of paths"
+                            "staging_allowed_local_path must be a string or a list of strings or os.PathLike objects"
                         ) from exc
                     set_paths(normalized_paths)
                 elif staging_verb is not None:
