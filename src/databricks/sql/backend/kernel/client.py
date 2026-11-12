@@ -227,6 +227,10 @@ def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
         candidates["telemetry_enabled"] = bool(options["enable_telemetry"])
     if options.get("telemetry_batch_size") is not None:
         candidates["telemetry_batch_size"] = options["telemetry_batch_size"]
+    if options.get("telemetry_flush_interval_ms") is not None:
+        candidates["telemetry_flush_interval_ms"] = options[
+            "telemetry_flush_interval_ms"
+        ]
     if options.get("telemetry_circuit_breaker_enabled") is not None:
         candidates["telemetry_circuit_breaker_enabled"] = options[
             "telemetry_circuit_breaker_enabled"

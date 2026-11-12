@@ -177,15 +177,17 @@ to change without notice.
 
 Thrift telemetry is owned by the Python driver and normally gated by the
 `enableTelemetryForPythonDriver` server feature flag. Kernel telemetry is owned
-by the Rust kernel: explicit `enable_telemetry`, `telemetry_batch_size`, and
-`_telemetry_circuit_breaker_enabled` values are forwarded when supported by the
-installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
+by the Rust kernel: explicit `enable_telemetry`, `telemetry_batch_size`,
+`telemetry_flush_interval_ms`, and `_telemetry_circuit_breaker_enabled` values
+are forwarded when supported by the installed kernel binding.
+`force_enable_telemetry` remains Python-driver-only.
 
 | Option                             | Type   | Thrift | Kernel | Default Value | Note                                                     |
 | ---------------------------------- | ------ | :----: | :----: | ------------- | -------------------------------------------------------- |
 | `enable_telemetry`                 | `bool` |   ✅   |   ✅   | `True` (Thrift); kernel-defined when unset | Thrift is also gated by the server flag. An explicit Kernel value is forwarded without that Python-side gate. |
 | `force_enable_telemetry`           | `bool` |   ✅   |   ❌   | `False`       | Bypass the server-side feature flag on Thrift. Not forwarded to Kernel. |
 | `telemetry_batch_size`             | `int`  |   ✅   |   ✅   | `100`         | Events buffered before a flush.                          |
+| `telemetry_flush_interval_ms`      | `int` (ms) | ❌ | ✅   | kernel-defined when unset | Kernel-only periodic flush interval; must be positive. Thrift always flushes every 300s. |
 | `_telemetry_circuit_breaker_enabled`| `bool`|   ✅   |   ✅   | effective `False` (Thrift); kernel-defined when unset | The `ClientContext` signature defaults to `True`, but `connect()` passes `None` when this option is omitted and `bool(None)` makes the effective Thrift default `False`. An explicit value is forwarded to Kernel. |
 
 > **Telemetry _events_ differ by backend.** Because the kernel owns result
@@ -222,6 +224,7 @@ installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
    `token_url`.
 2. Custom `oauth_scopes`.
 3. Kernel U2M encrypted token storage (`oauth_token_cache_enabled`).
+4. Telemetry flush interval (`telemetry_flush_interval_ms`).
 
 ### Behavioral divergences to watch
 

@@ -299,6 +299,11 @@ class Session:
                 "telemetry_batch_size": kwargs.get(
                     "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
                 ),
+                # Kernel-only: Thrift's exporter flushes on a fixed interval.
+                # When unset the kernel keeps its own default.
+                "telemetry_flush_interval_ms": kwargs.get(
+                    "telemetry_flush_interval_ms"
+                ),
                 # Preserve the caller's explicit circuit-breaker choice. When
                 # unset, leave it as None so the kernel owns the decision --
                 # mirroring the enable_telemetry handling above rather than
