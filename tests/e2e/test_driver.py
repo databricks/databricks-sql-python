@@ -740,6 +740,32 @@ class TestPySQLCoreSuite(
             escaped = sorted(tuple(r) for r in cursor.fetchall())
         assert escaped == unescaped
 
+    def test_hive_metastore_metadata_unchanged_by_escaping(self):
+        # hive_metastore is the most common catalog name with `_`, so escaping must
+        # not change its results; spark_catalog (its alias) must not lose rows.
+        with self.connection({}) as escaped, self.connection(
+            {"escape_catalog_name": False}
+        ) as raw:
+
+            def rows(conn, call, **filters):
+                with conn.cursor() as cursor:
+                    getattr(cursor, call)(**filters)
+                    return {tuple(r) for r in cursor.fetchall()}
+
+            hms = {"catalog_name": "hive_metastore", "schema_name": "default"}
+            expected = rows(raw, "schemas", **hms)
+            if not expected:
+                pytest.skip("hive_metastore.default is not visible")
+            assert rows(escaped, "schemas", **hms) == expected
+
+            tables = rows(raw, "tables", **hms)
+            if tables:
+                one = dict(hms, table_name=min(t[2] for t in tables))
+                assert rows(escaped, "tables", **one) == rows(raw, "tables", **one)
+
+            spark = {"catalog_name": "spark_catalog", "schema_name": "default"}
+            assert rows(raw, "schemas", **spark) <= rows(escaped, "schemas", **spark)
+
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
     @pytest.mark.parametrize(
         "extra_params",

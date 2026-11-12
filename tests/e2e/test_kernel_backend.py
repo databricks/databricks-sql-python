@@ -379,6 +379,21 @@ def test_tables_catalog_name_underscore_is_literal_by_default(
     assert all(row[0] == "system" for row in rows)
 
 
+def test_tables_hive_metastore_unchanged_by_escaping(kernel_conn_params):
+    # Kernel tables() honours escape_catalog_name; hive_metastore is the most
+    # common catalog name with `_`, so escaping must not change its results.
+    def rows(extra_params, **filters):
+        with sql.connect(**kernel_conn_params, **extra_params) as c, c.cursor() as cur:
+            cur.tables(catalog_name="hive_metastore", schema_name="default", **filters)
+            return {tuple(r) for r in cur.fetchall()}
+
+    listing = rows({"escape_catalog_name": False})
+    if not listing:
+        pytest.skip("hive_metastore.default is not visible")
+    one = {"table_name": min(t[2] for t in listing)}
+    assert rows({}, **one) == rows({"escape_catalog_name": False}, **one)
+
+
 def test_schemas_with_empty_string_filter_matches_nothing(conn):
     """An empty string is a real pattern, distinct from absent ``None``."""
     with conn.cursor() as cur:
