@@ -1067,9 +1067,13 @@ class _ArrowStreamBuffer:
     def append(self, data: bytes) -> None:
         end = self._size + len(data)
         if self._map is not None and end > len(self._map):
-            try:
-                self._map.resize(max(end, 2 * len(self._map)))
-            except (OSError, SystemError, ValueError):
+            for new_size in (max(end, 2 * len(self._map)), end):
+                try:
+                    self._map.resize(new_size)
+                    break
+                except (OSError, SystemError, ValueError):
+                    pass
+            else:
                 # The map can't grow: continue on the heap
                 with memoryview(self._map) as view:
                     self._bytes += view[: self._size]

@@ -2,6 +2,8 @@ import decimal
 import datetime
 import gc
 import mmap
+import sys
+import weakref
 from datetime import timezone, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -298,6 +300,11 @@ def _stream_size(schema_bytes, batches):
     return len(schema_bytes) + sum(len(lz4.frame.decompress(b.batch)) for b in batches)
 
 
+linux_only = pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="inline Arrow maps are Linux-only"
+)
+
+
 class _RecordingMap(mmap.mmap):
     resizes = []
 
@@ -308,6 +315,7 @@ class _RecordingMap(mmap.mmap):
 
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class TestConvertArrowBasedSet:
+    @linux_only
     @pytest.mark.parametrize("lz4_compressed", [True, False])
     def test_large_set_is_read_from_a_private_memory_map(self, lz4_compressed):
         table, schema_bytes, batches = _inline_arrow_set(4, 5000, lz4_compressed)
@@ -327,6 +335,7 @@ class TestConvertArrowBasedSet:
             assert flags & mmap.MAP_PRIVATE
             assert not flags & mmap.MAP_SHARED
 
+    @linux_only
     def test_map_grows_when_the_size_estimate_is_too_small(self):
         table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
         _RecordingMap.resizes = []
@@ -342,6 +351,7 @@ class TestConvertArrowBasedSet:
         assert any(new > old for old, new in _RecordingMap.resizes)
         assert _RecordingMap.resizes[-1][1] == _stream_size(schema_bytes, batches)
 
+    @linux_only
     def test_map_is_shrunk_to_the_stream_size(self):
         table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
         _RecordingMap.resizes = []
@@ -356,6 +366,7 @@ class TestConvertArrowBasedSet:
         old, new = _RecordingMap.resizes[0]
         assert new == _stream_size(schema_bytes, batches) < old
 
+    @linux_only
     def test_falls_back_to_the_heap_when_the_map_cannot_grow(self):
         attempts = []
 
@@ -408,14 +419,57 @@ class TestConvertArrowBasedSet:
         mmap_mock.assert_not_called()
         assert result.equals(table)
 
-    def test_table_keeps_the_mapping_alive(self):
-        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+    @linux_only
+    def test_map_grows_to_the_exact_size_when_doubling_fails(self):
+        sizes = []
 
-        result, _ = convert_arrow_based_set_to_arrow_table(batches, True, schema_bytes)
-        del batches, schema_bytes
-        gc.collect()
+        class NoDoubling(mmap.mmap):
+            def resize(self, newsize):
+                sizes.append(newsize)
+                if len(sizes) == 1:
+                    raise OSError("ENOMEM")
+                return super().resize(newsize)
+
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+        states = []
+        getbuffer = utils._ArrowStreamBuffer.getbuffer
+
+        def recording_getbuffer(stream):
+            states.append(stream._map is not None)
+            return getbuffer(stream)
+
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
+            utils.mmap, "mmap", NoDoubling
+        ), patch.object(utils._ArrowStreamBuffer, "getbuffer", recording_getbuffer):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
 
         assert result.equals(table)
+        assert sizes[1] < sizes[0]
+        assert states == [True]
+
+    @linux_only
+    def test_table_keeps_the_map_alive_and_frees_it_with_the_table(self):
+        maps = []
+
+        class TrackedMap(mmap.mmap):
+            def __init__(self, *args, **kwargs):
+                maps.append(weakref.ref(self))
+
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+
+        with patch.object(utils.mmap, "mmap", TrackedMap):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+        gc.collect()
+
+        assert len(maps) == 1 and maps[0]() is not None
+        assert result.equals(table)
+        del result
+        gc.collect()
+        assert maps[0]() is None
 
     def test_small_set_stays_on_the_heap(self):
         table, schema_bytes, batches = _inline_arrow_set(2, 10, True)
