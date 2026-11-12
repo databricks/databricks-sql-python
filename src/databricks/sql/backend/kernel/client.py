@@ -563,7 +563,7 @@ class KernelDatabricksClient(DatabricksClient):
                 stripped_sql = _strip_leading_sql_comments(operation)
                 staging_verb = _staging_verb(stripped_sql)
                 if re.match(
-                    r"""PUT\s*(['"])__input_stream__\1(?:\s|$)""",
+                    r"""PUT\s*(['"])__input_stream__\1""",
                     stripped_sql,
                     re.IGNORECASE,
                 ):
