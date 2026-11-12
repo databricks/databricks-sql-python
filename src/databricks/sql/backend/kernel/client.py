@@ -578,28 +578,21 @@ class KernelDatabricksClient(DatabricksClient):
                     if staging_verb in ("PUT", "GET")
                     else None
                 )
-                set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)
-                if callable(set_paths):
-                    if allowed_paths is not None and not isinstance(
-                        allowed_paths, (str, list)
-                    ):
-                        raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR)
-                    if isinstance(allowed_paths, str):
-                        allowed_paths = [allowed_paths]
-                    try:
-                        normalized_paths = [
-                            os.fspath(path) for path in allowed_paths or []
-                        ]
-                        if any(not isinstance(path, str) for path in normalized_paths):
-                            raise TypeError("Local paths must resolve to strings")
-                    except (TypeError, ValueError) as exc:
-                        raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR) from exc
-                    set_paths(normalized_paths, input_stream_token="__input_stream__")
-                elif staging_verb is not None:
-                    raise NotSupportedError(
-                        "Volume transfers require a databricks-sql-kernel wheel "
-                        "with staging_allowed_local_paths support."
-                    )
+                if allowed_paths is not None and not isinstance(
+                    allowed_paths, (str, list)
+                ):
+                    raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR)
+                if isinstance(allowed_paths, str):
+                    allowed_paths = [allowed_paths]
+                try:
+                    normalized_paths = [os.fspath(path) for path in allowed_paths or []]
+                    if any(not isinstance(path, str) for path in normalized_paths):
+                        raise TypeError("Local paths must resolve to strings")
+                except (TypeError, ValueError) as exc:
+                    raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR) from exc
+                stmt.set_staging_allowed_local_paths(
+                    normalized_paths, input_stream_token="__input_stream__"
+                )
                 stmt.set_row_limit(row_limit)
                 if query_tags:
                     # Per-statement query tags. The kernel serialises the

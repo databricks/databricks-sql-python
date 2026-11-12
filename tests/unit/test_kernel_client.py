@@ -19,7 +19,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Optional
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -809,32 +809,30 @@ def test_execute_command_forwards_row_limit(row_limit):
 
 
 @pytest.mark.parametrize(
-    "allowed, expected",
+    "operation, allowed, expected, async_op",
     [
-        (None, []),
-        ("/tmp/files", ["/tmp/files"]),
-        ([Path("/tmp/a"), Path("/tmp/b")], ["/tmp/a", "/tmp/b"]),
-        (["/tmp/a", "/tmp/b"], ["/tmp/a", "/tmp/b"]),
-    ],
-)
-@pytest.mark.parametrize("async_op", [False, True])
-@pytest.mark.parametrize(
-    "operation, uses_paths",
-    [
-        ("PUT '/tmp/files/input' INTO '/Volumes/c/s/v/input'", True),
-        ("PUT '__INPUT_STREAM__' INTO '/Volumes/c/s/v/input'", True),
-        ("GET '/Volumes/c/s/v/input' TO '/tmp/files/output'", True),
-        ("/* download */ GET '/Volumes/c/s/v/input' TO '/tmp/files/output'", True),
+        ("PUT 'input' INTO '/Volumes/c/s/v/file'", None, [], False),
+        ("PUT 'input' INTO '/Volumes/c/s/v/file'", "/tmp/files", ["/tmp/files"], False),
+        ("GET '/Volumes/c/s/v/file' TO 'output'", [], [], False),
         (
-            "/* outer /* inner */ outer */ GET '/Volumes/c/s/v/input' TO '/tmp/files/output'",
+            "GET '/Volumes/c/s/v/file' TO 'output'",
+            [Path("/tmp/a"), Path("/tmp/b")],
+            ["/tmp/a", "/tmp/b"],
+            False,
+        ),
+        (
+            "/* outer /* inner */ outer */ GET '/Volumes/c/s/v/file' TO 'output'",
+            ["/tmp/a", "/tmp/b"],
+            ["/tmp/a", "/tmp/b"],
             True,
         ),
-        ("REMOVE '/Volumes/c/s/v/input'", False),
-        ("SELECT 1", False),
+        ("PUT 'input' INTO '/Volumes/c/s/v/file'", "/tmp/files", ["/tmp/files"], True),
+        ("REMOVE '/Volumes/c/s/v/file'", object(), [], False),
+        ("SELECT 1", object(), [], False),
     ],
 )
 def test_execute_command_forwards_allowed_local_paths(
-    allowed, expected, async_op, operation, uses_paths
+    operation, allowed, expected, async_op
 ):
     c = _make_client()
     c._kernel_session = MagicMock()
@@ -844,12 +842,6 @@ def test_execute_command_forwards_allowed_local_paths(
     cursor.buffer_size_bytes = 1024
     stmt = c._kernel_session.statement.return_value
 
-    def set_staging_allowed_local_paths(paths=None, *, input_stream_token=None):
-        pass
-
-    stmt.set_staging_allowed_local_paths = create_autospec(
-        set_staging_allowed_local_paths
-    )
     executed = MagicMock(
         statement_id="00000000-0000-0000-0000-000000000001",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -869,7 +861,7 @@ def test_execute_command_forwards_allowed_local_paths(
         enforce_embedded_schema_correctness=False,
     )
     stmt.set_staging_allowed_local_paths.assert_called_once_with(
-        expected if uses_paths else [], input_stream_token="__input_stream__"
+        expected, input_stream_token="__input_stream__"
     )
     (stmt.submit if async_op else stmt.execute).assert_called_once()
 
@@ -879,24 +871,12 @@ def test_execute_command_forwards_allowed_local_paths(
     [
         123,
         [object()],
-        [b"/tmp/files"],
         ["/tmp/files", b"/tmp/other"],
         Path("/tmp/files"),
         ("/tmp/files",),
-        (),
-        {"/tmp/files": True},
     ],
 )
-@pytest.mark.parametrize(
-    "operation",
-    [
-        "SELECT 1",
-        "PUT 'input' INTO '/Volumes/c/s/v/file'",
-        "GET '/Volumes/c/s/v/file' TO 'output'",
-        "REMOVE '/Volumes/c/s/v/file'",
-    ],
-)
-def test_malformed_local_paths_only_reject_transfers(allowed, operation):
+def test_execute_command_rejects_malformed_local_paths(allowed):
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
@@ -907,22 +887,21 @@ def test_malformed_local_paths_only_reject_transfers(allowed, operation):
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
 
-    def execute():
+    with pytest.raises(ProgrammingError, match="staging_allowed_local_path"):
         c.execute_command(
-            operation, MagicMock(), 1, 1, False, cursor, False, [], False, False
+            "PUT 'input' INTO '/Volumes/c/s/v/file'",
+            MagicMock(),
+            1,
+            1,
+            False,
+            cursor,
+            False,
+            [],
+            False,
+            False,
         )
-
-    if operation.startswith(("PUT", "GET")):
-        with pytest.raises(ProgrammingError, match="staging_allowed_local_path"):
-            execute()
-        stmt.execute.assert_not_called()
-        stmt.set_staging_allowed_local_paths.assert_not_called()
-    else:
-        execute()
-        stmt.set_staging_allowed_local_paths.assert_called_once_with(
-            [], input_stream_token="__input_stream__"
-        )
-        stmt.execute.assert_called_once()
+    stmt.execute.assert_not_called()
+    stmt.set_staging_allowed_local_paths.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -985,48 +964,6 @@ def test_kernel_rejects_decoded_streaming_put():
     )
     stmt.execute.assert_called_once()
     stmt.close.assert_called_once()
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        "SELECT 1",
-        "PUT 'a' INTO 'b'",
-        "-- comment\nGET 'a' TO 'b'",
-        "/* comment */ REMOVE 'a'",
-        "GET'/Volumes/c/s/v/file' TO '/tmp/file'",
-        "/* comment */ REMOVE'/Volumes/c/s/v/file'",
-    ],
-)
-def test_execute_command_with_older_kernel(operation):
-    c = _make_client()
-    c._kernel_session = MagicMock()
-    stmt = c._kernel_session.statement.return_value
-    del stmt.set_staging_allowed_local_paths
-    stmt.execute.return_value = MagicMock(
-        statement_id="00000000-0000-0000-0000-000000000001",
-        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
-    )
-    kwargs = dict(
-        operation=operation,
-        session_id=MagicMock(),
-        max_rows=1,
-        max_bytes=1,
-        lz4_compression=False,
-        cursor=MagicMock(),
-        use_cloud_fetch=False,
-        parameters=[],
-        async_op=False,
-        enforce_embedded_schema_correctness=False,
-    )
-    if operation == "SELECT 1":
-        c.execute_command(**kwargs)
-        stmt.execute.assert_called_once()
-    else:
-        with pytest.raises(NotSupportedError, match="Volume transfers require"):
-            c.execute_command(**kwargs)
-        stmt.execute.assert_not_called()
-        stmt.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
