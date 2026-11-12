@@ -436,6 +436,7 @@ class TestConvertArrowBasedSet:
         assert attempts and attempts[0][1] > attempts[0][0]
         assert states == [(None, _stream_size(schema_bytes, batches))]
 
+    @linux_only
     def test_non_posix_platform_stays_on_the_heap(self):
         table, schema_bytes, batches = _large_inline_arrow_set()
         no_map_private = SimpleNamespace(mmap=Mock(side_effect=AssertionError))
