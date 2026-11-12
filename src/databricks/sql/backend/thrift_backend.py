@@ -253,12 +253,15 @@ class ThriftDatabricksClient(DatabricksClient):
         self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
         self._transport.setCustomHeaders(dict(http_headers))
-        # Uses thrift's C extension when available, else the pure-Python protocol.
+        # Decodes replies with thrift's C extension when available, else in pure Python.
         protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocolAccelerated(
             self._transport,
             string_length_limit=THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
             container_length_limit=THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
         )
+        # Requests stay on the pure-Python encoder: the C one rejects structs nested
+        # deeper than ~64 levels, e.g. native array parameters nested 62+ deep.
+        protocol._fast_encode = None
         self._client = TCLIService.Client(protocol)
 
         try:

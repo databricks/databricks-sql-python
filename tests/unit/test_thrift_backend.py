@@ -594,95 +594,63 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(result.results.arrowBatches[0].batch, batch)
         self.assertEqual(thrift_backend._transport.cstringio_buf.getvalue(), b"")
 
-    @unittest.skipUnless(
-        _HAS_THRIFT_FASTBINARY, "thrift C extension (fastbinary) not built"
-    )
-    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
-    def test_accelerated_protocol_encodes_backend_requests_identically(
-        self, t_http_client_class
-    ):
-        """TBinaryProtocolAccelerated also moves request encoding to C. Requests
-        built by the backend must serialize byte-for-byte as with pure Python."""
-        import datetime
+    def test_deeply_nested_native_parameter_is_sent(self):
+        """Requests are encoded in pure Python as before: thrift's C encoder rejects
+        a native array nested 62+ levels once wrapped in ExecuteStatement_args.
+        Sends the full RPC through make_request and checks the bytes on the wire."""
         from thrift.protocol import TBinaryProtocol
         from thrift.transport import TTransport
         from databricks.sql.parameters import native
+        from databricks.sql.thrift_api.TCLIService import TCLIService
 
-        class Captured(Exception):
-            pass
+        value = 1
+        for _ in range(63):
+            value = [value]
+        req = ttypes.TExecuteStatementReq(
+            sessionHandle=ttypes.TSessionHandle(
+                sessionId=ttypes.THandleIdentifier(guid=b"g" * 16, secret=b"s" * 16)
+            ),
+            statement="SELECT ?",
+            parameters=[native.ArrayParameter(value=value).as_tspark_param(False)],
+        )
 
-        captured = []
+        def rpc(name, message_type, args):
+            buf = TTransport.TMemoryBuffer()
+            proto = TBinaryProtocol.TBinaryProtocol(buf)
+            proto.writeMessageBegin(name, message_type, 0)
+            args.write(proto)
+            proto.writeMessageEnd()
+            return buf.getvalue()
 
-        def capture(method, request, *args, **kwargs):
-            captured.append(request)
-            raise Captured()
-
+        reply = rpc(
+            "ExecuteStatement",
+            2,  # REPLY
+            TCLIService.ExecuteStatement_result(
+                success=ttypes.TExecuteStatementResp(
+                    status=ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
+                )
+            ),
+        )
         thrift_backend = ThriftDatabricksClient(
             "foobar",
             443,
             "path",
-            [],
+            [("User-Agent", "test")],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
             http_client=MagicMock(),
         )
-        thrift_backend.make_request = capture
-        session_id = SessionId.from_thrift_handle(
-            ttypes.TSessionHandle(
-                sessionId=ttypes.THandleIdentifier(guid=b"g" * 16, secret=b"s" * 16)
-            )
-        )
-        params = [
-            native.IntegerParameter(value=42, name="i"),
-            native.BigIntegerParameter(value=2**40, name="b"),
-            native.StringParameter(value="héllo", name="s"),
-            native.DecimalParameter(value=Decimal("12.345"), name="d"),
-            native.TimestampParameter(
-                value=datetime.datetime(2026, 11, 11, 1, 2, 3), name="t"
-            ),
-            native.DateParameter(value=datetime.date(2026, 11, 11), name="dt"),
-            native.BooleanParameter(value=True, name="bo"),
-            native.VoidParameter(value=None, name="v"),
-            native.ArrayParameter(value=[1, 2, 3], name="a"),
-            native.MapParameter(value={"k": "v"}, name="m"),
-        ]
-        calls = [
-            lambda: thrift_backend.open_session(
-                {"use_cached_result": False, "ansi_mode": "true"}, "main", "default"
-            ),
-            lambda: thrift_backend.execute_command(
-                operation="SELECT :i, :s",
-                session_id=session_id,
-                max_rows=100000,
-                max_bytes=104857600,
-                lz4_compression=True,
-                cursor=Mock(),
-                use_cloud_fetch=True,
-                parameters=[p.as_tspark_param(named=True) for p in params],
-                async_op=False,
-                enforce_embedded_schema_correctness=False,
-                row_limit=10,
-                query_tags={"team": "peco", "flag": None},
-            ),
-            lambda: thrift_backend.get_tables(
-                session_id, 100000, 104857600, Mock(), "main", "%", "t%", ["TABLE"]
-            ),
-            lambda: thrift_backend.get_columns(
-                session_id, 100000, 104857600, Mock(), "main", "%", "%", "%"
-            ),
-        ]
-        for call in calls:
-            with self.assertRaises(Captured):
-                call()
+        ok = Mock(status=200, reason="OK", headers={})
+        ok.read.side_effect = BytesIO(reply).read
+        pool = thrift_backend._transport._THttpClient__pool = Mock()
+        pool.request.return_value = ok
 
-        self.assertEqual(len(captured), len(calls))
-        for request in captured:
-            pure, accelerated = TTransport.TMemoryBuffer(), TTransport.TMemoryBuffer()
-            request.write(TBinaryProtocol.TBinaryProtocol(pure))
-            request.write(TBinaryProtocol.TBinaryProtocolAccelerated(accelerated))
-            self.assertEqual(
-                accelerated.getvalue(), pure.getvalue(), type(request).__name__
-            )
+        thrift_backend.make_request(thrift_backend._client.ExecuteStatement, req)
+
+        self.assertEqual(
+            pool.request.call_args.kwargs["body"],
+            rpc("ExecuteStatement", 1, TCLIService.ExecuteStatement_args(req=req)),
+        )
 
     @patch("databricks.sql.backend.thrift_backend.unsafe_logger")
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
