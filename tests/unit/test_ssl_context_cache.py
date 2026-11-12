@@ -13,6 +13,7 @@ from databricks.sql.auth.common import ClientContext
 from databricks.sql.auth.thrift_http_client import THttpClient
 from databricks.sql.common import ssl_context_cache
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.exc import ProgrammingError
 from databricks.sql.types import SSLOptions
 
 
@@ -250,6 +251,24 @@ class TestThriftTransportContext:
         assert unverified is not first
         assert unverified.verify_mode == ssl.CERT_NONE
         assert first.verify_mode == ssl.CERT_REQUIRED
+
+    def test_invalid_client_identity_fails_at_construction(self):
+        with pytest.raises(ProgrammingError, match="requires tls_client_cert_file"):
+            THttpClient(
+                auth_provider=None,
+                uri_or_host="https://example.com/sql/1.0/warehouses/abc",
+                ssl_options=SSLOptions(tls_client_cert_key_file="key.pem"),
+            )
+
+    def test_construction_without_client_identity_loads_no_context(self):
+        with patch("databricks.sql.types.create_default_context") as create:
+            THttpClient(
+                auth_provider=None,
+                uri_or_host="https://example.com/sql/1.0/warehouses/abc",
+                ssl_options=SSLOptions(),
+            )
+
+        create.assert_not_called()
 
     def test_proxied_pool_shares_the_context(self):
         direct, _ = self.pool_context(SSLOptions())

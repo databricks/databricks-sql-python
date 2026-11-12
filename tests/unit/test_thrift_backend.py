@@ -776,8 +776,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(http_client.certfile, mock_ssl_options.tls_client_cert_file)
         self.assertEqual(http_client.keyfile, mock_ssl_options.tls_client_cert_key_file)
         self.assertIsNotNone(http_client.certfile)
-        # The pool never used a context built here; urllib3 builds its own.
-        mock_create_default_context.assert_not_called()
+        mock_create_default_context.assert_called()
 
         http_client.open()
 

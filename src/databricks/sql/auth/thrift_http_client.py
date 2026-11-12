@@ -73,6 +73,9 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
                 if self._ssl_options is not None:
                     self.certfile = self._ssl_options.tls_client_cert_file
                     self.keyfile = self._ssl_options.tls_client_cert_key_file
+                    if not ssl_context_cache.is_cacheable(self._ssl_options):
+                        # Fail fast on a bad client identity; urllib3 loads it lazily.
+                        self._ssl_options.create_ssl_context()
             self.port = parsed.port
             self.host = parsed.hostname
             self.path = parsed.path
