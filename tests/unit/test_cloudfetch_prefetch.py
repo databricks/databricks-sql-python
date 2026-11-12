@@ -4,6 +4,13 @@ import threading
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
+
 import databricks.sql.cloudfetch.download_manager as download_manager
 import databricks.sql.cloudfetch.downloader as downloader
 from databricks.sql.auth.authenticators import AuthProvider
@@ -37,6 +44,18 @@ class _InstantHandler:
 
     def run(self):
         return DownloadedFile(b"", self.link.startRowOffset, self.link.rowCount)
+
+
+class _ArrowFileHandler(_InstantHandler):
+    """Returns an Arrow IPC stream with ids startRowOffset..startRowOffset+rowCount-1."""
+
+    def run(self):
+        start, rows = self.link.startRowOffset, self.link.rowCount
+        table = pa.table({"id": pa.array(range(start, start + rows), pa.int64())})
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, table.schema) as writer:
+            writer.write_table(table)
+        return DownloadedFile(sink.getvalue().to_pybytes(), start, rows)
 
 
 class DownloadManagerPrefetchTests(unittest.TestCase):
@@ -104,6 +123,17 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertIsNone(manager._link_source)
         self.assertEqual(manager._pending_links, [])
         shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_reply_with_only_empty_links_is_retried_on_the_next_call(self):
+        manager = self._manager([_link(0)], max_download_threads=2)
+        source = Mock(side_effect=[([_link(10, rows=0)], True), ([_link(10)], False)])
+        manager.set_link_source(source)
+
+        self.assertEqual(manager.get_next_downloaded_file(0).start_row_offset, 0)
+        self.assertEqual(source.call_count, 1)
+        self.assertEqual(manager.get_next_downloaded_file(10).start_row_offset, 10)
+        self.assertIsNone(manager.get_next_downloaded_file(20))
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
     def test_link_source_errors_reach_the_caller_and_fetching_can_resume(self):
@@ -303,6 +333,85 @@ class ResultSetPrefetchTests(unittest.TestCase):
 
         queue.download_manager.set_link_source.assert_called_once()
         self.assertFalse(rs.has_more_rows)
+
+
+@pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+@patch.object(download_manager, "ResultSetDownloadHandler", _ArrowFileHandler)
+class ResultSetPrefetchEndToEndTests(unittest.TestCase):
+    """Real ThriftCloudFetchQueue and download manager; only the download is stubbed."""
+
+    ROWS_PER_LINK = 10
+
+    def _result_set(self, initial_links=2, total_links=11, links_per_reply=3):
+        links = [
+            _link(i * self.ROWS_PER_LINK, self.ROWS_PER_LINK)
+            for i in range(total_links)
+        ]
+        rest = links[initial_links:]
+        expected_offsets = []
+
+        def fetch_result_links(**kwargs):
+            expected_offsets.append(kwargs["expected_row_start_offset"])
+            reply = rest[:links_per_reply]
+            del rest[:links_per_reply]
+            return reply, bool(rest)
+
+        backend = Mock(spec=ThriftDatabricksClient)
+        backend.fetch_result_links.side_effect = fetch_result_links
+        rs = ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=Mock(),
+                status=None,
+                has_been_closed_server_side=False,
+                description=[("id", "bigint", None, None, None, None, None)],
+                lz4_compressed=False,
+                arrow_schema_bytes=pa.schema([("id", pa.int64())])
+                .serialize()
+                .to_pybytes(),
+                result_format=ttypes.TSparkRowSetType.URL_BASED_SET,
+            ),
+            thrift_client=backend,
+            arraysize=1000,
+            t_row_set=ttypes.TRowSet(
+                startRowOffset=0, rows=[], resultLinks=links[:initial_links]
+            ),
+            max_download_threads=4,
+        )
+        return rs, backend, expected_offsets
+
+    def test_fetchall_arrow_reads_every_link_in_order(self):
+        rs, backend, expected_offsets = self._result_set()
+
+        self.assertFalse(rs.has_more_rows)
+        ids = rs.fetchall_arrow().column(0).to_pylist()
+
+        self.assertEqual(ids, list(range(110)))
+        self.assertEqual(expected_offsets, [20, 50, 80])
+        backend.fetch_results.assert_not_called()
+
+    def test_fetchmany_and_fetchone_cross_link_batches(self):
+        rs, _, _ = self._result_set()
+
+        ids = [rs.fetchone()[0] for _ in range(15)]
+        while True:
+            table = rs.fetchmany_arrow(25)
+            if table.num_rows == 0:
+                break
+            ids += table.column(0).to_pylist()
+
+        self.assertEqual(ids, list(range(110)))
+
+    def test_close_mid_stream_cancels_the_download_manager(self):
+        rs, backend, _ = self._result_set()
+        manager = rs.results.download_manager
+        rs.fetchmany_arrow(35)
+
+        rs.close()
+
+        self.assertTrue(manager._cancelled.is_set())
+        self.assertIsNone(manager._link_source)
+        backend.close_command.assert_called_once()
 
 
 class ThriftClientPrefetchTests(unittest.TestCase):

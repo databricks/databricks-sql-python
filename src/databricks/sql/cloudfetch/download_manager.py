@@ -123,16 +123,16 @@ class ResultFileDownloadManager:
             and not self._pending_links
             and len(self._download_tasks) < self._max_download_threads
         ):
-            links, has_more = self._link_source(
-                self._max_download_threads - len(self._download_tasks)
-            )
+            scheduled = len(self._download_tasks)
+            links, has_more = self._link_source(self._max_download_threads - scheduled)
             if not has_more:
                 self._link_source = None
             for link in links:
                 self.add_link(link)
             self._submit_pending_links()
-            if not links and self._download_tasks:
-                # Ask again on the next call instead of polling the server now
+            if self._download_tasks and len(self._download_tasks) == scheduled:
+                # Nothing new to download (no links, or only empty ones): ask again
+                # on the next call instead of polling the server now
                 break
 
     def _submit_pending_links(self):
