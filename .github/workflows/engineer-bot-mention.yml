@@ -39,8 +39,8 @@ jobs:
           set -euo pipefail
           if ! permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq '.permission'); then
             echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping @bot request: could not verify commenter write access."
-            exit 0
+            echo "::error::Could not verify commenter write access; retry the @bot request."
+            exit 1
           fi
           case "$permission" in
             write|maintain|admin) echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
