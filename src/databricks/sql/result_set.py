@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING, Tuple
+from typing import List, Optional, TYPE_CHECKING, Tuple, cast
 
 import logging
 import pandas
@@ -26,6 +26,10 @@ from databricks.sql.backend.types import CommandId, CommandState, ExecuteRespons
 from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
+
+# Most rows a Thrift FetchResults asks for when the caller wants more than arraysize rows
+# (the JDBC driver's per-fetch row limit).
+_MAX_ROWS_PER_FETCH = 2_000_000
 
 
 class ResultSet(ABC):
@@ -274,10 +278,18 @@ class ThriftResultSet(ResultSet):
         if not self.results:
             self._fill_results_buffer()
 
-    def _fill_results_buffer(self):
-        results, has_more_rows, result_links_count = self.backend.fetch_results(
+    def _fill_results_buffer(self, rows_wanted: Optional[int] = None):
+        # Streaming callers (fetchone, iteration, fetchmany(size <= arraysize)) keep
+        # arraysize-row batches. fetchall and larger fetchmany calls ask for the rows they
+        # still need, so narrow inline results take fewer round trips; replies remain
+        # bounded by maxBytes.
+        max_rows = self.arraysize
+        if rows_wanted is not None:
+            max_rows = max(max_rows, min(rows_wanted, _MAX_ROWS_PER_FETCH))
+        backend = cast("ThriftDatabricksClient", self.backend)
+        results, has_more_rows, result_links_count = backend.fetch_results(
             command_id=self.command_id,
-            max_rows=self.arraysize,
+            max_rows=max_rows,
             max_bytes=self.buffer_size_bytes,
             expected_row_start_offset=self._next_row_index,
             lz4_compressed=self.lz4_compressed,
@@ -331,7 +343,7 @@ class ThriftResultSet(ResultSet):
             and not self.has_been_closed_server_side
             and self.has_more_rows
         ):
-            self._fill_results_buffer()
+            self._fill_results_buffer(rows_wanted=n_remaining_rows)
             partial_results = self.results.next_n_rows(n_remaining_rows)
             if partial_results.num_rows == 0:
                 continue
@@ -360,7 +372,7 @@ class ThriftResultSet(ResultSet):
             and not self.has_been_closed_server_side
             and self.has_more_rows
         ):
-            self._fill_results_buffer()
+            self._fill_results_buffer(rows_wanted=n_remaining_rows)
             partial_results = self.results.next_n_rows(n_remaining_rows)
             partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
@@ -384,7 +396,7 @@ class ThriftResultSet(ResultSet):
             self._next_row_index += results.num_rows
 
         while not self.has_been_closed_server_side and self.has_more_rows:
-            self._fill_results_buffer()
+            self._fill_results_buffer(rows_wanted=_MAX_ROWS_PER_FETCH)
             partial_results = self.results.remaining_rows()
             if partial_results.num_rows == 0:
                 continue
@@ -413,7 +425,7 @@ class ThriftResultSet(ResultSet):
         self._next_row_index += results.num_rows
         partial_result_chunks = [results]
         while not self.has_been_closed_server_side and self.has_more_rows:
-            self._fill_results_buffer()
+            self._fill_results_buffer(rows_wanted=_MAX_ROWS_PER_FETCH)
             partial_results = self.results.remaining_rows()
             partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
