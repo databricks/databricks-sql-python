@@ -97,9 +97,15 @@ def _strip_leading_sql_comments(sql: str) -> str:
             nl = sql.find("\n", i)
             i = n if nl == -1 else nl + 1
         elif sql.startswith("/*", i):
-            # Block comment: skip to closing */ (or end if unterminated).
-            close = sql.find("*/", i + 2)
-            i = n if close == -1 else close + 2
+            depth = 1
+            i += 2
+            for delimiter in re.finditer(r"/\*|\*/", sql[i:]):
+                depth += 1 if delimiter.group() == "/*" else -1
+                if depth == 0:
+                    i += delimiter.end()
+                    break
+            else:
+                i = n
         else:
             break
     return sql[i:]
