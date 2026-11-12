@@ -1011,17 +1011,39 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
         raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
 
+_PYARROW_HAS_LZ4 = pyarrow is not None and pyarrow.Codec.is_available("lz4")
+_LZ4_MAX_READ_BYTES = 16 * 1024 * 1024
+
+
+def _decompress_lz4_frames_into(out: bytearray, frames: List[bytes]) -> None:
+    # One native call for all frames. Every lz4.frame.decompress call releases the
+    # GIL, and with many busy threads each release can wait a full switch interval.
+    compressed = b"".join(frames)
+    stream = pyarrow.CompressedInputStream(pyarrow.BufferReader(compressed), "lz4")
+    nbytes = min(4 * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
+    while True:
+        chunk = stream.read(nbytes)
+        if not chunk:
+            return
+        out += chunk
+
+
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
     ba = bytearray()
     ba += schema_bytes
     n_rows = 0
-    for arrow_batch in arrow_batches:
-        n_rows += arrow_batch.rowCount
-        ba += (
-            lz4.frame.decompress(arrow_batch.batch)
-            if lz4_compressed
-            else arrow_batch.batch
-        )
+    # The Arrow path releases the GIL about twice, so it only helps from 3 batches.
+    if lz4_compressed and len(arrow_batches) > 2 and _PYARROW_HAS_LZ4:
+        n_rows = sum(arrow_batch.rowCount for arrow_batch in arrow_batches)
+        _decompress_lz4_frames_into(ba, [b.batch for b in arrow_batches])
+    else:
+        for arrow_batch in arrow_batches:
+            n_rows += arrow_batch.rowCount
+            ba += (
+                lz4.frame.decompress(arrow_batch.batch)
+                if lz4_compressed
+                else arrow_batch.batch
+            )
     arrow_table = pyarrow.ipc.open_stream(ba).read_all()
     return arrow_table, n_rows
 
