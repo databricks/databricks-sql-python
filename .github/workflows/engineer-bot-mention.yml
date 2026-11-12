@@ -123,6 +123,9 @@ jobs:
             echo "PIP_EXTRA_INDEX_URL="
             echo "POETRY_HTTP_BASIC_JFROG_USERNAME="
             echo "POETRY_HTTP_BASIC_JFROG_PASSWORD="
+            echo "ACTIONS_RUNTIME_TOKEN="
+            echo "ACTIONS_CACHE_URL="
+            echo "ACTIONS_RESULTS_URL="
             echo "PIP_NO_INDEX=true"
             echo "POETRY_VIRTUALENVS_CREATE=false"
           } >> "$GITHUB_ENV"
@@ -174,7 +177,7 @@ jobs:
           set -euo pipefail
           HEAD_SHA=$(git rev-parse HEAD)
           export HEAD_SHA
-          git fetch --no-tags origin "$BASE_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
           git diff --no-ext-diff --no-textconv --no-color "$BASE_SHA...HEAD" -- > "$RUNNER_TEMP/mention-pr.diff"
           python -I - <<'PY'
           import os
@@ -213,6 +216,7 @@ jobs:
         run: |
           # The runner injects OIDC credentials per step; clear them in this shell.
           unset JFROG_ACCESS_TOKEN PIP_INDEX_URL PIP_EXTRA_INDEX_URL CARGO_REGISTRIES_JFROG_TOKEN \
+            ACTIONS_RUNTIME_TOKEN ACTIONS_CACHE_URL ACTIONS_RESULTS_URL \
             ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           python -I -m databricks_bot_engine.engineer_bot.run --phase mention \
