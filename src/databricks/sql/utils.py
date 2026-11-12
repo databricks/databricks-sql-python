@@ -1016,17 +1016,20 @@ _LZ4_MAX_READ_BYTES = 16 * 1024 * 1024
 
 
 def _decompress_lz4_frames_into(out: bytearray, frames: List[bytes]) -> None:
-    # One native call for all frames. Every lz4.frame.decompress call releases the
-    # GIL, and with many busy threads each release can wait a full switch interval.
+    # Each batch is one LZ4 frame; decode them all in one native call. Every
+    # lz4.frame.decompress call releases the GIL, and with many busy threads each
+    # release can wait a full switch interval.
     compressed = b"".join(frames)
     nbytes = min(4 * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
     try:
-        stream = pyarrow.CompressedInputStream(pyarrow.BufferReader(compressed), "lz4")
-        while True:
-            chunk = stream.read(nbytes)
-            if not chunk:
-                return
-            out += chunk
+        with pyarrow.CompressedInputStream(
+            pyarrow.BufferReader(compressed), "lz4"
+        ) as stream:
+            while True:
+                chunk = stream.read(nbytes)
+                if not chunk:
+                    return
+                out += chunk
     except MemoryError:
         raise
     except (OSError, pyarrow.ArrowException) as e:

@@ -2274,21 +2274,25 @@ class ThriftBackendTestSuite(unittest.TestCase):
             corrupted[len(corrupted) // 2] ^= 0xFF
             return bytes(corrupted)
 
-        # Checksums as the warehouse sets them, so flipped bytes are detected.
+        # Truncation is detected with or without checksums. A flipped byte is only
+        # detected with checksums, which the warehouse sets.
+        checksums = {"block_checksum": True, "content_checksum": True}
+        cases = [(truncate, {}), (truncate, checksums), (flip_byte, checksums)]
         for n_batches in (1, 72):
             for which in (n_batches // 2, -1):
-                for corrupt in (truncate, flip_byte):
+                for corrupt, lz4_kw in cases:
                     _, arrow_batches, schema = self._arrow_set(
-                        n_batches, 14, True, block_checksum=True, content_checksum=True
+                        n_batches, 14, True, **lz4_kw
                     )
                     arrow_batches[which].batch = corrupt(arrow_batches[which].batch)
                     with self.assertRaises(
-                        RuntimeError, msg=(n_batches, which, corrupt.__name__)
+                        RuntimeError, msg=(n_batches, which, corrupt.__name__, lz4_kw)
                     ):
                         utils.convert_arrow_based_set_to_arrow_table(
                             arrow_batches, True, schema
                         )
 
+    @unittest.skipUnless(utils._PYARROW_HAS_LZ4, "pyarrow lacks the lz4 codec")
     def test_convert_arrow_based_set_lz4_memory_error_is_not_wrapped(self):
         _, arrow_batches, schema = self._arrow_set(72, 14, True)
         with patch.object(
