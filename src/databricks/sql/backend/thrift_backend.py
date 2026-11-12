@@ -195,7 +195,10 @@ class ThriftDatabricksClient(DatabricksClient):
 
         # Cloud fetch
         self._max_download_threads = kwargs.get("max_download_threads", 10)
-        self._cloudfetch_prefetch = bool(kwargs.get("_cloudfetch_prefetch", True))
+        prefetch = kwargs.get("_cloudfetch_prefetch", True)
+        if isinstance(prefetch, str):  # e.g. from a SQLAlchemy URL query
+            prefetch = prefetch.strip().lower() not in ("false", "0", "no", "off")
+        self._cloudfetch_prefetch = bool(prefetch)
 
         self._ssl_options = ssl_options
         self._auth_provider = auth_provider

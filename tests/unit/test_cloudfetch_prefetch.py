@@ -136,7 +136,7 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertIsNone(manager.get_next_downloaded_file(20))
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
-    def test_link_source_errors_reach_the_caller_and_fetching_can_resume(self):
+    def test_link_source_errors_reach_the_caller_and_the_next_call_asks_again(self):
         manager = self._manager([_link(0)], max_download_threads=2)
         source = Mock(
             side_effect=[RuntimeError("FetchResults failed"), ([_link(10)], False)]
@@ -157,7 +157,7 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         manager = self._manager([_link(0)], max_download_threads=2)
 
         def source(free):
-            manager._shutdown_manager()  # e.g. close() on another thread
+            manager._shutdown_manager()
             return [_link(10)], True
 
         manager.set_link_source(source)
@@ -426,6 +426,13 @@ class ResultSetPrefetchEndToEndTests(unittest.TestCase):
         self.assertIsNone(manager._link_source)
         backend.close_command.assert_called_once()
 
+    def test_link_fetch_errors_propagate_out_of_the_fetch_call(self):
+        rs, backend, _ = self._result_set()
+        backend.fetch_result_links.side_effect = DataError("FetchResults failed")
+
+        with self.assertRaises(DataError):
+            rs.fetchall_arrow()
+
 
 class ThriftClientPrefetchTests(unittest.TestCase):
     def _client(self, **kwargs):
@@ -442,7 +449,12 @@ class ThriftClientPrefetchTests(unittest.TestCase):
 
     def test_prefetch_is_on_by_default_and_can_be_disabled(self):
         self.assertTrue(self._client()._cloudfetch_prefetch)
-        self.assertFalse(self._client(_cloudfetch_prefetch=False)._cloudfetch_prefetch)
+        for off in (False, "false", "False", "0", "no", "off"):
+            self.assertFalse(
+                self._client(_cloudfetch_prefetch=off)._cloudfetch_prefetch
+            )
+        for on in (True, "true", "1"):
+            self.assertTrue(self._client(_cloudfetch_prefetch=on)._cloudfetch_prefetch)
 
     @patch("databricks.sql.backend.thrift_backend.ThriftResultSet")
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
