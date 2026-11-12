@@ -511,14 +511,18 @@ class TestConvertArrowBasedSet:
         assert n_rows == 20
         assert result.equals(table)
 
+    @linux_only
     def test_mmap_failure_falls_back_to_bytes(self):
         table, schema_bytes, batches = _inline_arrow_set(4, 50000, True)
 
-        with patch.object(utils.mmap, "mmap", side_effect=OSError("ENOMEM")):
+        with patch.object(
+            utils.mmap, "mmap", side_effect=OSError("ENOMEM")
+        ) as mmap_mock:
             result, n_rows = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
 
+        mmap_mock.assert_called_once()
         assert n_rows == table.num_rows
         assert result.equals(table)
 

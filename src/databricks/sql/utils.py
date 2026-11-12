@@ -1075,7 +1075,8 @@ class _ArrowStreamBuffer:
                 except (OSError, SystemError, ValueError):
                     pass
             else:
-                # The map can't grow: continue on the heap
+                # mremap failed (memory pressure): continue on the heap, which briefly
+                # holds a second copy of what was written; a new map would fail too.
                 with memoryview(self._map) as view:
                     self._bytes += view[: self._size]
                 self._map = None
