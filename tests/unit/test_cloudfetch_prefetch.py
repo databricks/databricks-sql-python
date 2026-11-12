@@ -3,7 +3,7 @@
 import threading
 import unittest
 from concurrent.futures import Future
-from contextlib import nullcontext
+from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -21,7 +21,7 @@ from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.client import Cursor
 from databricks.sql.cloudfetch.downloader import DownloadedFile
-from databricks.sql.exc import DataError, OperationalError
+from databricks.sql.exc import DataError, OperationalError, RequestError
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -253,10 +253,19 @@ class DownloaderCancelTests(unittest.TestCase):
         def release_conn(self):
             self.released = True
 
+    @staticmethod
+    @contextmanager
+    def _request_context(response):
+        # Like UnifiedHttpClient.request_context: errors in the block become RequestError
+        try:
+            yield response
+        except Exception as e:
+            raise RequestError(f"HTTP request error: {e}")
+
     def _http_client(self, *responses):
         http_client = MagicMock()
         pending = list(responses)
-        http_client.request_context.side_effect = lambda **_: nullcontext(
+        http_client.request_context.side_effect = lambda **_: self._request_context(
             pending.pop(0)
         )
         return http_client
@@ -302,9 +311,11 @@ class DownloaderCancelTests(unittest.TestCase):
         with patch.object(
             downloader.ResultSetDownloadHandler, "_decompress_data"
         ) as decompress:
-            with self.assertRaises(OperationalError):
+            with self.assertRaises(OperationalError) as raised:
                 self._handler(self._http_client(response), event).run()
 
+        # Raised outside the HTTP client, so it is not wrapped (or logged) as an HTTP error
+        self.assertNotIsInstance(raised.exception, RequestError)
         self.assertEqual(response.read, 2)
         self.assertFalse(response.released)
         decompress.assert_not_called()
@@ -323,7 +334,9 @@ class DownloaderCancelTests(unittest.TestCase):
             *[self._Response([ProtocolError("connection reset")]) for _ in range(3)]
         )
 
-        with self.assertRaises(ProtocolError):
+        # The last failure surfaces as the client's RequestError, as on main when
+        # urllib3 runs out of retries
+        with self.assertRaises(RequestError):
             self._handler(http_client, threading.Event(), False).run()
         self.assertEqual(http_client.request_context.call_count, 3)
 
@@ -655,6 +668,17 @@ class CursorCancelTests(unittest.TestCase):
         cursor.cancel()
 
         backend.cancel_command.assert_called_once_with(cursor.active_command_id)
+        cursor.active_result_set._cancel_downloads.assert_called_once_with()
+
+    def test_downloads_stop_even_if_the_cancel_request_fails(self):
+        backend = Mock()
+        backend.cancel_command.side_effect = RequestError("session gone")
+        cursor = Cursor(Mock(), backend)
+        cursor.active_command_id = Mock()
+        cursor.active_result_set = Mock()
+
+        with self.assertRaises(RequestError):
+            cursor.cancel()
         cursor.active_result_set._cancel_downloads.assert_called_once_with()
 
     def test_thrift_result_set_cancels_its_cloudfetch_downloads(self):
