@@ -149,6 +149,8 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as raised:
             manager.get_next_downloaded_file(0)
         self.assertIs(raised.exception, error)
+        # Downloads nobody can read any more are stopped
+        self.assertTrue(manager._cancelled.is_set())
         # Later reads raise a fresh error that points at the original one
         for _ in range(2):
             with self.assertRaises(OperationalError) as raised:

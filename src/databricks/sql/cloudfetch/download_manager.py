@@ -160,8 +160,10 @@ class ResultFileDownloadManager:
                 )
             except Exception as e:
                 # This read is failing part-way, so the caller loses the rows it had
-                # collected. Fail every later read too, so a retry cannot skip them.
+                # collected. Fail every later read too, so a retry cannot skip them,
+                # and stop the downloads nobody will read.
                 self._link_error = e
+                self._shutdown_manager()
                 raise
             if self._cancelled.is_set():
                 # Shut down while the request was in flight
