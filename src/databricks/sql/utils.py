@@ -1138,7 +1138,7 @@ class _ArrowStreamBuffer:
                 try:
                     self._map.resize(new_size)
                     break
-                except (OSError, SystemError, ValueError):
+                except (OSError, SystemError, ValueError, BufferError):
                     pass
             else:
                 # mremap failed (memory pressure): continue on the heap, which briefly
@@ -1154,7 +1154,7 @@ class _ArrowStreamBuffer:
             # Release the unused reservation (commit charge under strict overcommit)
             try:
                 self._map.resize(self._size)
-            except (OSError, SystemError, ValueError):
+            except (OSError, SystemError, ValueError, BufferError):
                 pass
         return pyarrow.py_buffer(self._map).slice(0, self._size)
 

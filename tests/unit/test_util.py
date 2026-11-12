@@ -386,7 +386,7 @@ class TestConvertArrowBasedSet:
         class NoShrink(mmap.mmap):
             def resize(self, newsize):
                 if newsize < len(self):
-                    raise SystemError("mmap: resizing not available--no mremap()")
+                    raise BufferError("mmap can't resize with extant buffers exported.")
                 return super().resize(newsize)
 
         table, schema_bytes, batches = _large_inline_arrow_set()
@@ -410,13 +410,20 @@ class TestConvertArrowBasedSet:
         assert result.equals(table)
 
     @linux_only
-    def test_falls_back_to_the_heap_when_the_map_cannot_grow(self):
+    @pytest.mark.parametrize(
+        "error",
+        [
+            SystemError("mmap: resizing not available--no mremap()"),
+            BufferError("mmap can't resize with extant buffers exported."),
+        ],
+    )
+    def test_falls_back_to_the_heap_when_the_map_cannot_grow(self, error):
         attempts = []
 
         class NoResize(mmap.mmap):
             def resize(self, newsize):
                 attempts.append((len(self), newsize))
-                raise SystemError("mmap: resizing not available--no mremap()")
+                raise error
 
         table, schema_bytes, batches = _large_inline_arrow_set()
         states = []
