@@ -28,6 +28,9 @@ from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
+# Upper bound on a Thrift CloudFetch FetchResults request, in multiples of buffer_size_bytes.
+_CLOUDFETCH_MAX_BUFFERS_PER_FETCH = 4
+
 
 class ResultSet(ABC):
     """
@@ -60,7 +63,9 @@ class ResultSet(ABC):
             :param connection: The parent connection that was used to execute this command
             :param backend: The specialised backend client to be invoked in the fetch phase
             :param arraysize: The max number of rows to fetch at a time (PEP-249)
-            :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+            :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch.
+                Thrift CloudFetch fetches may request up to 4x this (see
+                ThriftResultSet._fetch_max_bytes).
             :param command_id: The command ID
             :param status: The command status
             :param has_been_closed_server_side: Whether the command has been closed on the server
@@ -217,7 +222,8 @@ class ThriftResultSet(ResultSet):
             :param connection: The parent connection
             :param execute_response: Response from the execute command
             :param thrift_client: The ThriftDatabricksClient instance for direct access
-            :param buffer_size_bytes: Buffer size for fetching results
+            :param buffer_size_bytes: Buffer size for fetching results. CloudFetch
+                fetches request between 1x and 4x this (see _fetch_max_bytes).
             :param arraysize: Default number of rows to fetch
             :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
             :param t_row_set: The TRowSet containing result data (if available)
@@ -288,8 +294,12 @@ class ThriftResultSet(ResultSet):
         # file data, so buffer_size_bytes alone yields only a few links per round trip.
         # Ask for about one link per download thread: every link in the batch then starts
         # downloading immediately, so none sits waiting while it ages towards expiry.
-        return max(
-            self.buffer_size_bytes, self._max_download_threads * self._max_link_bytes
+        # The cap bounds the batch (and buffered downloads) for a large
+        # max_download_threads, an oversized link, or a deliberately small buffer.
+        wanted = self._max_download_threads * self._max_link_bytes
+        return min(
+            max(self.buffer_size_bytes, wanted),
+            _CLOUDFETCH_MAX_BUFFERS_PER_FETCH * self.buffer_size_bytes,
         )
 
     def _fill_results_buffer(self):

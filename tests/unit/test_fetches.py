@@ -415,7 +415,11 @@ class CloudFetchBatchSizeTests(unittest.TestCase):
         return queue
 
     def _make_result_set(
-        self, initial_link_sizes=None, fetched_queues=(), max_download_threads=10
+        self,
+        initial_link_sizes=None,
+        fetched_queues=(),
+        max_download_threads=10,
+        buffer_size_bytes=BUFFER,
     ):
         """Returns the result set and the kwargs of every fetch_results call."""
         calls = []
@@ -449,7 +453,7 @@ class CloudFetchBatchSizeTests(unittest.TestCase):
                     result_format=ttypes.TSparkRowSetType.URL_BASED_SET,
                 ),
                 thrift_client=backend,
-                buffer_size_bytes=self.BUFFER,
+                buffer_size_bytes=buffer_size_bytes,
                 arraysize=1000,
                 t_row_set=t_row_set,
                 max_download_threads=max_download_threads,
@@ -477,12 +481,34 @@ class CloudFetchBatchSizeTests(unittest.TestCase):
         rs, calls = self._make_result_set(
             initial_link_sizes=[20 * self.MIB],
             fetched_queues=[self._cloudfetch_queue()],
-            max_download_threads=25,
+            max_download_threads=15,
         )
 
         rs._fill_results_buffer()
 
-        self.assertEqual(calls[0]["max_bytes"], 500 * self.MIB)
+        self.assertEqual(calls[0]["max_bytes"], 300 * self.MIB)
+
+    def test_caps_at_four_buffers(self):
+        rs, calls = self._make_result_set(
+            initial_link_sizes=[20 * self.MIB],
+            fetched_queues=[self._cloudfetch_queue()],
+            max_download_threads=50,
+        )
+
+        rs._fill_results_buffer()
+
+        self.assertEqual(calls[0]["max_bytes"], 4 * self.BUFFER)
+
+    def test_small_buffer_size_caps_batch(self):
+        rs, calls = self._make_result_set(
+            initial_link_sizes=[20 * self.MIB],
+            fetched_queues=[self._cloudfetch_queue()],
+            buffer_size_bytes=10 * self.MIB,
+        )
+
+        rs._fill_results_buffer()
+
+        self.assertEqual(calls[0]["max_bytes"], 40 * self.MIB)
 
     def test_never_requests_less_than_buffer_size(self):
         rs, calls = self._make_result_set(
