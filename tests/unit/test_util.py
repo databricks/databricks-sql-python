@@ -1,8 +1,17 @@
 import decimal
 import datetime
+import gc
+import mmap
 from datetime import timezone, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import lz4.frame
 import pytest
+
+import databricks.sql.utils as utils
 from databricks.sql.utils import (
+    convert_arrow_based_set_to_arrow_table,
     convert_to_assigned_datatypes_in_column_table,
     ColumnTable,
     concat_table_chunks,
@@ -263,3 +272,86 @@ class TestUtils:
         query_tags = {"key1": None, "key2": None, "key3": None}
         result = serialize_query_tags(query_tags)
         assert result == "key1,key2,key3"
+
+
+def _inline_arrow_set(num_batches, rows_per_batch, lz4_compressed):
+    table = pyarrow.table(
+        {
+            "id": list(range(num_batches * rows_per_batch)),
+            "s": [f"row-{i}" for i in range(num_batches * rows_per_batch)],
+        }
+    )
+    schema_bytes = table.schema.serialize().to_pybytes()
+    batches = []
+    for batch in table.to_batches(max_chunksize=rows_per_batch):
+        data = batch.serialize().to_pybytes()
+        batches.append(
+            SimpleNamespace(
+                batch=lz4.frame.compress(data) if lz4_compressed else data,
+                rowCount=batch.num_rows,
+            )
+        )
+    return table, schema_bytes, batches
+
+
+@pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+class TestConvertArrowBasedSet:
+    @pytest.mark.parametrize("lz4_compressed", [True, False])
+    def test_large_set_is_read_from_a_private_memory_map(self, lz4_compressed):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, lz4_compressed)
+
+        with patch.object(utils.mmap, "mmap", wraps=mmap.mmap) as mmap_spy:
+            result, n_rows = convert_arrow_based_set_to_arrow_table(
+                batches, lz4_compressed, schema_bytes
+            )
+
+        assert n_rows == table.num_rows
+        assert result.equals(table)
+        mmap_spy.assert_called_once()
+        size = mmap_spy.call_args.args[1]
+        assert size >= utils._INLINE_ARROW_MMAP_MIN_BYTES
+        if hasattr(mmap, "MAP_PRIVATE"):
+            flags = mmap_spy.call_args.kwargs["flags"]
+            assert flags & mmap.MAP_PRIVATE
+            assert not flags & mmap.MAP_SHARED
+
+    def test_table_keeps_the_mapping_alive(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+
+        result, _ = convert_arrow_based_set_to_arrow_table(batches, True, schema_bytes)
+        del batches, schema_bytes
+        gc.collect()
+
+        assert result.equals(table)
+
+    def test_small_set_stays_on_the_heap(self):
+        table, schema_bytes, batches = _inline_arrow_set(2, 10, True)
+
+        with patch.object(utils.mmap, "mmap") as mmap_mock:
+            result, n_rows = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        mmap_mock.assert_not_called()
+        assert n_rows == 20
+        assert result.equals(table)
+
+    def test_mmap_failure_falls_back_to_bytes(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+
+        with patch.object(utils.mmap, "mmap", side_effect=OSError("ENOMEM")):
+            result, n_rows = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        assert n_rows == table.num_rows
+        assert result.equals(table)
+
+    def test_schema_only_set(self):
+        table, schema_bytes, _ = _inline_arrow_set(1, 1, True)
+
+        result, n_rows = convert_arrow_based_set_to_arrow_table([], True, schema_bytes)
+
+        assert n_rows == 0
+        assert result.num_rows == 0
+        assert result.schema.equals(table.schema)
