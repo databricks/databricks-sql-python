@@ -1,4 +1,10 @@
+import subprocess
+import sys
+import textwrap
+import threading
+import time
 import uuid
+import weakref
 import pytest
 from unittest.mock import patch, MagicMock
 import json
@@ -9,6 +15,7 @@ from databricks.sql.telemetry.telemetry_client import (
     NoopTelemetryClient,
     TelemetryClientFactory,
     TelemetryHelper,
+    _DaemonThreadPoolExecutor,
 )
 from databricks.sql.common.feature_flag import (
     FeatureFlagsContextFactory,
@@ -529,6 +536,104 @@ class TestTelemetryFactory:
             assert str(e) == error_message
 
         mock_export_failure_log.assert_not_called()
+
+
+class TestDaemonThreadPoolExecutor:
+    """Telemetry sends run on daemon threads so they cannot block interpreter exit."""
+
+    def test_runs_work_on_bounded_daemon_threads(self):
+        executor = _DaemonThreadPoolExecutor(max_workers=2, thread_name_prefix="t")
+        release = threading.Event()
+        try:
+            futures = [executor.submit(release.wait, 5) for _ in range(5)]
+            assert len(executor._threads) == 2
+            assert all(t.daemon for t in executor._threads)
+            release.set()
+            assert [f.result(timeout=5) for f in futures] == [True] * 5
+        finally:
+            release.set()
+            executor.shutdown(wait=True)
+
+    def test_result_and_exception_propagate(self):
+        executor = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
+        try:
+            assert executor.submit(lambda x, y: x + y, 1, y=2).result(timeout=5) == 3
+            with pytest.raises(ValueError):
+                executor.submit(int, "not-an-int").result(timeout=5)
+        finally:
+            executor.shutdown(wait=True)
+
+    def test_shutdown_drains_queued_work_and_rejects_new_work(self):
+        executor = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
+        futures = [executor.submit(time.sleep, 0.01) for _ in range(3)]
+        executor.shutdown(wait=True)
+        assert all(f.done() for f in futures)
+        with pytest.raises(RuntimeError):
+            executor.submit(time.sleep, 0)
+
+    def test_wait_until_idle(self):
+        executor = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
+        release = threading.Event()
+        try:
+            executor.submit(release.wait, 5)
+            assert executor.wait_until_idle(0.1) is False
+            release.set()
+            assert executor.wait_until_idle(5) is True
+        finally:
+            release.set()
+            executor.shutdown(wait=True)
+
+
+class TestTelemetryExitWait:
+    def test_exit_wait_is_bounded_and_covers_shut_down_executors(self, monkeypatch):
+        monkeypatch.setattr(TelemetryClientFactory, "_executors", weakref.WeakSet())
+        monkeypatch.setattr(TelemetryClientFactory, "EXIT_FLUSH_TIMEOUT_SECONDS", 0.3)
+        quick = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
+        stuck = _DaemonThreadPoolExecutor(max_workers=1, thread_name_prefix="t")
+        TelemetryClientFactory._executors.add(quick)
+        TelemetryClientFactory._executors.add(stuck)
+        release = threading.Event()
+        try:
+            sent = quick.submit(time.sleep, 0.1)
+            quick.shutdown(wait=False)  # as when the last connection closes
+            stuck.submit(release.wait, 30)
+
+            start = time.monotonic()
+            TelemetryClientFactory._wait_for_pending_sends()
+
+            assert sent.done()
+            assert time.monotonic() - start < 2
+        finally:
+            release.set()
+            stuck.shutdown(wait=True)
+
+    def test_interpreter_exit_waits_for_quick_send_but_not_stuck_one(self):
+        script = textwrap.dedent(
+            """
+            import time
+            from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory as F
+
+            F.EXIT_FLUSH_TIMEOUT_SECONDS = 1.0
+            with F._lock:
+                F._initialize()
+
+            def send(delay, label):
+                time.sleep(delay)
+                print(label, flush=True)
+
+            F._executor.submit(send, 0.2, "quick-sent")
+            F._executor.submit(send, 60, "stuck-sent")
+            F._executor.shutdown(wait=False)
+            """
+        )
+        start = time.monotonic()
+        proc = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "quick-sent" in proc.stdout
+        assert "stuck-sent" not in proc.stdout
+        assert time.monotonic() - start < 15
 
 
 @patch("databricks.sql.client.Session")
