@@ -1030,7 +1030,7 @@ def _decompress_lz4_frames_into(out: "_ArrowStreamBuffer", frames: List[bytes]) 
     # release can wait a full switch interval.
     # A temporary copy of the compressed row set, freed once it is decoded.
     compressed = b"".join(frames)
-    nbytes = min(4 * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
+    nbytes = min(_LZ4_RATIO_ESTIMATE * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
     try:
         with pyarrow.CompressedInputStream(
             pyarrow.BufferReader(compressed), "lz4"
@@ -1122,7 +1122,11 @@ class _ArrowStreamBuffer:
                 self.append(chunk)
                 continue
             if self._size == len(self._map):
-                self._ensure_capacity(self._size + 1)
+                # Grow only if the stream has more: an exact fill must not resize
+                probe = stream.read(1)
+                if not probe:
+                    return
+                self.append(probe)
                 continue
             with memoryview(self._map) as view:
                 n = stream.readinto(view[self._size :])

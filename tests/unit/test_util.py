@@ -413,6 +413,23 @@ class TestConvertArrowBasedSet:
         assert result.equals(table)
 
     @linux_only
+    @needs_arrow_lz4
+    def test_exactly_filled_map_is_not_resized(self):
+        table, schema_bytes, batches = _large_inline_arrow_set()
+        stream_size = _stream_size(schema_bytes, batches)
+        _RecordingMap.resizes = []
+
+        with _patch_map(_RecordingMap):
+            buffer = utils._ArrowStreamBuffer(stream_size, stream_size)
+            buffer.append(schema_bytes)
+            utils._decompress_lz4_frames_into(buffer, [b.batch for b in batches])
+            result = pyarrow.ipc.open_stream(buffer.getbuffer()).read_all()
+
+        assert buffer.mapped
+        assert _RecordingMap.resizes == []
+        assert result.equals(table)
+
+    @linux_only
     @pytest.mark.parametrize(
         "error",
         [
