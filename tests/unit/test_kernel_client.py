@@ -811,7 +811,6 @@ def test_execute_command_forwards_row_limit(row_limit):
     [
         (None, []),
         ("/tmp/files", ["/tmp/files"]),
-        (Path("/tmp/files"), ["/tmp/files"]),
         ([Path("/tmp/a"), Path("/tmp/b")], ["/tmp/a", "/tmp/b"]),
         (["/tmp/a", "/tmp/b"], ["/tmp/a", "/tmp/b"]),
     ],
@@ -847,9 +846,18 @@ def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_o
     (stmt.submit if async_op else stmt.execute).assert_called_once()
 
 
-@pytest.mark.parametrize("allowed", [123, [object()]])
 @pytest.mark.parametrize(
-    "operation", ["SELECT 1", "PUT 'input' INTO '/Volumes/c/s/v/file'"]
+    "allowed",
+    [123, [object()], Path("/tmp/files"), ("/tmp/files",), (), {"/tmp/files": True}],
+)
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "SELECT 1",
+        "PUT 'input' INTO '/Volumes/c/s/v/file'",
+        "GET '/Volumes/c/s/v/file' TO 'output'",
+        "REMOVE '/Volumes/c/s/v/file'",
+    ],
 )
 def test_malformed_local_paths_only_reject_transfers(allowed, operation):
     c = _make_client()
@@ -867,7 +875,7 @@ def test_malformed_local_paths_only_reject_transfers(allowed, operation):
             operation, MagicMock(), 1, 1, False, cursor, False, [], False, False
         )
 
-    if operation.startswith("PUT"):
+    if operation.startswith(("PUT", "GET")):
         with pytest.raises(ProgrammingError, match="staging_allowed_local_path"):
             execute()
         stmt.execute.assert_not_called()

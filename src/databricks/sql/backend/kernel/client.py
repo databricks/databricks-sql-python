@@ -587,20 +587,30 @@ class KernelDatabricksClient(DatabricksClient):
                 stmt.set_sql(operation)
                 allowed_paths = (
                     cursor.connection.staging_allowed_local_path
-                    if _is_staging_statement(operation)
+                    if re.match(
+                        r"(?:PUT|GET)\b",
+                        _strip_leading_sql_comments(operation),
+                        re.IGNORECASE,
+                    )
                     else None
                 )
-                if isinstance(allowed_paths, (str, os.PathLike)):
-                    allowed_paths = [allowed_paths]
                 set_paths = getattr(stmt, "set_staging_allowed_local_paths", None)
                 if callable(set_paths):
+                    if allowed_paths is not None and not isinstance(
+                        allowed_paths, (str, list)
+                    ):
+                        raise ProgrammingError(
+                            "staging_allowed_local_path must be a string or a list of paths"
+                        )
+                    if isinstance(allowed_paths, str):
+                        allowed_paths = [allowed_paths]
                     try:
                         normalized_paths = [
                             os.fsdecode(path) for path in allowed_paths or []
                         ]
                     except (TypeError, ValueError) as exc:
                         raise ProgrammingError(
-                            "staging_allowed_local_path must be a path or a list of paths"
+                            "staging_allowed_local_path must be a string or a list of paths"
                         ) from exc
                     set_paths(normalized_paths)
                 elif _is_staging_statement(operation):
