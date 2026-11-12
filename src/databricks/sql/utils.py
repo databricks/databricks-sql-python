@@ -1056,13 +1056,13 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     stream.append(schema_bytes)
     n_rows = 0
     # The Arrow path releases the GIL about twice, so it only helps from 3 batches.
-    # Without the map, large results keep the per-batch path: decoding them into
-    # the heap through Arrow used more memory than main with glibc.
+    # Large results take it only into a map (none on non-Linux, or if mmap failed):
+    # decoding them into the heap through Arrow used more memory than main with glibc.
     if (
         lz4_compressed
         and len(arrow_batches) > 2
         and _PYARROW_HAS_LZ4
-        and (_INLINE_ARROW_USE_MMAP or min_size < _INLINE_ARROW_MMAP_MIN_BYTES)
+        and (stream.mapped or min_size < _INLINE_ARROW_MMAP_MIN_BYTES)
     ):
         n_rows = sum(arrow_batch.rowCount for arrow_batch in arrow_batches)
         _decompress_lz4_frames_into(stream, [b.batch for b in arrow_batches])
@@ -1154,6 +1154,10 @@ class _ArrowStreamBuffer:
                 with memoryview(self._map) as view:
                     self._bytes += view[: self._size]
                 self._map = None
+
+    @property
+    def mapped(self) -> bool:
+        return self._map is not None
 
     def getbuffer(self):
         if self._map is None:

@@ -636,12 +636,16 @@ class TestConvertArrowBasedSet:
     def test_mmap_failure_falls_back_to_bytes(self):
         table, schema_bytes, batches = _large_inline_arrow_set()
 
-        with _patch_map(Mock(side_effect=OSError("ENOMEM"))) as patched:
+        with _patch_map(Mock(side_effect=OSError("ENOMEM"))) as patched, patch.object(
+            utils.lz4.frame, "decompress", wraps=lz4.frame.decompress
+        ) as decompress_spy:
             result, n_rows = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
 
         patched.mmap.assert_called_once()
+        # Without a map, a large result keeps the per-batch decode, as on main
+        assert decompress_spy.call_count == len(batches)
         assert n_rows == table.num_rows
         assert result.equals(table)
 
