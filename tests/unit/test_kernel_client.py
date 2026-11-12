@@ -445,7 +445,9 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_open_session_passes_geospatial_representation_to_kernel(monkeypatch, enabled):
+def test_open_session_passes_geospatial_representation_to_kernel(
+    monkeypatch, enabled
+):
     captured = {}
 
     def fake_session(*, enable_geospatial_support=True, **kw):
