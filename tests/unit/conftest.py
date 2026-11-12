@@ -2,6 +2,16 @@ from unittest.mock import patch
 
 import pytest
 
+from databricks.sql.common import ssl_context_cache
+
+
+@pytest.fixture(autouse=True)
+def clear_ssl_context_cache():
+    # Tests patch the stdlib/urllib3 context builders; never serve another test's context.
+    ssl_context_cache.clear()
+    yield
+    ssl_context_cache.clear()
+
 
 @pytest.fixture(autouse=True)
 def session_feature_flags():
