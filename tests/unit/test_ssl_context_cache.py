@@ -2,6 +2,7 @@ import os
 import ssl
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -178,6 +179,23 @@ class TestGetSslContext:
             release.set()
             stuck.join()
 
+    def test_expired_context_is_rebuilt(self, monkeypatch):
+        now = [1000.0]
+        monkeypatch.setattr(
+            ssl_context_cache, "time", SimpleNamespace(monotonic=lambda: now[0])
+        )
+        build, built = counting_builder()
+
+        first = ssl_context_cache.get_ssl_context("k", SSLOptions(), build)
+        now[0] += ssl_context_cache._TTL_SECONDS
+        assert ssl_context_cache.get_ssl_context("k", SSLOptions(), build) is first
+        now[0] += 1
+        rebuilt = ssl_context_cache.get_ssl_context("k", SSLOptions(), build)
+
+        assert rebuilt is not first
+        assert ssl_context_cache.get_ssl_context("k", SSLOptions(), build) is rebuilt
+        assert len(built) == 2
+
     def test_cache_is_bounded(self, monkeypatch):
         monkeypatch.setattr(ssl_context_cache, "_MAX_ENTRIES", 2)
         build, built = counting_builder()
@@ -232,6 +250,17 @@ class TestThriftTransportContext:
         assert unverified is not first
         assert unverified.verify_mode == ssl.CERT_NONE
         assert first.verify_mode == ssl.CERT_REQUIRED
+
+    def test_proxied_pool_shares_the_context(self):
+        direct, _ = self.pool_context(SSLOptions())
+        with patch(
+            "databricks.sql.auth.thrift_http_client.detect_and_parse_proxy",
+            return_value=("http://proxy.example.com:3128", None),
+        ):
+            proxied, pool = self.pool_context(SSLOptions())
+
+        assert pool.proxy is not None and pool.proxy.host == "proxy.example.com"
+        assert proxied is direct
 
     def test_custom_ca_file_replaces_default_certs(self, tmp_path):
         ca_file = tmp_path / "ca.pem"

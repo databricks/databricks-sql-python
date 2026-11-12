@@ -4,12 +4,15 @@ Loading a CA bundle into a new context costs ~10-15 ms with OpenSSL 3 and does
 not scale across threads, so building one per connection caps how fast a
 process can open connections. A cached context is reused only by callers with
 identical TLS options and unchanged CA files. Configurations with a client
-certificate are never cached.
+certificate are never cached. Contexts are rebuilt after ``_TTL_SECONDS`` so
+trust-store changes that no file signature covers (e.g. the Windows
+certificate store) still apply without a restart.
 """
 
 import os
 import ssl
 import threading
+import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
@@ -17,9 +20,10 @@ if TYPE_CHECKING:
     from databricks.sql.types import SSLOptions
 
 _MAX_ENTRIES = 32
+_TTL_SECONDS = 600
 
 _lock = threading.Lock()
-_contexts: "OrderedDict[tuple, ssl.SSLContext]" = OrderedDict()
+_contexts: "OrderedDict[tuple, Tuple[ssl.SSLContext, float]]" = OrderedDict()
 _build_locks: Dict[tuple, Any] = {}
 
 
@@ -47,6 +51,15 @@ def _cache_key(kind: str, ssl_options: "SSLOptions") -> tuple:
     )
 
 
+def _fresh_context(key: tuple) -> Optional[ssl.SSLContext]:
+    # Caller holds _lock.
+    entry = _contexts.get(key)
+    if entry is None or time.monotonic() - entry[1] > _TTL_SECONDS:
+        return None
+    _contexts.move_to_end(key)
+    return entry[0]
+
+
 def is_cacheable(ssl_options: "SSLOptions") -> bool:
     return not (
         ssl_options.tls_client_cert_file or ssl_options.tls_client_cert_key_file
@@ -69,16 +82,15 @@ def get_ssl_context(
 
     key = _cache_key(kind, ssl_options)
     with _lock:
-        context = _contexts.get(key)
+        context = _fresh_context(key)
         if context is not None:
-            _contexts.move_to_end(key)
             return context
         key_lock = _build_locks.setdefault(key, threading.Lock())
 
     # Build outside the shared lock so a slow CA file only delays its own key.
     with key_lock:
         with _lock:
-            context = _contexts.get(key)
+            context = _fresh_context(key)
         if context is not None:
             return context
         try:
@@ -87,7 +99,8 @@ def get_ssl_context(
             _forget_build_lock(key, key_lock)
             raise
         with _lock:
-            _contexts[key] = context
+            _contexts[key] = (context, time.monotonic())
+            _contexts.move_to_end(key)
             if len(_contexts) > _MAX_ENTRIES:
                 _contexts.popitem(last=False)
         _forget_build_lock(key, key_lock)
