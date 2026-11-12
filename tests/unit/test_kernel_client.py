@@ -19,7 +19,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
@@ -843,6 +843,13 @@ def test_execute_command_forwards_allowed_local_paths(
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
     stmt = c._kernel_session.statement.return_value
+
+    def set_staging_allowed_local_paths(paths=None, *, input_stream_token=None):
+        pass
+
+    stmt.set_staging_allowed_local_paths = create_autospec(
+        set_staging_allowed_local_paths
+    )
     executed = MagicMock(
         statement_id="00000000-0000-0000-0000-000000000001",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
