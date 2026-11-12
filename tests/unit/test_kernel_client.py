@@ -1951,10 +1951,11 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
         # Escaping is on by default; it only changes tables(), because kernel
         # schemas()/columns() already take an exact catalog identifier.
         ({}, True),
+        ({"escape_catalog_name": None}, True),
         ({"escape_catalog_name": False}, False),
         ({"escape_catalog_name": True}, True),
     ],
-    ids=["default", "disabled", "enabled"],
+    ids=["default", "none-uses-default", "disabled", "enabled"],
 )
 @pytest.mark.parametrize(
     "method, filters, kernel_filters",

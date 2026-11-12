@@ -721,6 +721,8 @@ class TestPySQLCoreSuite(
         with self.cursor({}) as cursor:
             cursor.catalogs()
             names = [row[0] for row in cursor.fetchall()]
+        # hive_metastore is covered separately below (legacy catalog with no
+        # information_schema); it is not excluded because escaping breaks it.
         candidates = [
             n
             for n in names
@@ -764,7 +766,9 @@ class TestPySQLCoreSuite(
                 assert rows(escaped, "tables", **one) == rows(raw, "tables", **one)
 
             spark = {"catalog_name": "spark_catalog", "schema_name": "default"}
-            assert rows(raw, "schemas", **spark) <= rows(escaped, "schemas", **spark)
+            spark_rows = rows(escaped, "schemas", **spark)
+            assert spark_rows, "escaped spark_catalog should resolve to hive_metastore"
+            assert rows(raw, "schemas", **spark) <= spark_rows
 
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
     @pytest.mark.parametrize(

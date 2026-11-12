@@ -46,10 +46,11 @@ def retry_policy_factory():
     [
         # Escaping is on by default: `_` in a catalog name matches only itself.
         ({}, True),
+        ({"escape_catalog_name": None}, True),
         ({"escape_catalog_name": False}, False),
         ({"escape_catalog_name": True}, True),
     ],
-    ids=["default", "disabled", "enabled"],
+    ids=["default", "none-uses-default", "disabled", "enabled"],
 )
 @pytest.mark.parametrize(
     "method, rpc_name, filters",

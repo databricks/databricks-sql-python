@@ -341,7 +341,7 @@ class Session:
                     "enable_geospatial_support", False
                 ),
                 telemetry_options=kernel_telemetry_options,
-                escape_catalog_name=kwargs.get("escape_catalog_name", True),
+                escape_catalog_name=kwargs.get("escape_catalog_name"),
             )
 
         # These reference the lazily-resolved module attributes defined via
