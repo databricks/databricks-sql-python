@@ -1041,18 +1041,21 @@ class _ArrowStreamBuffer:
     """Accumulates an inline Arrow IPC stream in a private anonymous memory map.
 
     The table reads the stream zero-copy, so this buffer lives as long as the result.
-    On the malloc heap such buffers often stayed resident after the result was freed
-    (~1 GB per 1 GB of inline results); a mapping is returned to the OS. Small streams
-    and mmap failures use a bytearray, as before.
+    On the glibc heap such buffers often stayed resident after the result was freed
+    (~1 GB per 1 GB of inline results); a mapping is returned to the OS. Small streams,
+    mmap failures and non-POSIX platforms use a bytearray, as before.
     """
 
     def __init__(self, size_estimate: int):
         self._map: Optional[mmap.mmap] = None
         self._bytes = bytearray()
         self._size = 0
-        if size_estimate >= _INLINE_ARROW_MMAP_MIN_BYTES:
+        if size_estimate >= _INLINE_ARROW_MMAP_MIN_BYTES and hasattr(
+            mmap, "MAP_PRIVATE"
+        ):
             try:
-                self._map = _private_anonymous_mmap(size_estimate)
+                # Python defaults anonymous maps to MAP_SHARED (shmem, shared on fork).
+                self._map = mmap.mmap(-1, size_estimate, flags=mmap.MAP_PRIVATE)
             except (OSError, ValueError):
                 pass
 
@@ -1074,14 +1077,13 @@ class _ArrowStreamBuffer:
     def getbuffer(self):
         if self._map is None:
             return self._bytes
+        if len(self._map) > self._size:
+            # Release the unused reservation (commit charge under strict overcommit)
+            try:
+                self._map.resize(self._size)
+            except (OSError, SystemError, ValueError):
+                pass
         return pyarrow.py_buffer(self._map).slice(0, self._size)
-
-
-def _private_anonymous_mmap(size: int) -> mmap.mmap:
-    # Python defaults anonymous maps to MAP_SHARED (shmem, shared with forked children).
-    if hasattr(mmap, "MAP_PRIVATE"):
-        return mmap.mmap(-1, size, flags=mmap.MAP_PRIVATE)
-    return mmap.mmap(-1, size)
 
 
 def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":

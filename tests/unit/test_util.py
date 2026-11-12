@@ -4,7 +4,7 @@ import gc
 import mmap
 from datetime import timezone, timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import lz4.frame
 import pytest
@@ -294,6 +294,18 @@ def _inline_arrow_set(num_batches, rows_per_batch, lz4_compressed):
     return table, schema_bytes, batches
 
 
+def _stream_size(schema_bytes, batches):
+    return len(schema_bytes) + sum(len(lz4.frame.decompress(b.batch)) for b in batches)
+
+
+class _RecordingMap(mmap.mmap):
+    resizes = []
+
+    def resize(self, newsize):
+        type(self).resizes.append((len(self), newsize))
+        return super().resize(newsize)
+
+
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class TestConvertArrowBasedSet:
     @pytest.mark.parametrize("lz4_compressed", [True, False])
@@ -317,31 +329,70 @@ class TestConvertArrowBasedSet:
 
     def test_map_grows_when_the_size_estimate_is_too_small(self):
         table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+        _RecordingMap.resizes = []
 
         with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
-            utils.mmap, "mmap", wraps=mmap.mmap
-        ) as mmap_spy:
-            result, _ = convert_arrow_based_set_to_arrow_table(
-                batches, True, schema_bytes
-            )
-
-        mmap_spy.assert_called_once()
-        assert result.equals(table)
-
-    def test_falls_back_to_the_heap_when_the_map_cannot_grow(self):
-        class NoResize(mmap.mmap):
-            def resize(self, newsize):
-                raise SystemError("mmap: resizing not available--no mremap()")
-
-        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
-
-        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
-            utils.mmap, "mmap", NoResize
+            utils.mmap, "mmap", _RecordingMap
         ):
             result, _ = convert_arrow_based_set_to_arrow_table(
                 batches, True, schema_bytes
             )
 
+        assert result.equals(table)
+        assert any(new > old for old, new in _RecordingMap.resizes)
+        assert _RecordingMap.resizes[-1][1] == _stream_size(schema_bytes, batches)
+
+    def test_map_is_shrunk_to_the_stream_size(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+        _RecordingMap.resizes = []
+
+        with patch.object(utils.mmap, "mmap", _RecordingMap):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        assert result.equals(table)
+        assert len(_RecordingMap.resizes) == 1
+        old, new = _RecordingMap.resizes[0]
+        assert new == _stream_size(schema_bytes, batches) < old
+
+    def test_falls_back_to_the_heap_when_the_map_cannot_grow(self):
+        attempts = []
+
+        class NoResize(mmap.mmap):
+            def resize(self, newsize):
+                attempts.append((len(self), newsize))
+                raise SystemError("mmap: resizing not available--no mremap()")
+
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+        states = []
+        getbuffer = utils._ArrowStreamBuffer.getbuffer
+
+        def recording_getbuffer(stream):
+            states.append((stream._map, len(stream._bytes)))
+            return getbuffer(stream)
+
+        with patch.object(utils, "_LZ4_RATIO_ESTIMATE", 1), patch.object(
+            utils.mmap, "mmap", NoResize
+        ), patch.object(utils._ArrowStreamBuffer, "getbuffer", recording_getbuffer):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        assert result.equals(table)
+        assert attempts and attempts[0][1] > attempts[0][0]
+        assert states == [(None, _stream_size(schema_bytes, batches))]
+
+    def test_non_posix_platform_stays_on_the_heap(self):
+        table, schema_bytes, batches = _inline_arrow_set(4, 5000, True)
+        no_map_private = SimpleNamespace(mmap=Mock(side_effect=AssertionError))
+
+        with patch.object(utils, "mmap", no_map_private):
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        no_map_private.mmap.assert_not_called()
         assert result.equals(table)
 
     def test_table_keeps_the_mapping_alive(self):
