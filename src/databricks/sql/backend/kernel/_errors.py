@@ -201,8 +201,8 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSErro
     - ``KernelError`` → mapped class with structured attrs forwarded.
       A local missing transfer file maps to ``FileNotFoundError`` without
       the OS ``errno`` or ``filename`` attributes.
-    - Already-PEP-249 ``Error`` (e.g. raised by an inner caller that
-      already mapped) → passed through unchanged.
+    - Already-mapped PEP 249 or local transfer errors → passed through
+      unchanged so nested callers preserve their class and attributes.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3
       argument conversion, extension-internal errors) → wrapped in
       ``OperationalError``.
@@ -214,6 +214,10 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSErro
     if isinstance(exc, _kernel.KernelError):
         return reraise_kernel_error(exc)
     if isinstance(exc, Error):
+        return exc
+    if isinstance(exc, (FileNotFoundError, PermissionError)) and getattr(
+        exc, "error_code", None
+    ) in ("FILE_TRANSFER_ERROR", "FILE_TRANSFER_PERMISSION_ERROR"):
         return exc
     return OperationalError(
         f"Unexpected error from databricks_sql_kernel during {what}: {exc!r}"

@@ -901,6 +901,34 @@ def test_malformed_local_paths_only_reject_transfers(allowed, operation):
 
 
 @pytest.mark.parametrize(
+    "operation, expected",
+    [
+        ("PUT '/f' INTO '/v'", "PUT"),
+        ("get '/v' to '/f'", "GET"),
+        ("REMOVE '/v'", "REMOVE"),
+        ("-- upload the file\nPUT '/f' INTO '/v'", "PUT"),
+        ("/* staging */ PUT '/f' INTO '/v'", "PUT"),
+        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", "GET"),
+        ("   \n\t PUT '/f' INTO '/v'", "PUT"),
+        ("SELECT 'GET' AS x", None),
+        ("SELECT * FROM puts", None),
+        ("-- PUT in a comment\nSELECT 1", None),
+        ("/* PUT */ SELECT 1", None),
+        ("INSERT INTO t VALUES (1)", None),
+        ("", None),
+        ("-- just a comment", None),
+        ("/* just a comment */", None),
+        ("PUTTER", None),
+        ("GETTING", None),
+        ("REMOVED", None),
+    ],
+)
+def test_staging_verb_matches_only_the_leading_statement(operation, expected):
+    stripped = kernel_client._strip_leading_sql_comments(operation)
+    assert kernel_client._staging_verb(stripped) == expected
+
+
+@pytest.mark.parametrize(
     "query",
     [
         "PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
@@ -2701,3 +2729,35 @@ def test_file_transfer_error_matches_thrift_exception(
     assert result.error_code == error_code
     assert result.code == code
     assert result.http_status == http_status
+
+
+@pytest.mark.parametrize(
+    "code,error_code",
+    [
+        ("NotFound", "FILE_TRANSFER_ERROR"),
+        ("PermissionDenied", "FILE_TRANSFER_PERMISSION_ERROR"),
+    ],
+)
+def test_nested_wrapping_preserves_mapped_local_transfer_error(code, error_code):
+    from databricks.sql.backend.kernel._errors import wrap_kernel_exception
+
+    error = _FakeKernelError(code=code, sql_state="HY000", query_id="transfer-id")
+    error.error_code = error_code
+    mapped = wrap_kernel_exception("inner", error)
+    wrapped = wrap_kernel_exception("outer", mapped)
+    assert wrapped is mapped
+    assert wrapped.code == code
+    assert wrapped.error_code == error_code
+    assert wrapped.sql_state == "HY000"
+    assert wrapped.query_id == "transfer-id"
+
+
+@pytest.mark.parametrize(
+    "error", [FileNotFoundError("missing"), PermissionError("denied")]
+)
+def test_raw_local_errors_keep_unexpected_error_wrapping(error):
+    from databricks.sql.backend.kernel._errors import wrap_kernel_exception
+
+    wrapped = wrap_kernel_exception("execute_command", error)
+    assert type(wrapped) is OperationalError
+    assert "execute_command" in str(wrapped)
