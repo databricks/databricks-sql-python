@@ -730,6 +730,13 @@ class ThriftClientPrefetchTests(unittest.TestCase):
                 results=ttypes.TRowSet(startRowOffset=0, rows=[]),
                 resultSetMetadata=arrow_format,
             ),
+            ttypes.TFetchResultsResp(
+                status=ok,
+                hasMoreRows=False,
+                results=ttypes.TRowSet(
+                    startRowOffset=0, rows=[ttypes.TRow(colVals=[])]
+                ),
+            ),
         ):
             tcli_service_class.return_value.FetchResults.return_value = resp
             with self.assertRaises(DataError):

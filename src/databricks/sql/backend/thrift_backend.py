@@ -1453,6 +1453,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if (
             results.arrowBatches
             or results.columns
+            or results.rows
             or (
                 metadata is not None
                 and metadata.resultFormat is not None
