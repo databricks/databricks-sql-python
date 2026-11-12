@@ -145,6 +145,8 @@ class ResultSetDownloadHandler:
                     self.link, self.settings.link_expiry_buffer_secs
                 )
                 self._raise_if_cancelled()
+                # Speed metrics cover the successful attempt only
+                start_time = time.time()
             with self._http_client.request_context(
                 method=HttpMethod.GET,
                 url=self.link.fileLink,

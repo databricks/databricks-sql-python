@@ -199,7 +199,18 @@ class ThriftDatabricksClient(DatabricksClient):
         if prefetch is None:  # unset, or forwarded as None by a wrapper
             prefetch = True
         elif isinstance(prefetch, str):  # e.g. from a SQLAlchemy URL query
-            prefetch = prefetch.strip().lower() not in ("false", "0", "no", "off")
+            value = prefetch.strip().lower()
+            if value in ("false", "0", "no", "off"):
+                prefetch = False
+            elif value in ("true", "1", "yes", "on"):
+                prefetch = True
+            else:
+                logger.warning(
+                    "Unrecognized _cloudfetch_prefetch=%r; keeping CloudFetch "
+                    "prefetch on (use 'false' to turn it off)",
+                    prefetch,
+                )
+                prefetch = True
         self._cloudfetch_prefetch = bool(prefetch)
 
         self._ssl_options = ssl_options
