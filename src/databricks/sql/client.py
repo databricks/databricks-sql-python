@@ -1820,7 +1820,8 @@ class Cursor:
         Get tables corresponding to the catalog_name, schema_name and table_name.
 
         Names can contain % wildcards. `_` in catalog_name matches only itself;
-        ``escape_catalog_name=False`` makes it a single-character wildcard.
+        on Thrift and kernel, ``escape_catalog_name=False`` makes it a
+        single-character wildcard.
         :returns self
         """
         self._check_not_closed()
