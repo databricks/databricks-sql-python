@@ -535,6 +535,26 @@ class TestConvertArrowBasedSet:
         mmap_spy.assert_called_once()
         assert decompress_spy.call_count == 2
 
+    @pytest.mark.parametrize(
+        "rows_per_batch, expect_one_call", [(3000, False), (100, True)]
+    )
+    def test_without_the_map_only_small_results_use_the_one_call_decode(
+        self, rows_per_batch, expect_one_call
+    ):
+        table, schema_bytes, batches = _inline_arrow_set(72, rows_per_batch, True)
+        large = sum(len(b.batch) for b in batches) >= utils._INLINE_ARROW_MMAP_MIN_BYTES
+        assert large != expect_one_call
+
+        with patch.object(utils, "_INLINE_ARROW_USE_MMAP", False), patch.object(
+            utils.lz4.frame, "decompress", wraps=lz4.frame.decompress
+        ) as decompress_spy:
+            result, _ = convert_arrow_based_set_to_arrow_table(
+                batches, True, schema_bytes
+            )
+
+        assert result.equals(table)
+        assert decompress_spy.call_count == (0 if expect_one_call else 72)
+
     @linux_only
     def test_table_keeps_the_map_alive_and_frees_it_with_the_table(self):
         maps = []

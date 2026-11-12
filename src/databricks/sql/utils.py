@@ -1028,6 +1028,7 @@ def _decompress_lz4_frames_into(out: "_ArrowStreamBuffer", frames: List[bytes]) 
     # Each batch is one LZ4 frame; decode them all in one native call. Every
     # lz4.frame.decompress call releases the GIL, and with many busy threads each
     # release can wait a full switch interval.
+    # A temporary copy of the compressed row set, freed once it is decoded.
     compressed = b"".join(frames)
     nbytes = min(4 * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
     try:
@@ -1055,7 +1056,14 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     stream.append(schema_bytes)
     n_rows = 0
     # The Arrow path releases the GIL about twice, so it only helps from 3 batches.
-    if lz4_compressed and len(arrow_batches) > 2 and _PYARROW_HAS_LZ4:
+    # Without the map, large results keep the per-batch path: decoding them into
+    # the heap through Arrow used more memory than main with glibc.
+    if (
+        lz4_compressed
+        and len(arrow_batches) > 2
+        and _PYARROW_HAS_LZ4
+        and (_INLINE_ARROW_USE_MMAP or min_size < _INLINE_ARROW_MMAP_MIN_BYTES)
+    ):
         n_rows = sum(arrow_batch.rowCount for arrow_batch in arrow_batches)
         _decompress_lz4_frames_into(stream, [b.batch for b in arrow_batches])
     else:
