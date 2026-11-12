@@ -307,8 +307,8 @@ class ThriftResultSet(ResultSet):
         self._links_end_offset = max(
             link.startRowOffset + link.rowCount for link in queue.result_links
         )
-        queue.download_manager.set_link_source(self._fetch_more_links)
-        self.has_more_rows = False
+        if queue.download_manager.set_link_source(self._fetch_more_links):
+            self.has_more_rows = False
 
     def _fetch_more_links(self, free_slots: int):
         # One link per free slot plus half a pool queued ahead, so slots refill without a

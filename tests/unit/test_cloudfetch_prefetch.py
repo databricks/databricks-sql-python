@@ -105,6 +105,32 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertEqual(manager._pending_links, [])
         shutdown.assert_called_once_with(wait=False, cancel_futures=True)
 
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_link_source_errors_reach_the_caller_and_fetching_can_resume(self):
+        manager = self._manager([_link(0)], max_download_threads=2)
+        source = Mock(
+            side_effect=[RuntimeError("FetchResults failed"), ([_link(10)], False)]
+        )
+        manager.set_link_source(source)
+
+        with self.assertRaises(RuntimeError):
+            manager.get_next_downloaded_file(0)
+        # The scheduled download is kept and the next call asks for links again
+        offsets = [manager.get_next_downloaded_file(0).start_row_offset]
+        offsets.append(manager.get_next_downloaded_file(10).start_row_offset)
+        self.assertIsNone(manager.get_next_downloaded_file(20))
+        self.assertEqual(offsets, [0, 10])
+        self.assertEqual(source.call_count, 2)
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_link_source_is_refused_after_shutdown(self):
+        # No schedulable links: the first request already shuts the manager down
+        manager = self._manager([_link(0, rows=0)], max_download_threads=2)
+        self.assertIsNone(manager.get_next_downloaded_file(0))
+
+        self.assertFalse(manager.set_link_source(Mock()))
+        self.assertIsNone(manager._link_source)
+
     def test_handlers_share_the_managers_cancel_event(self):
         manager = self._manager([_link(0)], max_download_threads=1)
         with patch.object(download_manager, "ResultSetDownloadHandler") as handler:
@@ -236,6 +262,16 @@ class ResultSetPrefetchTests(unittest.TestCase):
         queue.download_manager.set_link_source.assert_not_called()
         self.assertTrue(rs.has_more_rows)
 
+    def test_shut_down_queue_keeps_per_batch_fetching(self):
+        queue = Mock(spec=ThriftCloudFetchQueue)
+        queue.result_links = [_link(0)]
+        queue.download_manager = Mock()
+        queue.download_manager.set_link_source.return_value = False
+
+        rs, _, _ = self._result_set([_link(0)], queue=queue)
+
+        self.assertTrue(rs.has_more_rows)
+
     def test_inline_results_are_not_prefetched(self):
         rs, backend, _ = self._result_set([], queue=Mock(spec=ArrowQueue))
 
@@ -328,6 +364,39 @@ class ThriftClientPrefetchTests(unittest.TestCase):
                 max_bytes=1,
                 expected_row_start_offset=100,
             )
+
+    @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
+    def test_fetch_result_links_rejects_rows_that_are_not_links(
+        self, tcli_service_class
+    ):
+        ok = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
+        inline_rows = ttypes.TRowSet(
+            startRowOffset=0,
+            rows=[],
+            arrowBatches=[ttypes.TSparkArrowBatch(batch=b"x", rowCount=1)],
+        )
+        arrow_format = ttypes.TGetResultSetMetadataResp(
+            status=ok, resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET
+        )
+        client = self._client()
+
+        for resp in (
+            ttypes.TFetchResultsResp(status=ok, hasMoreRows=False, results=inline_rows),
+            ttypes.TFetchResultsResp(
+                status=ok,
+                hasMoreRows=False,
+                results=ttypes.TRowSet(startRowOffset=0, rows=[]),
+                resultSetMetadata=arrow_format,
+            ),
+        ):
+            tcli_service_class.return_value.FetchResults.return_value = resp
+            with self.assertRaises(DataError):
+                client.fetch_result_links(
+                    command_id=Mock(),
+                    max_rows=1,
+                    max_bytes=1,
+                    expected_row_start_offset=0,
+                )
 
 
 if __name__ == "__main__":

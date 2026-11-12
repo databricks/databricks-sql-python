@@ -64,13 +64,17 @@ class ResultFileDownloadManager:
         # Set on shutdown so downloads that have not started (or finished) stop early.
         self._cancelled = threading.Event()
 
-    def set_link_source(self, link_source: LinkSource) -> None:
+    def set_link_source(self, link_source: LinkSource) -> bool:
         """Fetch further links on demand.
 
         Whenever a download slot is free and no links are pending, ``link_source`` is
         asked for more, so the next links arrive while earlier files still download.
+        Returns False, without attaching it, if the manager is already shut down.
         """
+        if self._cancelled.is_set():
+            return False
         self._link_source = link_source
+        return True
 
     def get_next_downloaded_file(
         self, next_row_offset: int

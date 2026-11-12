@@ -1431,7 +1431,22 @@ class ThriftDatabricksClient(DatabricksClient):
         resp = self._fetch_next(
             command_id, max_rows, max_bytes, expected_row_start_offset, True
         )
-        return resp.results.resultLinks or [], resp.hasMoreRows
+        results, metadata = resp.results, resp.resultSetMetadata
+        # Rows in any other form would be dropped silently, so fail loudly instead
+        if (
+            results.arrowBatches
+            or results.columns
+            or (
+                metadata is not None
+                and metadata.resultFormat is not None
+                and metadata.resultFormat != ttypes.TSparkRowSetType.URL_BASED_SET
+            )
+        ):
+            raise DataError(
+                "Expected only CloudFetch links when fetching more results of a CloudFetch result",
+                host_url=self._host,
+            )
+        return results.resultLinks or [], resp.hasMoreRows
 
     def fetch_results(
         self,
