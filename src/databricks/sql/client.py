@@ -1964,8 +1964,11 @@ class Cursor:
                 result_set = self.active_result_set
                 if result_set is not None:
                     # Stop downloads already under way; reads then fail like the server
-                    # would. Done even if the cancel RPC fails.
-                    result_set._cancel_downloads()
+                    # would. Done even if the cancel RPC fails, without hiding its error.
+                    try:
+                        result_set._cancel_downloads()
+                    except Exception as e:
+                        logger.debug("Failed to cancel CloudFetch downloads: %s", e)
             return
         # No command id yet. A backend whose synchronous ``execute()``
         # blocks without first publishing a command id (the kernel

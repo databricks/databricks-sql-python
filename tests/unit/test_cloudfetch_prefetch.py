@@ -146,10 +146,14 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         source = Mock(side_effect=[error, ([_link(10)], False)])
         manager.set_link_source(source)
 
+        with self.assertRaises(RuntimeError) as raised:
+            manager.get_next_downloaded_file(0)
+        self.assertIs(raised.exception, error)
+        # Later reads raise a fresh error that points at the original one
         for _ in range(2):
-            with self.assertRaises(RuntimeError) as raised:
+            with self.assertRaises(OperationalError) as raised:
                 manager.get_next_downloaded_file(0)
-            self.assertIs(raised.exception, error)
+            self.assertIs(raised.exception.__cause__, error)
         self.assertEqual(source.call_count, 1)
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
@@ -334,14 +338,21 @@ class DownloaderCancelTests(unittest.TestCase):
         self.assertFalse(response.released)
         decompress.assert_not_called()
 
+    @staticmethod
+    def _unset_event():
+        """A cancel event that is never set and records the backoff waits."""
+        return Mock(is_set=Mock(return_value=False))
+
     def test_interrupted_body_is_retried(self):
         broken = self._Response([b"ab", ProtocolError("connection reset")])
         http_client = self._http_client(broken, self._Response([b"ab", b"cd"]))
+        event = self._unset_event()
 
-        file = self._handler(http_client, threading.Event(), False).run()
+        file = self._handler(http_client, event, False).run()
 
         self.assertEqual(file.file_bytes, b"abcd")
         self.assertEqual(http_client.request_context.call_count, 2)
+        event.wait.assert_called_once_with(0.5)
 
     def test_no_retry_after_a_cancel(self):
         event = threading.Event()
@@ -358,12 +369,14 @@ class DownloaderCancelTests(unittest.TestCase):
         http_client = self._http_client(
             *[self._Response([ProtocolError("connection reset")]) for _ in range(3)]
         )
+        event = self._unset_event()
 
         # The last failure surfaces as the client's RequestError, as on main when
         # urllib3 runs out of retries
         with self.assertRaises(RequestError):
-            self._handler(http_client, threading.Event(), False).run()
+            self._handler(http_client, event, False).run()
         self.assertEqual(http_client.request_context.call_count, 3)
+        self.assertEqual([c.args[0] for c in event.wait.call_args_list], [0.5, 1.0])
 
 
 class ResultSetPrefetchTests(unittest.TestCase):
@@ -586,8 +599,9 @@ class ResultSetPrefetchEndToEndTests(unittest.TestCase):
         with self.assertRaises(DataError):
             rs.fetchmany_arrow(25)
         # The rows collected by the failed call are gone, so retrying must fail too
-        with self.assertRaises(DataError):
+        with self.assertRaises(OperationalError) as raised:
             rs.fetchmany_arrow(25)
+        self.assertIsInstance(raised.exception.__cause__, DataError)
         self.assertEqual(backend.fetch_result_links.call_count, 1)
 
 
@@ -736,6 +750,17 @@ class CursorCancelTests(unittest.TestCase):
         with self.assertRaises(RequestError):
             cursor.cancel()
         cursor.active_result_set._cancel_downloads.assert_called_once_with()
+
+    def test_a_failing_download_cancel_does_not_hide_the_cancel_error(self):
+        backend = Mock()
+        backend.cancel_command.side_effect = RequestError("session gone")
+        cursor = Cursor(Mock(), backend)
+        cursor.active_command_id = Mock()
+        cursor.active_result_set = Mock()
+        cursor.active_result_set._cancel_downloads.side_effect = RuntimeError("boom")
+
+        with self.assertRaises(RequestError):
+            cursor.cancel()
 
     def test_thrift_result_set_cancels_its_cloudfetch_downloads(self):
         queue = Mock(spec=ThriftCloudFetchQueue)

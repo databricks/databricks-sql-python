@@ -32,8 +32,9 @@ logger = logging.getLogger(__name__)
 # Bodies are read in chunks so a download stops soon after its result set is closed.
 _READ_CHUNK_BYTES = 1024 * 1024
 # urllib3 retries a failed body read only when it reads the body itself, so a GET
-# interrupted mid-body is retried here.
+# interrupted mid-body is retried here, after a backoff that doubles each time.
 _BODY_READ_ATTEMPTS = 3
+_BODY_RETRY_DELAY_SECS = 0.5
 
 
 @dataclass
@@ -134,7 +135,12 @@ class ResultSetDownloadHandler:
 
         for attempt in range(1, _BODY_READ_ATTEMPTS + 1):
             if attempt > 1:
-                # Re-check before the retry's GET
+                # Back off (a cancel ends the wait early), then re-check before the GET
+                delay = _BODY_RETRY_DELAY_SECS * 2 ** (attempt - 2)
+                if self._cancel_event is not None:
+                    self._cancel_event.wait(delay)
+                else:
+                    time.sleep(delay)
                 ResultSetDownloadHandler._validate_link(
                     self.link, self.settings.link_expiry_buffer_secs
                 )

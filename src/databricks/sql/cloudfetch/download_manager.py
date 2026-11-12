@@ -109,7 +109,10 @@ class ResultFileDownloadManager:
         """
 
         if self._link_error is not None:
-            raise self._link_error
+            raise OperationalError(
+                "Fetching more CloudFetch results failed earlier; the result can't "
+                "be read further, execute the statement again"
+            ) from self._link_error
         if not self._cancel_requested:
             # Make sure the download queue is always full
             self._schedule_downloads()
