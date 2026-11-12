@@ -816,7 +816,19 @@ def test_execute_command_forwards_row_limit(row_limit):
     ],
 )
 @pytest.mark.parametrize("async_op", [False, True])
-def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_op):
+@pytest.mark.parametrize(
+    "operation, uses_paths",
+    [
+        ("PUT '/tmp/files/input' INTO '/Volumes/c/s/v/input'", True),
+        ("GET '/Volumes/c/s/v/input' TO '/tmp/files/output'", True),
+        ("/* download */ GET '/Volumes/c/s/v/input' TO '/tmp/files/output'", True),
+        ("REMOVE '/Volumes/c/s/v/input'", False),
+        ("SELECT 1", False),
+    ],
+)
+def test_execute_command_forwards_allowed_local_paths(
+    allowed, expected, async_op, operation, uses_paths
+):
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
@@ -831,7 +843,7 @@ def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_o
     stmt.execute.return_value = executed
     stmt.submit.return_value = executed
     c.execute_command(
-        operation="PUT '/tmp/files/input' INTO '/Volumes/c/s/v/input'",
+        operation=operation,
         session_id=MagicMock(),
         max_rows=1,
         max_bytes=1,
@@ -842,7 +854,9 @@ def test_execute_command_forwards_allowed_local_paths(allowed, expected, async_o
         async_op=async_op,
         enforce_embedded_schema_correctness=False,
     )
-    stmt.set_staging_allowed_local_paths.assert_called_once_with(expected)
+    stmt.set_staging_allowed_local_paths.assert_called_once_with(
+        expected if uses_paths else []
+    )
     (stmt.submit if async_op else stmt.execute).assert_called_once()
 
 
@@ -2657,20 +2671,27 @@ class TestKernelHttpHeadersForwarding:
 
 
 @pytest.mark.parametrize(
-    "code, http_status, expected",
+    "code, http_status, error_code, expected",
     [
-        ("PermissionDenied", None, ProgrammingError),
-        ("InvalidArgument", None, ProgrammingError),
-        ("PermissionDenied", 403, OperationalError),
-        ("NotFound", None, FileNotFoundError),
-        ("NotFound", 404, OperationalError),
-        ("NetworkError", None, OperationalError),
+        ("PermissionDenied", None, "FILE_TRANSFER_ERROR", ProgrammingError),
+        ("InvalidArgument", None, "FILE_TRANSFER_ERROR", ProgrammingError),
+        ("InvalidArgument", 400, "FILE_TRANSFER_ERROR", OperationalError),
+        ("PermissionDenied", 403, "FILE_TRANSFER_ERROR", OperationalError),
+        ("NotFound", None, "FILE_TRANSFER_ERROR", FileNotFoundError),
+        ("NotFound", 404, "FILE_TRANSFER_ERROR", OperationalError),
+        ("NetworkError", None, "FILE_TRANSFER_ERROR", OperationalError),
+        ("Internal", None, "FILE_TRANSFER_ERROR", OperationalError),
+        ("Internal", None, None, DatabaseError),
     ],
 )
-def test_file_transfer_error_matches_thrift_exception(code, http_status, expected):
+def test_file_transfer_error_matches_thrift_exception(
+    code, http_status, error_code, expected
+):
     error = _FakeKernelError(code=code, message="File transfer failed")
-    error.error_code = "FILE_TRANSFER_ERROR"
+    error.error_code = error_code
     error.http_status = http_status
     result = kernel_client._reraise_kernel_error(error)
     assert type(result) is expected
-    assert result.error_code == "FILE_TRANSFER_ERROR"
+    assert result.error_code == error_code
+    assert result.code == code
+    assert result.http_status == http_status

@@ -171,7 +171,7 @@ to change without notice.
 | `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ✅   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). Shared cursor code performs the rendering before dispatch, so both backends honor it identically. |
 | `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
 | `fetch_autocommit_from_server`| `bool`                            |   ✅   |   ✅   | `False`       | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value.                           |
-| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ✅   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. Kernel transfers require a wheel exposing `Statement.set_staging_allowed_local_paths` (kernel [#439](https://github.com/databricks/databricks-sql-kernel/pull/439)); older wheels reject transfer commands. Kernel mode does not support streaming PUT.          |
+| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   | Source build | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. Requires a native kernel built from `KERNEL_REV` with [kernel #439](https://github.com/databricks/databricks-sql-kernel/pull/439). Published 1.4.0 lacks this capability; the release version and dependency floor are pending [kernel #443](https://github.com/databricks/databricks-sql-kernel/issues/443). Older wheels reject transfers. Kernel mode does not support streaming PUT. |
 
 ## Telemetry
 
