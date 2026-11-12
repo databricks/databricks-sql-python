@@ -572,9 +572,9 @@ class KernelDatabricksClient(DatabricksClient):
             try:
                 stripped_sql = _strip_leading_sql_comments(operation)
                 staging_verb = _staging_verb(stripped_sql)
-                if re.match(
-                    r"""PUT\s*(['"])__input_stream__\1""",
-                    stripped_sql,
+                if staging_verb == "PUT" and re.match(
+                    r"""(['"])__input_stream__\1""",
+                    _strip_leading_sql_comments(stripped_sql[3:]),
                     re.IGNORECASE,
                 ):
                     raise NotSupportedError(

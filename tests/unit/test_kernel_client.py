@@ -953,6 +953,8 @@ def test_staging_verb_matches_only_the_leading_statement(operation, expected):
         "/* upload */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
         "/* outer /* inner */ outer */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
         "PUT'__input_stream__' INTO '/Volumes/c/s/v/file'",
+        "PUT /* upload */ '__input_stream__' INTO '/Volumes/c/s/v/file'",
+        "PUT\n-- upload\n'__input_stream__' INTO '/Volumes/c/s/v/file'",
         "/* upload */ PUT\"__input_stream__\" INTO '/Volumes/c/s/v/file'",
     ],
 )
