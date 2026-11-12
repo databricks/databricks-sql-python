@@ -16,9 +16,9 @@ The PyO3 boundary can produce two flavours of exception:
   raw to connector callers. Wrapped in
   ``OperationalError`` here.
 
-Local missing transfer files use the built-in ``FileNotFoundError`` class;
-the original OS error code and requested local filename are preserved
-when available.
+Local transfer failures use built-in ``OSError`` classes, including
+``FileNotFoundError``, ``PermissionError`` and other platform subclasses.
+The original OS error code and requested filename are preserved when available.
 
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
@@ -126,8 +126,9 @@ def reraise_kernel_error(
 ) -> "Union[Error, OSError]":
     """Map a kernel error and forward its structured attributes.
 
-    Local missing files use ``FileNotFoundError``; filesystem permission
-    failures use ``PermissionError``. Other errors use PEP 249 classes.
+    Local transfer failures use built-in ``OSError`` classes, including
+    missing-file, permission, directory and disk-full errors. Non-local
+    errors use PEP 249 classes.
 
     The returned exception is raised by callers with ``raise ... from
     exc``; the ``from`` clause is what sets ``__cause__``, so we don't
@@ -169,7 +170,11 @@ def reraise_kernel_error(
     os_error_filename = getattr(exc, "os_error_filename", None)
     file_error_args: tuple
     if os_error_code is None:
-        file_error_args = (message,)
+        file_error_args = (
+            (None, message, os_error_filename)
+            if os_error_filename is not None
+            else (message,)
+        )
     elif os.name == "nt":
         file_error_args = (0, message, os_error_filename, os_error_code)
     else:
@@ -221,8 +226,8 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSErro
     """Map a PyO3 exception to the connector's public error contract.
 
     - ``KernelError`` → mapped class with structured attrs forwarded.
-      A local missing transfer file maps to ``FileNotFoundError`` with
-      its original OS error code and requested filename when available.
+      Local transfer failures map to built-in ``OSError`` classes with
+      their original OS error code and requested filename when available.
     - Already-mapped PEP 249 or local transfer errors → passed through
       unchanged so nested callers preserve their class and attributes.
     - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3

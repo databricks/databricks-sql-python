@@ -2762,6 +2762,7 @@ def test_file_transfer_error_matches_thrift_exception(
     error = _FakeKernelError(code=code, message="File transfer failed")
     error.error_code = error_code
     error.http_status = http_status
+    error.os_error_filename = "local-file.bin"
     result = kernel_client._reraise_kernel_error(error)
     assert type(result) is expected
     assert result.error_code == error_code
@@ -2769,7 +2770,7 @@ def test_file_transfer_error_matches_thrift_exception(
     assert result.http_status == http_status
     if issubclass(expected, OSError):
         assert result.errno is None
-        assert result.filename is None
+        assert result.filename == "local-file.bin"
 
 
 @pytest.mark.parametrize(
