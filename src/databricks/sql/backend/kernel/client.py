@@ -73,6 +73,10 @@ logger = logging.getLogger(__name__)
 # http_path). Forwarding either is redundant and trips the kernel's
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
+_STAGING_PATHS_TYPE_ERROR = (
+    "staging_allowed_local_path must be a string or a list of "
+    "strings or os.PathLike objects"
+)
 
 
 def _strip_leading_sql_comments(sql: str) -> str:
@@ -581,9 +585,7 @@ class KernelDatabricksClient(DatabricksClient):
                     if allowed_paths is not None and not isinstance(
                         allowed_paths, (str, list)
                     ):
-                        raise ProgrammingError(
-                            "staging_allowed_local_path must be a string or a list of strings or os.PathLike objects"
-                        )
+                        raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR)
                     if isinstance(allowed_paths, str):
                         allowed_paths = [allowed_paths]
                     try:
@@ -593,9 +595,7 @@ class KernelDatabricksClient(DatabricksClient):
                         if any(not isinstance(path, str) for path in normalized_paths):
                             raise TypeError("Local paths must resolve to strings")
                     except (TypeError, ValueError) as exc:
-                        raise ProgrammingError(
-                            "staging_allowed_local_path must be a string or a list of strings or os.PathLike objects"
-                        ) from exc
+                        raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR) from exc
                     set_paths(normalized_paths)
                 elif staging_verb is not None:
                     raise NotSupportedError(
