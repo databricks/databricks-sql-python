@@ -551,6 +551,22 @@ class TestConvertArrowTableInSlices(unittest.TestCase):
         self.assertEqual(self._to_numpy_row_counts(table, 7), [7])
         self.assertEqual(self._to_numpy_row_counts(table.select([7, 8]), 3), [7])
 
+    def test_columns_with_gc_tracked_values_are_converted_whole(self):
+        # Decimal (3.13+), Timedelta and DateOffset values are tracked by the GC.
+        interval = pa.array(
+            [pa.MonthDayNano([i, 0, 0]) for i in range(7)],
+            pa.month_day_nano_interval(),
+        )
+        mixed = self._table().select([0, 3, 9]).append_column("k", interval)
+        self.assertEqual(self._to_numpy_row_counts(mixed, 3), [7, 3, 3, 1])
+        # A lone whole-converted duration column must still give Timedelta values.
+        for table in (mixed, self._table().select([0, 9])):
+            whole = self._convert(table, table.num_rows)
+            for row, expected in zip(self._convert(table, 3), whole):
+                for value, expected_value in zip(row, expected):
+                    self.assertIs(type(value), type(expected_value))
+                    self.assertEqual(value, expected_value)
+
     def test_rows_behave_like_rows_built_by_the_row_factory(self):
         names = ["a", "b", "a", "c"]
         table = pa.table(

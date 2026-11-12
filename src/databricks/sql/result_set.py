@@ -29,9 +29,21 @@ from databricks.sql.telemetry.models.event import StatementType
 _ROWS_PER_CONVERSION = 100_000
 
 
-def _converts_per_value(arrow_type) -> bool:
-    """Whether to_pandas() converts each value of this type independently."""
+def _converts_in_slices(arrow_type) -> bool:
+    """Whether columns of this type are converted to rows one slice at a time.
+
+    Not nested types: to_pandas() picks their element dtype from the whole column.
+    Not types whose Python values the cyclic GC tracks (Decimal on Python 3.13+,
+    Timedelta, DateOffset): creating those in slices, between batches of rows,
+    makes the GC run more full collections than creating them all first.
+    """
     types = pyarrow.types
+    if (
+        types.is_decimal(arrow_type)
+        or types.is_duration(arrow_type)
+        or types.is_interval(arrow_type)
+    ):
+        return False
     return (
         types.is_primitive(arrow_type)
         or types.is_null(arrow_type)
@@ -40,7 +52,6 @@ def _converts_per_value(arrow_type) -> bool:
         or types.is_binary(arrow_type)
         or types.is_large_binary(arrow_type)
         or types.is_fixed_size_binary(arrow_type)
-        or types.is_decimal(arrow_type)
     )
 
 
@@ -167,22 +178,24 @@ class ResultSet(ABC):
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
 
         # Convert in slices so that only one slice's DataFrame and object array are
-        # alive next to the rows. Columns whose conversion depends on the column's
-        # other values (pyarrow makes every list<int> value a float array if any
-        # element is NULL) are converted whole, as before.
-        per_value = [_converts_per_value(f.type) for f in table.schema]
-        if table.num_rows <= _ROWS_PER_CONVERSION or not any(per_value):
+        # alive next to the rows. Some columns are converted whole, as before (see
+        # _converts_in_slices).
+        in_slices = [_converts_in_slices(f.type) for f in table.schema]
+        if table.num_rows <= _ROWS_PER_CONVERSION or not any(in_slices):
             return _make_rows(ResultRow, to_object_array(table_renamed))
 
-        whole = [i for i, ok in enumerate(per_value) if not ok]
-        whole_values = to_object_array(table_renamed.select(whole)) if whole else None
-        # Keep an object column where those columns were: pandas' to_numpy converts
-        # some dtypes (e.g. durations) differently for a single-block DataFrame.
+        whole = [i for i, ok in enumerate(in_slices) if not ok]
+        # Null (object) placeholder columns keep each DataFrame multi-block like the
+        # whole table's: pandas' to_numpy converts some dtypes (e.g. durations)
+        # differently for a single-block DataFrame.
+        placeholder = pyarrow.nulls(table.num_rows)
+        whole_values = None
+        if whole:
+            whole_table = table_renamed.select(whole).append_column("_", placeholder)
+            whole_values = to_object_array(whole_table)[:, : len(whole)]
         sliced_table = table_renamed
         for i in whole:
-            sliced_table = sliced_table.set_column(
-                i, str(i), pyarrow.nulls(table.num_rows)
-            )
+            sliced_table = sliced_table.set_column(i, str(i), placeholder)
         rows = []
         for offset in range(0, table.num_rows, _ROWS_PER_CONVERSION):
             res = to_object_array(sliced_table.slice(offset, _ROWS_PER_CONVERSION))
