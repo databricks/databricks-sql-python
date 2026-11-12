@@ -11,7 +11,7 @@ import os
 import ssl
 import threading
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
     from databricks.sql.types import SSLOptions
@@ -20,6 +20,7 @@ _MAX_ENTRIES = 32
 
 _lock = threading.Lock()
 _contexts: "OrderedDict[tuple, ssl.SSLContext]" = OrderedDict()
+_build_locks: Dict[tuple, Any] = {}
 
 
 def _file_signature(path) -> Optional[Tuple]:
@@ -66,14 +67,34 @@ def get_ssl_context(
     key = _cache_key(kind, ssl_options)
     with _lock:
         context = _contexts.get(key)
-        if context is None:
+        if context is not None:
+            _contexts.move_to_end(key)
+            return context
+        key_lock = _build_locks.setdefault(key, threading.Lock())
+
+    # Build outside the shared lock so a slow CA file only delays its own key.
+    with key_lock:
+        with _lock:
+            context = _contexts.get(key)
+        if context is not None:
+            return context
+        try:
             context = build()
+        except BaseException:
+            _forget_build_lock(key, key_lock)
+            raise
+        with _lock:
             _contexts[key] = context
             if len(_contexts) > _MAX_ENTRIES:
                 _contexts.popitem(last=False)
-        else:
-            _contexts.move_to_end(key)
+        _forget_build_lock(key, key_lock)
         return context
+
+
+def _forget_build_lock(key: tuple, key_lock: Any) -> None:
+    with _lock:
+        if _build_locks.get(key) is key_lock:
+            del _build_locks[key]
 
 
 def clear() -> None:
@@ -82,9 +103,10 @@ def clear() -> None:
 
 
 def _reset_after_fork() -> None:
-    # A fork during a build would leave the child's copy of the lock held.
+    # A fork during a build would leave the child's copies of the locks held.
     global _lock
     _lock = threading.Lock()
+    _build_locks.clear()
 
 
 if hasattr(os, "register_at_fork"):

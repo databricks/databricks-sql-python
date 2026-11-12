@@ -142,6 +142,42 @@ class TestGetSslContext:
         assert len(results) == threads
         assert all(r is built[0] for r in results)
 
+    def test_slow_build_does_not_block_other_keys(self):
+        build, built = counting_builder()
+        cached = ssl_context_cache.get_ssl_context("cached", SSLOptions(), build)
+        release = threading.Event()
+
+        def stuck_build():
+            release.wait(10)
+            return Mock(spec=ssl.SSLContext)
+
+        stuck = threading.Thread(
+            target=ssl_context_cache.get_ssl_context,
+            args=("stuck", SSLOptions(), stuck_build),
+        )
+        stuck.start()
+        try:
+            results = {}
+
+            def lookups():
+                results["hit"] = ssl_context_cache.get_ssl_context(
+                    "cached", SSLOptions(), build
+                )
+                results["other"] = ssl_context_cache.get_ssl_context(
+                    "other", SSLOptions(), build
+                )
+
+            other = threading.Thread(target=lookups)
+            other.start()
+            other.join(timeout=2)
+
+            assert not other.is_alive()
+            assert results["hit"] is cached
+            assert results["other"] is built[1]
+        finally:
+            release.set()
+            stuck.join()
+
     def test_cache_is_bounded(self, monkeypatch):
         monkeypatch.setattr(ssl_context_cache, "_MAX_ENTRIES", 2)
         build, built = counting_builder()
