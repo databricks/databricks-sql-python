@@ -8,8 +8,12 @@ timestamps, binary, and nested types.
 
 import copy
 import datetime
+import gc
+import os
 import pickle
+import threading
 import unittest
+import warnings
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -641,6 +645,171 @@ class TestConvertArrowTableInSlices(unittest.TestCase):
         for row, expected in zip(rows, whole):
             self.assertIs(type(row[0]), type(expected[0]))
             self.assertEqual(row[0], expected[0])
+
+
+@pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+class TestRowBuildingGCPause(unittest.TestCase):
+    """Rows are built with the cyclic GC paused per bounded batch."""
+
+    def setUp(self):
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+        self.addCleanup(gc.enable)
+
+    def _convert(self, num_rows=5, **patches):
+        table = pa.table({"a": list(range(num_rows))})
+        rs = _make_result_set([("a", "bigint", None, None, None, None, None)])
+        patches = {"_GC_PAUSE_MIN_ROWS": 1, "_GC_PAUSE_BATCH_ROWS": 2, **patches}
+        with patch.multiple(result_set, **patches), patch.object(
+            result_set.gc, "disable", wraps=gc.disable
+        ) as disable, patch.object(
+            result_set.gc, "collect", wraps=gc.collect
+        ) as collect:
+            rows = rs._convert_arrow_table(table)
+        self.assertEqual([r.a for r in rows], list(range(num_rows)))
+        return disable.call_count, collect.call_count
+
+    def test_each_batch_pauses_and_gc_is_reenabled(self):
+        # 5 rows in batches of 2: three pauses, each ending with a young collection.
+        self.assertEqual(self._convert(), (3, 3))
+        self.assertTrue(gc.isenabled())
+
+    def test_each_batch_of_each_slice_pauses(self):
+        # Slices of 3 rows (3 + 2), built in batches of 2: 2 + 1 pauses.
+        self.assertEqual(self._convert(_ROWS_PER_CONVERSION=3), (3, 3))
+
+    def test_small_batches_do_not_pause(self):
+        self.assertEqual(self._convert(_GC_PAUSE_MIN_ROWS=10_000), (0, 0))
+
+    def test_gc_disabled_by_the_caller_stays_disabled(self):
+        gc.disable()
+        self.assertEqual(self._convert(), (0, 0))
+        self.assertFalse(gc.isenabled())
+
+    def test_interrupt_while_joining_a_pause_is_undone(self):
+        real_disable = gc.disable
+
+        def disable_then_interrupt():
+            real_disable()
+            raise KeyboardInterrupt
+
+        with patch.object(result_set.gc, "disable", disable_then_interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                with result_set._GCPause(10**6):
+                    self.fail("the batch should not start")
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+        # Later pauses still work.
+        with result_set._GCPause(10**6):
+            self.assertFalse(gc.isenabled())
+        self.assertTrue(gc.isenabled())
+
+    def test_interrupt_while_ending_a_pause_keeps_state_consistent(self):
+        real_enable = gc.enable
+
+        def enable_then_interrupt():
+            real_enable()
+            raise KeyboardInterrupt
+
+        pause = result_set._GCPause(10**6)
+        pause.__enter__()
+        with patch.object(result_set.gc, "enable", enable_then_interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                pause.__exit__(None, None, None)
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+
+    def test_gc_is_reenabled_when_building_fails(self):
+        with self.assertRaises(ZeroDivisionError):
+            with result_set._GCPause(10**6):
+                self.assertFalse(gc.isenabled())
+                1 / 0
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+
+    def test_overlapping_pauses_end_with_the_last_one(self):
+        first, second = result_set._GCPause(10**6), result_set._GCPause(10**6)
+        first.__enter__()
+        second.__enter__()
+        first.__exit__(None, None, None)
+        self.assertFalse(gc.isenabled())
+        second.__exit__(None, None, None)
+        self.assertTrue(gc.isenabled())
+
+    def test_pause_is_not_extended_past_the_limit(self):
+        first, late = result_set._GCPause(10**6), result_set._GCPause(10**6)
+        with patch.object(result_set, "_GC_PAUSE_MAX_SECONDS", -1):
+            first.__enter__()
+            late.__enter__()  # the pause is already too old to be extended
+        first.__exit__(None, None, None)
+        self.assertTrue(gc.isenabled())
+        late.__exit__(None, None, None)
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+
+    def test_fork_child_ends_a_pause_left_by_other_threads(self):
+        lock = result_set._GCPause.lock
+        self.addCleanup(setattr, result_set._GCPause, "lock", lock)
+        result_set._GCPause(10**6).__enter__()
+        result_set._end_gc_pause_in_child()
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
+        self.assertIsNot(result_set._GCPause.lock, lock)
+
+    @unittest.skipUnless(hasattr(os, "fork"), "needs os.fork")
+    def test_real_fork_child_starts_with_gc_enabled(self):
+        # Dedicated exit codes: Python itself exits with 1 on an uncaught error.
+        ok, gc_disabled, still_active, error = 70, 71, 72, 73
+        pause = result_set._GCPause(10**6)
+        pause.__enter__()
+        try:
+            with warnings.catch_warnings():
+                # Python 3.12+ warns about forking a multi-threaded process.
+                warnings.simplefilter("ignore", DeprecationWarning)
+                pid = os.fork()
+            if pid == 0:
+                code = error
+                try:
+                    if not gc.isenabled():
+                        code = gc_disabled
+                    elif result_set._GCPause.active:
+                        code = still_active
+                    else:
+                        code = ok
+                finally:
+                    os._exit(code)
+        finally:
+            pause.__exit__(None, None, None)
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), ok)
+        self.assertTrue(gc.isenabled())
+
+    def test_concurrent_conversions_leave_gc_enabled(self):
+        table = pa.table({"a": list(range(50))})
+        rs = _make_result_set([("a", "bigint", None, None, None, None, None)])
+        errors = []
+
+        def convert():
+            try:
+                for _ in range(20):
+                    assert len(rs._convert_arrow_table(table)) == 50
+            except Exception as e:  # pragma: no cover - reported below
+                errors.append(e)
+
+        with patch.multiple(
+            result_set,
+            _GC_PAUSE_MIN_ROWS=1,
+            _GC_PAUSE_BATCH_ROWS=3,
+            _ROWS_PER_CONVERSION=7,
+        ):
+            threads = [threading.Thread(target=convert) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        self.assertEqual(errors, [])
+        self.assertTrue(gc.isenabled())
+        self.assertEqual(result_set._GCPause.active, 0)
 
 
 if __name__ == "__main__":
