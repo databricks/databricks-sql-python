@@ -16,6 +16,8 @@ import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
+from urllib3.util.ssl_ import ALPN_PROTOCOLS
+
 if TYPE_CHECKING:
     from databricks.sql.types import SSLOptions
 
@@ -25,6 +27,41 @@ _TTL_SECONDS = 600
 _lock = threading.Lock()
 _contexts: "OrderedDict[tuple, Tuple[ssl.SSLContext, float]]" = OrderedDict()
 _build_locks: Dict[tuple, Any] = {}
+
+_BASE_CONTEXT_CLASS = ssl.SSLContext
+
+
+class _SharedSSLContext(_BASE_CONTEXT_CLASS):  # type: ignore[valid-type,misc]
+    """A cached context that ignores same-value writes.
+
+    urllib3 re-applies ALPN and verify_mode to its context on every connection.
+    SSL_new() copies the context's ALPN buffer without the GIL, so replacing
+    that buffer while another thread connects can corrupt the ClientHello.
+    """
+
+    def set_alpn_protocols(self, alpn_protocols):
+        protocols = list(alpn_protocols)
+        if protocols != getattr(self, "_shared_alpn_protocols", None):
+            super().set_alpn_protocols(protocols)
+            self._shared_alpn_protocols = protocols
+
+    @property
+    def verify_mode(self):
+        return super().verify_mode
+
+    @verify_mode.setter
+    def verify_mode(self, value):
+        if super().verify_mode != value:
+            _BASE_CONTEXT_CLASS.verify_mode.__set__(self, value)
+
+
+def _make_shareable(context: ssl.SSLContext) -> bool:
+    # Only plain stdlib contexts are shared; others (e.g. pyOpenSSL) stay per caller.
+    if type(context) is not _BASE_CONTEXT_CLASS:
+        return False
+    context.__class__ = _SharedSSLContext
+    context.set_alpn_protocols(ALPN_PROTOCOLS)
+    return True
 
 
 def _file_signature(path) -> Optional[Tuple]:
@@ -74,9 +111,11 @@ def get_ssl_context(
 
     ``kind`` separates builders that configure contexts differently. urllib3
     writes a pool's ``cert_reqs`` and ALPN protocols back onto its context on
-    every connection, so every pool sharing a context must use TLS pool kwargs
-    derived only from ``ssl_options`` (and no ``assert_hostname``). Do not
-    otherwise modify the returned context.
+    every connection; the shared context skips those writes only when nothing
+    changes, so every pool sharing a context must use TLS pool kwargs derived
+    only from ``ssl_options`` (and no ``assert_hostname``). Do not otherwise
+    modify the returned context. Contexts other than plain ``ssl.SSLContext``
+    are returned without caching.
     """
     if not is_cacheable(ssl_options):
         return build()
@@ -96,9 +135,13 @@ def get_ssl_context(
             return context
         try:
             context = build()
+            shareable = _make_shareable(context)
         except BaseException:
             _forget_build_lock(key, key_lock)
             raise
+        if not shareable:
+            _forget_build_lock(key, key_lock)
+            return context
         with _lock:
             _contexts[key] = (context, time.monotonic())
             _contexts.move_to_end(key)

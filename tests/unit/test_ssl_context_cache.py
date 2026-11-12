@@ -18,11 +18,16 @@ from databricks.sql.exc import ProgrammingError
 from databricks.sql.types import SSLOptions
 
 
+def bare_context():
+    # Real but cheap: no CA bundle is loaded.
+    return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+
 def counting_builder():
     built = []
 
     def build():
-        context = Mock(spec=ssl.SSLContext)
+        context = bare_context()
         built.append(context)
         return context
 
@@ -144,7 +149,7 @@ class TestGetSslContext:
 
         def slow_build():
             time.sleep(0.05)
-            context = Mock(spec=ssl.SSLContext)
+            context = bare_context()
             built.append(context)
             return context
 
@@ -175,7 +180,7 @@ class TestGetSslContext:
 
         def stuck_build():
             release.wait(10)
-            return Mock(spec=ssl.SSLContext)
+            return bare_context()
 
         stuck = threading.Thread(
             target=ssl_context_cache.get_ssl_context,
@@ -232,6 +237,70 @@ class TestGetSslContext:
         assert ssl_context_cache.get_ssl_context("a", SSLOptions(), build) is not (
             built[0]
         )
+
+    def test_non_stdlib_contexts_are_not_cached(self):
+        build = Mock(side_effect=lambda: Mock(spec=ssl.SSLContext))
+
+        first = ssl_context_cache.get_ssl_context("k", SSLOptions(), build)
+        second = ssl_context_cache.get_ssl_context("k", SSLOptions(), build)
+
+        assert first is not second
+        assert not ssl_context_cache._contexts
+
+    def test_shared_context_skips_same_value_writes(self):
+        context = ssl_context_cache.get_ssl_context("k", SSLOptions(), bare_context)
+        assert isinstance(context, ssl.SSLContext)
+
+        with patch.object(ssl.SSLContext, "_set_alpn_protocols") as set_alpn:
+            context.set_alpn_protocols(["http/1.1"])  # what urllib3 sends
+            set_alpn.assert_not_called()
+            context.set_alpn_protocols(["h2"])
+            set_alpn.assert_called_once()
+
+        real = ssl.SSLContext.verify_mode
+        writes = []
+
+        def spy_set(self, value):
+            writes.append(value)
+            real.fset(self, value)
+
+        context.check_hostname = False
+        with patch.object(ssl.SSLContext, "verify_mode", property(real.fget, spy_set)):
+            context.verify_mode = ssl.CERT_REQUIRED
+            assert writes == []
+            context.verify_mode = ssl.CERT_NONE
+            assert writes == [ssl.CERT_NONE]
+        assert context.verify_mode == ssl.CERT_NONE
+
+    def test_reset_after_fork_releases_locks(self):
+        held = threading.Event()
+        release = threading.Event()
+
+        def hold_locks():
+            with ssl_context_cache._lock:
+                held.set()
+                release.wait(10)
+
+        holder = threading.Thread(target=hold_locks)
+        holder.start()
+        held.wait(5)
+        stuck_build_lock = threading.Lock()
+        stuck_build_lock.acquire()
+        key = ssl_context_cache._cache_key("k", SSLOptions())
+        ssl_context_cache._build_locks[key] = stuck_build_lock
+        try:
+            ssl_context_cache._reset_after_fork()  # as in a forked child
+
+            done = threading.Thread(
+                target=ssl_context_cache.get_ssl_context,
+                args=("k", SSLOptions(), bare_context),
+            )
+            done.start()
+            done.join(timeout=2)
+            assert not done.is_alive()
+        finally:
+            release.set()
+            holder.join()
 
 
 class TestThriftTransportContext:
