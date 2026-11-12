@@ -1032,8 +1032,9 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     return arrow_table, n_rows
 
 
-# Below glibc's default mmap threshold a dedicated mapping only adds a syscall.
-_INLINE_ARROW_MMAP_MIN_BYTES = 128 * 1024
+# Each live map is one VMA (vm.max_map_count, 65530 by default), so smaller streams
+# stay on the heap: reaching that limit takes over 64 GB of inline results held at once.
+_INLINE_ARROW_MMAP_MIN_BYTES = 1024 * 1024
 # Untouched pages of the reservation cost no memory; overflow grows the map.
 _LZ4_RATIO_ESTIMATE = 4
 # The heap retention this works around was measured with glibc.
