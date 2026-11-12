@@ -200,6 +200,17 @@ def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
     return {"enable_geospatial_support": value}
 
 
+def _validate_telemetry_flush_interval_ms(value: Any) -> None:
+    # PyO3 would accept True as 1ms and report other bad values without
+    # naming the option, so reject them before the kernel sees them.
+    if value is not None and (
+        isinstance(value, bool) or not isinstance(value, int) or value <= 0
+    ):
+        raise ValueError(
+            f"telemetry_flush_interval_ms must be a positive int; got {value!r}"
+        )
+
+
 def _kernel_telemetry_kwargs(options: Dict[str, Any]) -> Dict[str, Any]:
     """Build phase-7 telemetry/system kwargs for ``databricks_sql_kernel.Session``.
 
@@ -306,6 +317,9 @@ class KernelDatabricksClient(DatabricksClient):
         # Kernel telemetry phase 7 adds binding/runtime identity and
         # telemetry config kwargs directly to ``databricks_sql_kernel.Session``.
         self._telemetry_options = kwargs.get("telemetry_options") or {}
+        _validate_telemetry_flush_interval_ms(
+            self._telemetry_options.get("telemetry_flush_interval_ms")
+        )
         self._catalog = catalog
         self._schema = schema
         self._escape_catalog_name = kwargs.get("escape_catalog_name", False)

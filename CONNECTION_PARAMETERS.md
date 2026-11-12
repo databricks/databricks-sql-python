@@ -187,7 +187,7 @@ are forwarded when supported by the installed kernel binding.
 | `enable_telemetry`                 | `bool` |   ✅   |   ✅   | `True` (Thrift); kernel-defined when unset | Thrift is also gated by the server flag. An explicit Kernel value is forwarded without that Python-side gate. |
 | `force_enable_telemetry`           | `bool` |   ✅   |   ❌   | `False`       | Bypass the server-side feature flag on Thrift. Not forwarded to Kernel. |
 | `telemetry_batch_size`             | `int`  |   ✅   |   ✅   | `100`         | Events buffered before a flush.                          |
-| `telemetry_flush_interval_ms`      | `int` (ms) | ❌ | ✅   | kernel-defined when unset | Kernel-only periodic flush interval; must be positive. Thrift always flushes every 300s. |
+| `telemetry_flush_interval_ms`      | `int` (ms) | ❌ | ✅   | kernel-defined when unset | Kernel-only periodic flush interval; must be a positive `int`, else `connect()` raises `ValueError`. Thrift always flushes every 300s. |
 | `_telemetry_circuit_breaker_enabled`| `bool`|   ✅   |   ✅   | effective `False` (Thrift); kernel-defined when unset | The `ClientContext` signature defaults to `True`, but `connect()` passes `None` when this option is omitted and `bool(None)` makes the effective Thrift default `False`. An explicit value is forwarded to Kernel. |
 
 > **Telemetry _events_ differ by backend.** Because the kernel owns result

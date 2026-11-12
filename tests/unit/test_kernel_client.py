@@ -542,6 +542,18 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     assert captured["telemetry_circuit_breaker_enabled"] is False
 
 
+@pytest.mark.parametrize("value", [0, -1, "300000", 1.5, True])
+def test_invalid_telemetry_flush_interval_is_rejected(value):
+    with pytest.raises(ValueError, match="telemetry_flush_interval_ms"):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            telemetry_options={"telemetry_flush_interval_ms": value},
+        )
+
+
 def test_unset_telemetry_flush_interval_is_not_forwarded(monkeypatch):
     monkeypatch.setattr(kernel_client, "_kernel_session_accepts_kwarg", lambda _: True)
     kwargs = kernel_client._kernel_telemetry_kwargs(
