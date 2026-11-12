@@ -1056,8 +1056,9 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     stream.append(schema_bytes)
     n_rows = 0
     # The Arrow path releases the GIL about twice, so it only helps from 3 batches.
-    # Large results take it only into a map (none on non-Linux, or if mmap failed):
-    # decoding them into the heap through Arrow used more memory than main with glibc.
+    # Without a map (non-Linux, or mmap failed) it is limited to results under 1 MiB
+    # compressed: decoding large ones into the heap through Arrow used more memory
+    # than main with glibc. A highly compressible result can still decode into the heap.
     if (
         lz4_compressed
         and len(arrow_batches) > 2

@@ -319,6 +319,9 @@ def _patch_map(map_factory):
 linux_only = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="inline Arrow maps are Linux-only"
 )
+needs_arrow_lz4 = pytest.mark.skipif(
+    not utils._PYARROW_HAS_LZ4, reason="the one-call decode needs pyarrow's lz4 codec"
+)
 
 
 class _RecordingMap(mmap.mmap):
@@ -501,6 +504,7 @@ class TestConvertArrowBasedSet:
         assert states == [True]
 
     @linux_only
+    @needs_arrow_lz4
     def test_many_lz4_batches_decode_as_one_stream_into_the_map(self):
         table, schema_bytes, batches = _inline_arrow_set(72, 3000, True)
         assert sum(len(b.batch) for b in batches) >= utils._INLINE_ARROW_MMAP_MIN_BYTES
@@ -536,7 +540,8 @@ class TestConvertArrowBasedSet:
         assert decompress_spy.call_count == 2
 
     @pytest.mark.parametrize(
-        "rows_per_batch, expect_one_call", [(3000, False), (100, True)]
+        "rows_per_batch, expect_one_call",
+        [(3000, False), pytest.param(100, True, marks=needs_arrow_lz4)],
     )
     def test_without_the_map_only_small_results_use_the_one_call_decode(
         self, rows_per_batch, expect_one_call
