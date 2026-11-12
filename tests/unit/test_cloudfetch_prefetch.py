@@ -140,21 +140,17 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertIsNone(manager.get_next_downloaded_file(20))
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
-    def test_link_source_errors_reach_the_caller_and_the_next_call_asks_again(self):
+    def test_a_failed_link_fetch_fails_every_later_read(self):
         manager = self._manager([_link(0)], max_download_threads=2)
-        source = Mock(
-            side_effect=[RuntimeError("FetchResults failed"), ([_link(10)], False)]
-        )
+        error = RuntimeError("FetchResults failed")
+        source = Mock(side_effect=[error, ([_link(10)], False)])
         manager.set_link_source(source)
 
-        with self.assertRaises(RuntimeError):
-            manager.get_next_downloaded_file(0)
-        # The scheduled download is kept and the next call asks for links again
-        offsets = [manager.get_next_downloaded_file(0).start_row_offset]
-        offsets.append(manager.get_next_downloaded_file(10).start_row_offset)
-        self.assertIsNone(manager.get_next_downloaded_file(20))
-        self.assertEqual(offsets, [0, 10])
-        self.assertEqual(source.call_count, 2)
+        for _ in range(2):
+            with self.assertRaises(RuntimeError) as raised:
+                manager.get_next_downloaded_file(0)
+            self.assertIs(raised.exception, error)
+        self.assertEqual(source.call_count, 1)
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
     def test_shutdown_during_a_link_fetch_ends_the_stream_cleanly(self):
@@ -580,12 +576,19 @@ class ResultSetPrefetchEndToEndTests(unittest.TestCase):
         with self.assertRaises(OperationalError):
             rs.fetchall_arrow()
 
-    def test_link_fetch_errors_propagate_out_of_the_fetch_call(self):
+    def test_a_retry_after_a_failed_link_fetch_fails_instead_of_skipping_rows(self):
         rs, backend, _ = self._result_set()
-        backend.fetch_result_links.side_effect = DataError("FetchResults failed")
+        backend.fetch_result_links.side_effect = [
+            DataError("FetchResults failed"),
+            ([_link(20, self.ROWS_PER_LINK)], False),
+        ]
 
         with self.assertRaises(DataError):
-            rs.fetchall_arrow()
+            rs.fetchmany_arrow(25)
+        # The rows collected by the failed call are gone, so retrying must fail too
+        with self.assertRaises(DataError):
+            rs.fetchmany_arrow(25)
+        self.assertEqual(backend.fetch_result_links.call_count, 1)
 
 
 class ThriftClientPrefetchTests(unittest.TestCase):
@@ -610,15 +613,39 @@ class ThriftClientPrefetchTests(unittest.TestCase):
         for on in (True, "true", "1"):
             self.assertTrue(self._client(_cloudfetch_prefetch=on)._cloudfetch_prefetch)
 
+    # get_schemas/get_tables/get_columns import ThriftResultSet locally
+    @patch("databricks.sql.result_set.ThriftResultSet")
     @patch("databricks.sql.backend.thrift_backend.ThriftResultSet")
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
-    def test_execute_passes_the_setting_to_the_result_set(self, _, result_set):
+    def test_every_entry_point_passes_the_setting_to_the_result_set(
+        self, _, backend_result_set, module_result_set
+    ):
         client = self._client(_cloudfetch_prefetch=False)
         client._handle_execute_response = Mock(return_value=(Mock(), Mock()))
+        client._hive_schema_to_description = Mock(return_value=[])
+        entry_points = {
+            "execute_command": lambda: client.execute_command(
+                "foo", Mock(), 100, 200, Mock(), Mock(), Mock()
+            ),
+            "get_execution_result": lambda: client.get_execution_result(Mock(), Mock()),
+            "get_catalogs": lambda: client.get_catalogs(Mock(), 100, 200, Mock()),
+            "get_schemas": lambda: client.get_schemas(Mock(), 100, 200, Mock()),
+            "get_tables": lambda: client.get_tables(Mock(), 100, 200, Mock()),
+            "get_columns": lambda: client.get_columns(Mock(), 100, 200, Mock()),
+        }
+        for name, call in entry_points.items():
+            with self.subTest(name):
+                backend_result_set.reset_mock()
+                module_result_set.reset_mock()
 
-        client.execute_command("foo", Mock(), 100, 200, Mock(), Mock(), Mock())
+                call()
 
-        self.assertIs(result_set.call_args.kwargs["cloudfetch_prefetch"], False)
+                result_set = (
+                    backend_result_set
+                    if backend_result_set.called
+                    else module_result_set
+                )
+                self.assertIs(result_set.call_args.kwargs["cloudfetch_prefetch"], False)
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_fetch_result_links(self, tcli_service_class):

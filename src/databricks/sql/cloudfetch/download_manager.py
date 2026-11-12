@@ -66,6 +66,8 @@ class ResultFileDownloadManager:
         self._cancelled = threading.Event()
         # Set by cancel(): reads fail once they need data the cancel stopped.
         self._cancel_requested = False
+        # A failed link fetch, raised again by every later read (see _schedule_downloads)
+        self._link_error: Optional[BaseException] = None
 
     def cancel(self) -> None:
         """Stop downloading because the statement was cancelled.
@@ -106,6 +108,8 @@ class ResultFileDownloadManager:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
 
+        if self._link_error is not None:
+            raise self._link_error
         if not self._cancel_requested:
             # Make sure the download queue is always full
             self._schedule_downloads()
@@ -147,7 +151,15 @@ class ResultFileDownloadManager:
             and len(self._download_tasks) < self._max_download_threads
         ):
             scheduled = len(self._download_tasks)
-            links, has_more = self._link_source(self._max_download_threads - scheduled)
+            try:
+                links, has_more = self._link_source(
+                    self._max_download_threads - scheduled
+                )
+            except Exception as e:
+                # This read is failing part-way, so the caller loses the rows it had
+                # collected. Fail every later read too, so a retry cannot skip them.
+                self._link_error = e
+                raise
             if self._cancelled.is_set():
                 # Shut down while the request was in flight
                 return
