@@ -125,6 +125,9 @@ class ResultFileDownloadManager:
         ):
             scheduled = len(self._download_tasks)
             links, has_more = self._link_source(self._max_download_threads - scheduled)
+            if self._cancelled.is_set():
+                # Shut down while the request was in flight
+                return
             if not has_more:
                 self._link_source = None
             for link in links:

@@ -153,6 +153,19 @@ class DownloadManagerPrefetchTests(unittest.TestCase):
         self.assertEqual(source.call_count, 2)
 
     @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
+    def test_shutdown_during_a_link_fetch_ends_the_stream_cleanly(self):
+        manager = self._manager([_link(0)], max_download_threads=2)
+
+        def source(free):
+            manager._shutdown_manager()  # e.g. close() on another thread
+            return [_link(10)], True
+
+        manager.set_link_source(source)
+
+        self.assertIsNone(manager.get_next_downloaded_file(0))
+        self.assertEqual(manager._pending_links, [])
+
+    @patch.object(download_manager, "ResultSetDownloadHandler", _InstantHandler)
     def test_link_source_is_refused_after_shutdown(self):
         # No schedulable links: the first request already shuts the manager down
         manager = self._manager([_link(0, rows=0)], max_download_threads=2)
