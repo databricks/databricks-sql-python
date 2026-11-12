@@ -100,6 +100,7 @@ jobs:
         with:
           python-version: '3.11'
           install-args: '--all-extras'
+          cache-read-only: 'true'
 
       - name: Restore dependency manifests after installation
         run: git restore --source=HEAD --worktree -- poetry.lock pyproject.toml
@@ -175,7 +176,7 @@ jobs:
           export HEAD_SHA
           git fetch --no-tags origin "$BASE_SHA"
           git diff --no-ext-diff --no-textconv --no-color "$BASE_SHA...HEAD" -- > "$RUNNER_TEMP/mention-pr.diff"
-          python - <<'PY'
+          python -I - <<'PY'
           import os
           from pathlib import Path
 
@@ -214,6 +215,6 @@ jobs:
           unset JFROG_ACCESS_TOKEN PIP_INDEX_URL PIP_EXTRA_INDEX_URL CARGO_REGISTRIES_JFROG_TOKEN \
             ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          python -m databricks_bot_engine.engineer_bot.run --phase mention \
+          python -I -m databricks_bot_engine.engineer_bot.run --phase mention \
             --bot "$BOT_CONFIG_DIR" \
             --system-prompt "$BOT_CONFIG_DIR/prompts/engineer-mention/system.md"
