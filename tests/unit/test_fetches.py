@@ -499,6 +499,17 @@ class CloudFetchBatchSizeTests(unittest.TestCase):
 
         self.assertEqual(calls[0]["max_bytes"], 4 * self.BUFFER)
 
+    def test_links_without_size_keep_buffer_size(self):
+        rs, calls = self._make_result_set(
+            initial_link_sizes=[None],
+            fetched_queues=[self._cloudfetch_queue(None), self._cloudfetch_queue()],
+        )
+
+        rs._fill_results_buffer()
+        rs._fill_results_buffer()
+
+        self.assertEqual([c["max_bytes"] for c in calls], [self.BUFFER, self.BUFFER])
+
     def test_small_buffer_size_caps_batch(self):
         rs, calls = self._make_result_set(
             initial_link_sizes=[20 * self.MIB],

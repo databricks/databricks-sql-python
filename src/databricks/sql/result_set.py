@@ -286,8 +286,11 @@ class ThriftResultSet(ResultSet):
 
     def _note_link_sizes(self, links) -> None:
         for link in links:
-            if link.bytesNum > self._max_link_bytes:
-                self._max_link_bytes = link.bytesNum
+            # The reader doesn't enforce required fields; a missing size only
+            # disables the sizing heuristic.
+            size = link.bytesNum or 0
+            if size > self._max_link_bytes:
+                self._max_link_bytes = size
 
     def _fetch_max_bytes(self) -> int:
         # The server packs CloudFetch links into a FetchResults reply up to maxBytes of
