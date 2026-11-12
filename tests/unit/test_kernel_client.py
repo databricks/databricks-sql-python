@@ -2760,28 +2760,37 @@ def test_file_transfer_error_matches_thrift_exception(
 
 
 @pytest.mark.parametrize(
-    "code,error_code,raw,expected",
+    "code,error_code,raw,windows_raw,expected",
     [
-        ("NotFound", "FILE_TRANSFER_ERROR", errno.ENOENT, FileNotFoundError),
+        ("NotFound", "FILE_TRANSFER_ERROR", errno.ENOENT, 2, FileNotFoundError),
         (
             "PermissionDenied",
             "FILE_TRANSFER_PERMISSION_ERROR",
             errno.EACCES,
+            5,
             PermissionError,
         ),
         (
             "PermissionDenied",
             "FILE_TRANSFER_PERMISSION_ERROR",
             errno.EPERM,
+            5,
             PermissionError,
         ),
+        ("Internal", "FILE_TRANSFER_ERROR", errno.ENOTDIR, 267, NotADirectoryError),
+        ("Internal", "FILE_TRANSFER_ERROR", errno.EISDIR, 5, IsADirectoryError),
+        ("ResourceExhausted", "FILE_TRANSFER_ERROR", errno.ENOSPC, 112, OSError),
     ],
 )
-def test_local_transfer_error_preserves_os_code(code, error_code, raw, expected):
+def test_local_transfer_error_preserves_os_code(
+    code, error_code, raw, windows_raw, expected
+):
     error = _FakeKernelError(code=code, message="File transfer failed")
     error.error_code = error_code
     if os.name == "nt":
-        raw = 2 if expected is FileNotFoundError else 5
+        raw = windows_raw
+        if expected is IsADirectoryError:
+            expected = PermissionError
     error.os_error_code = raw
     error.os_error_filename = "local-file.bin"
     result = kernel_client._reraise_kernel_error(error)
@@ -2790,24 +2799,28 @@ def test_local_transfer_error_preserves_os_code(code, error_code, raw, expected)
     assert result.filename == "local-file.bin"
     if os.name == "nt":
         assert result.winerror == raw
-        assert result.errno == (errno.ENOENT if raw == 2 else errno.EACCES)
+        assert result.errno == OSError(0, "", None, raw).errno
     else:
         assert result.errno == raw
 
 
 @pytest.mark.parametrize(
-    "code,error_code",
+    "code,error_code,raw",
     [
-        ("NotFound", "FILE_TRANSFER_ERROR"),
-        ("PermissionDenied", "FILE_TRANSFER_PERMISSION_ERROR"),
+        ("NotFound", "FILE_TRANSFER_ERROR", None),
+        ("PermissionDenied", "FILE_TRANSFER_PERMISSION_ERROR", None),
+        ("Internal", "FILE_TRANSFER_ERROR", errno.ENOTDIR),
+        ("ResourceExhausted", "FILE_TRANSFER_ERROR", errno.ENOSPC),
     ],
 )
-def test_nested_wrapping_preserves_mapped_local_transfer_error(code, error_code):
+def test_nested_wrapping_preserves_mapped_local_transfer_error(code, error_code, raw):
     from databricks.sql.backend.kernel._errors import wrap_kernel_exception
 
     error = _FakeKernelError(code=code, sql_state="HY000", query_id="transfer-id")
     error.error_code = error_code
+    error.os_error_code = raw
     mapped = wrap_kernel_exception("inner", error)
+    assert isinstance(mapped, OSError)
     wrapped = wrap_kernel_exception("outer", mapped)
     assert wrapped is mapped
     assert wrapped.code == code

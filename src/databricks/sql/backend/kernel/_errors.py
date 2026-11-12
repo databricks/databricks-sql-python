@@ -174,6 +174,12 @@ def reraise_kernel_error(
     new: Union[Error, OSError]
     # Local missing files have no HTTP status; remote missing files carry 404.
     if (
+        file_transfer
+        and os_error_code is not None
+        and getattr(exc, "http_status", None) is None
+    ):
+        new = OSError(*file_error_args)
+    elif (
         error_code == "FILE_TRANSFER_PERMISSION_ERROR"
         and getattr(exc, "http_status", None) is None
     ):
@@ -228,9 +234,10 @@ def wrap_kernel_exception(what: str, exc: BaseException) -> "Union[Error, OSErro
         return reraise_kernel_error(exc)
     if isinstance(exc, Error):
         return exc
-    if isinstance(exc, (FileNotFoundError, PermissionError)) and getattr(
-        exc, "error_code", None
-    ) in ("FILE_TRANSFER_ERROR", "FILE_TRANSFER_PERMISSION_ERROR"):
+    if isinstance(exc, OSError) and getattr(exc, "error_code", None) in (
+        "FILE_TRANSFER_ERROR",
+        "FILE_TRANSFER_PERMISSION_ERROR",
+    ):
         return exc
     return OperationalError(
         f"Unexpected error from databricks_sql_kernel during {what}: {exc!r}"
