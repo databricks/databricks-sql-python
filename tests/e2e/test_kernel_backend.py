@@ -817,6 +817,8 @@ def test_volume_file_lifecycle(kernel_conn_params, tmp_path, catalog, async_op):
                     execute(f"-- upload\nPUT '{source}' INTO '{remote}' OVERWRITE")
                     == []
                 )
+                with pytest.raises(NotSupportedError, match="Streaming PUT"):
+                    execute(f"PUT r'__input_stream__' INTO '{remote}' OVERWRITE")
                 assert execute(f"GET '{remote}' TO '{destination}'") == []
                 assert destination.read_bytes() == payload
                 with pytest.raises(ProgrammingError):

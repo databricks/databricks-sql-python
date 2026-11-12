@@ -572,13 +572,6 @@ class KernelDatabricksClient(DatabricksClient):
             try:
                 stripped_sql = _strip_leading_sql_comments(operation)
                 staging_verb = _staging_verb(stripped_sql)
-                if staging_verb == "PUT" and re.match(
-                    r"""(['"])__input_stream__\1""",
-                    _strip_leading_sql_comments(stripped_sql[3:]),
-                ):
-                    raise NotSupportedError(
-                        "Streaming PUT is not supported by the kernel backend."
-                    )
                 stmt.set_sql(operation)
                 allowed_paths = (
                     cursor.connection.staging_allowed_local_path
@@ -601,7 +594,7 @@ class KernelDatabricksClient(DatabricksClient):
                             raise TypeError("Local paths must resolve to strings")
                     except (TypeError, ValueError) as exc:
                         raise ProgrammingError(_STAGING_PATHS_TYPE_ERROR) from exc
-                    set_paths(normalized_paths)
+                    set_paths(normalized_paths, input_stream_token="__input_stream__")
                 elif staging_verb is not None:
                     raise NotSupportedError(
                         "Volume transfers require a databricks-sql-kernel wheel "

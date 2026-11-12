@@ -48,6 +48,7 @@ from typing import Union
 from databricks.sql.exc import (
     DatabaseError,
     Error,
+    NotSupportedError,
     OperationalError,
     ProgrammingError,
     ServerOperationError,
@@ -135,6 +136,8 @@ def reraise_kernel_error(
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
     error_code = getattr(exc, "error_code", None)
+    if error_code == "FILE_TRANSFER_UNSUPPORTED_STREAM":
+        cls = NotSupportedError
     file_transfer = error_code in (
         "FILE_TRANSFER_ERROR",
         "FILE_TRANSFER_PERMISSION_ERROR",

@@ -862,7 +862,7 @@ def test_execute_command_forwards_allowed_local_paths(
         enforce_embedded_schema_correctness=False,
     )
     stmt.set_staging_allowed_local_paths.assert_called_once_with(
-        expected if uses_paths else []
+        expected if uses_paths else [], input_stream_token="__input_stream__"
     )
     (stmt.submit if async_op else stmt.execute).assert_called_once()
 
@@ -912,7 +912,9 @@ def test_malformed_local_paths_only_reject_transfers(allowed, operation):
         stmt.set_staging_allowed_local_paths.assert_not_called()
     else:
         execute()
-        stmt.set_staging_allowed_local_paths.assert_called_once_with([])
+        stmt.set_staging_allowed_local_paths.assert_called_once_with(
+            [], input_stream_token="__input_stream__"
+        )
         stmt.execute.assert_called_once()
 
 
@@ -947,30 +949,34 @@ def test_staging_verb_matches_only_the_leading_statement(operation, expected):
     assert kernel_client._staging_verb(stripped) == expected
 
 
-@pytest.mark.parametrize(
-    "query",
-    [
-        "PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "put '__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "PUT '__input_stream__'INTO '/Volumes/c/s/v/file'",
-        'PUT"__input_stream__"INTO "/Volumes/c/s/v/file"',
-        "/* upload */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "/* outer /* inner */ outer */ PUT '__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "PUT'__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "PUT /* upload */ '__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "PUT\n-- upload\n'__input_stream__' INTO '/Volumes/c/s/v/file'",
-        "/* upload */ PUT\"__input_stream__\" INTO '/Volumes/c/s/v/file'",
-    ],
-)
-def test_kernel_rejects_streaming_put(query):
+def test_kernel_rejects_decoded_streaming_put():
     c = _make_client()
     c._kernel_session = MagicMock()
+    stmt = c._kernel_session.statement.return_value
+    error = _FakeKernelError(
+        code="InvalidArgument", message="Streaming PUT is not supported"
+    )
+    error.error_code = "FILE_TRANSFER_UNSUPPORTED_STREAM"
+    stmt.execute.side_effect = error
+    cursor = MagicMock()
+    cursor.connection.staging_allowed_local_path = None
     with pytest.raises(NotSupportedError, match="Streaming PUT"):
         c.execute_command(
-            query, MagicMock(), 1, 1, False, MagicMock(), False, [], False, False
+            "PUT r'__input_stream__' INTO '/Volumes/c/s/v/file'",
+            MagicMock(),
+            1,
+            1,
+            False,
+            cursor,
+            False,
+            [],
+            False,
+            False,
         )
-    stmt = c._kernel_session.statement.return_value
-    stmt.execute.assert_not_called()
+    stmt.set_staging_allowed_local_paths.assert_called_once_with(
+        [], input_stream_token="__input_stream__"
+    )
+    stmt.execute.assert_called_once()
     stmt.close.assert_called_once()
 
 
