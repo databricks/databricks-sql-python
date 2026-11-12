@@ -56,8 +56,8 @@ def _converts_in_slices(arrow_type) -> bool:
 
 
 def _make_rows(ResultRow: Row, values) -> List[Row]:
-    """The rows ``[ResultRow(*v) for v in values]``, without three Python calls per
-    row. ``values`` is a 2-D object array."""
+    """The rows ``[ResultRow(*v) for v in values]``, built with one Python call per
+    row (``Row.__setattr__``) instead of three. ``values`` is a 2-D object array."""
     if values.shape[1] > len(ResultRow):
         return [ResultRow(*v) for v in values]  # raises Row's usual error
     new_row = tuple.__new__
