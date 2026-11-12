@@ -1019,13 +1019,17 @@ def _decompress_lz4_frames_into(out: bytearray, frames: List[bytes]) -> None:
     # One native call for all frames. Every lz4.frame.decompress call releases the
     # GIL, and with many busy threads each release can wait a full switch interval.
     compressed = b"".join(frames)
-    stream = pyarrow.CompressedInputStream(pyarrow.BufferReader(compressed), "lz4")
     nbytes = min(4 * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
-    while True:
-        chunk = stream.read(nbytes)
-        if not chunk:
-            return
-        out += chunk
+    try:
+        stream = pyarrow.CompressedInputStream(pyarrow.BufferReader(compressed), "lz4")
+        while True:
+            chunk = stream.read(nbytes)
+            if not chunk:
+                return
+            out += chunk
+    except (OSError, pyarrow.ArrowException) as e:
+        # Raise what python-lz4 raises, so the error type doesn't depend on batch count.
+        raise RuntimeError(f"LZ4 decompression failed: {e}") from e
 
 
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):

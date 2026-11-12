@@ -2233,6 +2233,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self.assertEqual(n_rows, n_batches * 14)
                 self.assertTrue(result.equals(table), (n_batches, lz4_compressed))
 
+    @unittest.skipUnless(utils._PYARROW_HAS_LZ4, "pyarrow lacks the lz4 codec")
     def test_convert_arrow_based_set_decodes_many_lz4_batches_in_one_call(self):
         # Each lz4.frame.decompress call releases the GIL; many-batch results must
         # not pay that per batch.
@@ -2261,6 +2262,15 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(decompress.call_count, 72)
         self.assertEqual(n_rows, 72 * 14)
         self.assertTrue(result.equals(table))
+
+    def test_convert_arrow_based_set_corrupt_lz4_raises_runtime_error(self):
+        for n_batches in (1, 72):
+            _, arrow_batches, schema = self._arrow_set(n_batches, 14, True)
+            arrow_batches[-1].batch = arrow_batches[-1].batch[:-20]
+            with self.assertRaises(RuntimeError, msg=n_batches):
+                utils.convert_arrow_based_set_to_arrow_table(
+                    arrow_batches, True, schema
+                )
 
     def test_convert_arrow_based_set_with_highly_compressible_batches(self):
         # Decompressed output far larger than the first read size.
