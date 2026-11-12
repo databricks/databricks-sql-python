@@ -11,7 +11,10 @@ except ImportError:
     pyarrow = None
 
 import databricks.sql.cloudfetch.downloader as downloader
-from databricks.sql.utils import convert_arrow_based_file_to_arrow_table
+from databricks.sql.utils import (
+    convert_arrow_based_file_to_arrow_table,
+    create_arrow_table_from_arrow_file,
+)
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 
@@ -264,16 +267,50 @@ class DecompressDataTests(unittest.TestCase):
         ) as mmap_spy:
             result = self.decompress(self.compressed, len(self.raw))
 
-        mmap_spy.assert_called_once_with(-1, len(self.raw), **downloader._MMAP_PRIVATE)
         if hasattr(downloader.mmap, "MAP_PRIVATE"):
-            self.assertEqual(
-                downloader._MMAP_PRIVATE, {"flags": downloader.mmap.MAP_PRIVATE}
+            mmap_spy.assert_called_once_with(
+                -1, len(self.raw), flags=downloader.mmap.MAP_PRIVATE
             )
+        else:
+            mmap_spy.assert_called_once_with(-1, len(self.raw))
         self.assertIsInstance(result, pyarrow.Buffer)
         self.assertEqual(result.to_pybytes(), self.raw)
         self.assertTrue(
             convert_arrow_based_file_to_arrow_table(result).equals(self.table)
         )
+
+    @patch("time.time", return_value=1000)
+    def test_run_returns_arrow_buffer_for_lz4_file(self, mock_time):
+        http_client = MagicMock()
+        response = MagicMock(status=200, data=self.compressed)
+        http_client.request_context.return_value.__enter__.return_value = response
+        link = Mock(
+            expiryTime=1001,
+            bytesNum=len(self.raw),
+            startRowOffset=0,
+            rowCount=self.table.num_rows,
+            fileLink="https://example.com/file?sig=x",
+            httpHeaders={},
+        )
+        handler = downloader.ResultSetDownloadHandler(
+            downloader.DownloadableResultSettings(is_lz4_compressed=True),
+            link,
+            ssl_options=SSLOptions(),
+            chunk_id=0,
+            session_id_hex=None,
+            statement_id="s",
+            http_client=http_client,
+        )
+        with patch.object(downloader.ResultSetDownloadHandler, "_log_download_metrics"):
+            file = handler.run()
+
+        self.assertIsInstance(file.file_bytes, pyarrow.Buffer)
+        description = [
+            ("id", "bigint", None, None, None, None, None),
+            ("s", "string", None, None, None, None, None),
+        ]
+        table = create_arrow_table_from_arrow_file(file.file_bytes, description)
+        self.assertTrue(table.equals(self.table))
 
     def test_mmap_failure_falls_back_to_python_lz4(self):
         with patch.object(downloader.mmap, "mmap", side_effect=OSError("ENOMEM")):

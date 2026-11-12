@@ -246,7 +246,7 @@ class ResultSetDownloadHandler:
         when the table is released.
         """
         try:
-            out = mmap.mmap(-1, expected_size, **_MMAP_PRIVATE)
+            out = _anonymous_mmap(expected_size)
             stream = pyarrow.CompressedInputStream(
                 pyarrow.BufferReader(compressed_data), "lz4"
             )
@@ -269,5 +269,10 @@ def _arrow_lz4_available() -> bool:
 
 
 _ARROW_LZ4_AVAILABLE = _arrow_lz4_available()
-# Python defaults anonymous maps to MAP_SHARED (shmem, shared with forked children).
-_MMAP_PRIVATE = {"flags": mmap.MAP_PRIVATE} if hasattr(mmap, "MAP_PRIVATE") else {}
+
+
+def _anonymous_mmap(size: int) -> mmap.mmap:
+    # Python defaults anonymous maps to MAP_SHARED (shmem, shared with forked children).
+    if hasattr(mmap, "MAP_PRIVATE"):
+        return mmap.mmap(-1, size, flags=mmap.MAP_PRIVATE)
+    return mmap.mmap(-1, size)
