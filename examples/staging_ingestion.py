@@ -30,7 +30,7 @@ To run this script:
 2. Set the FILEPATH constant to the path of a file that will be uploaded (this example assumes its a CSV file)
 3. Run this file
 
-Note: staging_allowed_local_path can be either a Pathlike object or a list of Pathlike objects.
+Note: staging_allowed_local_path accepts a path string or a list of path strings.
 """
 
 INGESTION_USER = "some.user@example.com"
