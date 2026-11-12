@@ -1,0 +1,219 @@
+name: Engineer Bot — Mention
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  authorize:
+    if: >-
+      github.event.issue.pull_request
+      && github.event.issue.state == 'open'
+      && (startsWith(github.event.comment.body, '@bot ')
+        || startsWith(github.event.comment.body, fromJson('"@bot\n"'))
+        || startsWith(github.event.comment.body, fromJson('"@bot\r"'))
+        || github.event.comment.body == '@bot')
+      && github.event.comment.user.type == 'User'
+      && !contains(github.event.comment.body, '<!-- engineer-bot-python:')
+      && contains(fromJson('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.comment.author_association)
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      eligible: ${{ steps.pr.outputs.eligible }}
+      head_ref: ${{ steps.pr.outputs.head_ref }}
+    steps:
+      # Check permissions before requesting the environment's App/model secrets.
+      - name: Verify commenter has write access
+        id: permission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          if ! permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq '.permission'); then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping @bot request: could not verify commenter write access."
+            exit 0
+          fi
+          case "$permission" in
+            write|maintain|admin) echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "allowed=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Skipping @bot request: commenter must have write access or higher."
+              ;;
+          esac
+
+      - name: Resolve PR branch
+        id: pr
+        if: steps.permission.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/$REPO/pulls/$PR_NUMBER")
+          if ! jq -e --arg repo "$REPO" '.state == "open" and .head.repo.full_name == $repo' <<< "$pr" >/dev/null; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Only open PRs with a branch in this repository are supported."
+            exit 0
+          fi
+          {
+            echo "eligible=true"
+            echo "head_ref=$(jq -r '.head.ref' <<< "$pr")"
+          } >> "$GITHUB_OUTPUT"
+
+  mention:
+    needs: authorize
+    if: needs.authorize.outputs.eligible == 'true'
+    environment: azure-prod
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      # Share the branch-editing queue with engineer-bot-followup.yml.
+      group: engineer-bot-followup-pr-${{ github.event.issue.number }}
+      cancel-in-progress: false
+      # Keep up to 100 pending requests in the shared queue.
+      queue: max
+    steps:
+      # Load actions, config, and prompts from the default branch.
+      - name: Checkout bot setup
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Install trusted connector dependencies
+        uses: ./.github/actions/setup-poetry
+        with:
+          python-version: '3.11'
+          install-args: '--all-extras'
+
+      - name: Restore dependency manifests after installation
+        run: git restore --source=HEAD --worktree -- poetry.lock pyproject.toml
+
+      - name: Bot prelude
+        id: prelude
+        uses: ./.github/actions/bot-prelude
+        with:
+          app-id: ${{ secrets.ENGINEER_BOT_APP_ID }}
+          private-key: ${{ secrets.ENGINEER_BOT_APP_PRIVATE_KEY }}
+
+      - name: Scrub build credentials before the agent runs
+        run: |
+          set -euo pipefail
+          poetry config --unset http-basic.jfrog
+          rm -f "${POETRY_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pypoetry}/auth.toml" ~/.npmrc
+          {
+            echo "JFROG_ACCESS_TOKEN="
+            echo "PIP_INDEX_URL="
+            echo "PIP_EXTRA_INDEX_URL="
+            echo "POETRY_HTTP_BASIC_JFROG_USERNAME="
+            echo "POETRY_HTTP_BASIC_JFROG_PASSWORD="
+            echo "PIP_NO_INDEX=true"
+            echo "POETRY_VIRTUALENVS_CREATE=false"
+          } >> "$GITHUB_ENV"
+
+      - name: Preserve trusted bot config and prompts
+        id: bot
+        run: |
+          set -euo pipefail
+          bot_dir=$(mktemp -d "$RUNNER_TEMP/engineer-mention-bot.XXXXXX")
+          cp -R .bot/. "$bot_dir/"
+          echo "path=$bot_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Recheck PR eligibility
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.prelude.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          HEAD_REF: ${{ needs.authorize.outputs.head_ref }}
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/$REPO/pulls/$PR_NUMBER")
+          if ! jq -e --arg repo "$REPO" --arg ref "$HEAD_REF" \
+            '.state == "open" and .head.repo.full_name == $repo and .head.ref == $ref' <<< "$pr" >/dev/null; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping @bot request: PR is closed or its source branch changed."
+            exit 0
+          fi
+          {
+            echo "eligible=true"
+            echo "base_sha=$(jq -r '.base.sha' <<< "$pr")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR branch
+        if: steps.pr.outputs.eligible == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.authorize.outputs.head_ref }}
+          # Preserve the trusted virtualenv/build at its original absolute path.
+          clean: false
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare PR diff reference
+        if: steps.pr.outputs.eligible == 'true'
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA=$(git rev-parse HEAD)
+          export HEAD_SHA
+          git fetch --no-tags origin "$BASE_SHA"
+          git diff --no-ext-diff --no-textconv --no-color "$BASE_SHA...HEAD" -- > "$RUNNER_TEMP/mention-pr.diff"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          temp = Path(os.environ["RUNNER_TEMP"])
+          diff = (temp / "mention-pr.diff").read_text(errors="replace")
+          limit = 100_000
+          reference = f"Checked-out PR head: {os.environ['HEAD_SHA']}\n\n" + diff[:limit]
+          if len(diff) > limit:
+              reference += "\n\n[Diff truncated; inspect source files and report any review limitations.]\n"
+          path = workspace / ".engineer-mention-pr.diff"
+          try:
+              with path.open("x") as output:
+                  output.write(reference)
+          except FileExistsError:
+              raise SystemExit("::error::PR diff reference path must not already exist.")
+          path.chmod(0o444)
+          PY
+          printf '\n/.engineer-mention-pr.diff\n' >> .git/info/exclude
+
+      - name: Run engineer mention
+        if: steps.pr.outputs.eligible == 'true'
+        timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ steps.prelude.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
+          ENGINEER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          REPO_ROOT: ${{ github.workspace }}
+          BOT_CONFIG_DIR: ${{ steps.bot.outputs.path }}
+        run: |
+          # The runner injects OIDC credentials per step; clear them in this shell.
+          unset JFROG_ACCESS_TOKEN PIP_INDEX_URL PIP_EXTRA_INDEX_URL CARGO_REGISTRIES_JFROG_TOKEN \
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          python -m databricks_bot_engine.engineer_bot.run --phase mention \
+            --bot "$BOT_CONFIG_DIR" \
+            --system-prompt "$BOT_CONFIG_DIR/prompts/engineer-mention/system.md"
