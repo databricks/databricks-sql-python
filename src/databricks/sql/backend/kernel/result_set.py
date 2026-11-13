@@ -48,6 +48,73 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Results with at most this many rows are converted to rows with to_pylist()
+# instead of through a pandas DataFrame, whose fixed cost (hundreds of
+# microseconds) dominates small results.
+_MAX_ROWS_WITHOUT_PANDAS = 128
+# pyarrow converts tz-aware timestamps to Python values far more slowly than
+# pandas does, so results with one skip pandas only when tiny.
+_MAX_ROWS_WITHOUT_PANDAS_TZ = 4
+
+# Types for which to_pylist() returns the same values as the pandas path in
+# ResultSet._convert_arrow_table. Floats only qualify without NaN, which pandas
+# turns into None or keeps depending on its version; timestamps and time64 only
+# when not in nanoseconds.
+_FLOAT_TYPE_IDS = frozenset(t.id for t in (pyarrow.float32(), pyarrow.float64()))
+_UNIT_TYPE_IDS = frozenset(
+    t.id for t in (pyarrow.timestamp("us"), pyarrow.time64("us"))
+)
+_SAME_AS_PANDAS_TYPE_IDS = _FLOAT_TYPE_IDS | frozenset(
+    t.id
+    for t in (
+        pyarrow.int8(),
+        pyarrow.int16(),
+        pyarrow.int32(),
+        pyarrow.int64(),
+        pyarrow.uint8(),
+        pyarrow.uint16(),
+        pyarrow.uint32(),
+        pyarrow.uint64(),
+        pyarrow.bool_(),
+        pyarrow.decimal128(1),
+        pyarrow.decimal256(1),
+        pyarrow.string(),
+        pyarrow.large_string(),
+        pyarrow.binary(),
+        pyarrow.large_binary(),
+        pyarrow.binary(1),
+        pyarrow.date32(),
+        pyarrow.date64(),
+        pyarrow.time32("s"),
+        pyarrow.null(),
+    )
+)
+
+
+def _rows_without_pandas(table: pyarrow.Table, row_factory: Row) -> Optional[List[Row]]:
+    """The rows of ``table`` built from ``to_pylist()``, or None if the table
+    must go through pandas (too many rows, or a column whose values could
+    differ)."""
+    num_rows = table.num_rows
+    if num_rows > _MAX_ROWS_WITHOUT_PANDAS or table.num_columns == 0:
+        return None
+    for arrow_type in table.schema.types:
+        if arrow_type.id in _UNIT_TYPE_IDS:
+            if arrow_type.unit == "ns":
+                return None
+            tz = getattr(arrow_type, "tz", None)
+            if tz is not None and num_rows > _MAX_ROWS_WITHOUT_PANDAS_TZ:
+                return None
+        elif arrow_type.id not in _SAME_AS_PANDAS_TYPE_IDS:
+            return None
+    columns = []
+    for column in table.itercolumns():
+        values = column.to_pylist()
+        if column.type.id in _FLOAT_TYPE_IDS and any(v != v for v in values):
+            return None
+        columns.append(values)
+    return [row_factory(*values) for values in zip(*columns)]
+
 
 class KernelResultSet(ResultSet):
     """Streaming ``ResultSet`` over a kernel handle.
@@ -201,6 +268,14 @@ class KernelResultSet(ResultSet):
         return self._take_buffered(size)
 
     # ----- Row fetches -----
+
+    def _convert_arrow_table(self, table):
+        if self.connection.disable_pandas is not True:
+            row_factory = Row(*[c[0] for c in self.description])
+            rows = _rows_without_pandas(table, row_factory)
+            if rows is not None:
+                return rows
+        return super()._convert_arrow_table(table)
 
     def fetchone(self) -> Optional[Row]:
         self._ensure_buffered(1)
