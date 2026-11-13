@@ -139,6 +139,11 @@ def _rows_without_pandas(
         except Exception:
             # E.g. a date past 9999-12-31: pandas then raises its own error,
             # as it does without this fast path.
+            logger.debug(
+                "to_pylist() failed for a %s column; using pandas",
+                column.type,
+                exc_info=True,
+            )
             return None
         if column.type.id in _FLOAT_TYPE_IDS and any(v != v for v in values):
             return None

@@ -5,6 +5,7 @@ network and no Rust extension dependency."""
 from __future__ import annotations
 
 import datetime
+import logging
 from collections import deque
 from decimal import Decimal
 from typing import Deque
@@ -481,6 +482,15 @@ def test_out_of_range_values_convert_as_on_the_pandas_path(column, expected):
         else:
             with pytest.raises(expected):
                 convert(table)
+
+
+def test_conversion_errors_are_logged_before_falling_back(caplog):
+    table = pa.table({"c": pa.array([2_932_897], pa.date32())})
+    rs = _make_rs(_FakeKernelHandle(table.schema, []))
+    with caplog.at_level(logging.DEBUG, logger=kernel_result_set.__name__):
+        with pytest.raises(ValueError):
+            rs._convert_arrow_table(table)
+    assert "to_pylist() failed for a date32[day] column" in caplog.text
 
 
 def test_empty_results_skip_pandas():
