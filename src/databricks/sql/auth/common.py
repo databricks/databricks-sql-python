@@ -2,7 +2,6 @@ from enum import Enum
 import logging
 from typing import Optional, List
 from urllib.parse import urlparse
-from databricks.sql.auth.retry import DatabricksRetryPolicy
 from databricks.sql.common.http import HttpMethod
 
 logger = logging.getLogger(__name__)
