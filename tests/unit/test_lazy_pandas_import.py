@@ -29,7 +29,9 @@ def _run(script: str) -> subprocess.CompletedProcess:
 
 
 # Sentinel exit codes, distinct from the 1 of an uncaught exception.
-_NO_PANDAS, _PANDAS_LOADED, _IMPORT_FAILED = 10, 11, 12
+_NO_PANDAS, _PANDAS_LOADED, _MISSING_OPTIONAL_DEP = 10, 11, 12
+# Only a missing optional extra may skip; any other import error fails.
+_OPTIONAL_DEPS = ("databricks_sql_kernel", "pyarrow")
 
 
 @pytest.mark.parametrize("module_name", CONNECT_PATH_MODULES)
@@ -38,14 +40,15 @@ def test_connect_path_does_not_import_pandas(module_name):
         import sys
         try:
             import {module_name}  # noqa: F401
-        except BaseException:
-            import traceback
-            traceback.print_exc()
-            sys.exit({_IMPORT_FAILED})
+        except ModuleNotFoundError as e:
+            if e.name not in {_OPTIONAL_DEPS!r}:
+                raise
+            print(e.name)
+            sys.exit({_MISSING_OPTIONAL_DEP})
         sys.exit({_PANDAS_LOADED} if "pandas" in sys.modules else {_NO_PANDAS})
         """)
-    if proc.returncode == _IMPORT_FAILED:
-        pytest.skip(f"{module_name} not importable here:\n{proc.stderr}")
+    if proc.returncode == _MISSING_OPTIONAL_DEP:
+        pytest.skip(f"{module_name} needs {proc.stdout.strip()}, not installed")
     assert proc.returncode != _PANDAS_LOADED, f"importing {module_name} imported pandas"
     assert (
         proc.returncode == _NO_PANDAS
