@@ -39,13 +39,31 @@ class TestRetry:
         retry_policy.history = [error_history, error_history]
         retry_policy.sleep(HTTPResponse(status=503))
 
-        expected_backoff_time = max(
-            self.calculate_backoff_time(
-                0, retry_policy.delay_min, retry_policy.delay_max
-            ),
-            retry_policy.delay_max,
+        expected_backoff_time = self.calculate_backoff_time(
+            0, retry_policy.delay_min, retry_policy.delay_max
         )
         t_mock.assert_called_with(expected_backoff_time)
+
+    @patch("time.sleep")
+    def test_sleep__short_retry_after_is_not_inflated(self, t_mock, retry_policy):
+        # A small server Retry-After must be honored as-is (delay_max is a
+        # ceiling, not a floor). delay_max defaults to 30 in these fixtures.
+        retry_policy._retry_start_time = time.time()
+        retry_policy.history = []
+        retry_policy.sleep(HTTPResponse(status=503, headers={"Retry-After": "2"}))
+
+        t_mock.assert_called_with(2)
+
+    @patch("time.sleep")
+    def test_sleep__large_retry_after_is_honored_as_is(self, t_mock, retry_policy):
+        # A server-returned Retry-After is the source of truth and must be
+        # honored as-is; delay_max does not cap it. delay_max defaults to 30 in
+        # these fixtures, so 120 would be clamped if the ceiling still applied.
+        retry_policy._retry_start_time = time.time()
+        retry_policy.history = []
+        retry_policy.sleep(HTTPResponse(status=503, headers={"Retry-After": "120"}))
+
+        t_mock.assert_called_with(120)
 
     @patch("time.sleep")
     def test_sleep__no_retry_after_header__multiple_retries(self, t_mock, retry_policy):
@@ -62,11 +80,8 @@ class TestRetry:
         expected_backoff_times = []
         for attempt in range(num_attempts):
             expected_backoff_times.append(
-                max(
-                    self.calculate_backoff_time(
-                        attempt, retry_policy.delay_min, retry_policy.delay_max
-                    ),
-                    retry_policy.delay_max,
+                self.calculate_backoff_time(
+                    attempt, retry_policy.delay_min, retry_policy.delay_max
                 )
             )
 
