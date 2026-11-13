@@ -16,6 +16,7 @@ from databricks.sql.exc import (
     OperationalError,
 )
 from databricks.sql.session import Session
+from databricks.sql.telemetry.telemetry_client import NoopTelemetryClient
 
 import databricks.sql
 
@@ -974,13 +975,9 @@ class TestReydenThriftFallback:
                 )
                 assert conn.session.http_client is conn.http_client
                 assert kernel.call_args.kwargs["http_client"] is conn.http_client
-                params = telemetry.return_value.export_initial_telemetry_log.call_args.kwargs[
-                    "driver_connection_params"
-                ]
-                assert params.use_proxy is (not explicit)
-                assert params.use_system_proxy is (not explicit)
-                if explicit:
-                    assert params.proxy_host_info is None
+                # The kernel owns telemetry: no Python telemetry client is used.
+                telemetry.assert_not_called()
+                assert isinstance(conn._telemetry_client, NoopTelemetryClient)
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 1")
                     assert cursor.fetchall() == [(1,)]
