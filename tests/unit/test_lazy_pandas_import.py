@@ -12,8 +12,11 @@ import pytest
 pytest.importorskip("pyarrow")
 
 CONNECT_PATH_MODULES = [
+    "databricks.sql",
     "databricks.sql.client",
     "databricks.sql.result_set",
+    "databricks.sql.utils",
+    "databricks.sql.backend.thrift_backend",
     "databricks.sql.backend.kernel.client",
     "databricks.sql.backend.kernel.result_set",
     "databricks.sql.backend.sea.backend",
