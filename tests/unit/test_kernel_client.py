@@ -14,7 +14,9 @@ client touches (``Session``, ``KernelError``, ``Statement``,
 from __future__ import annotations
 
 import sys
+import threading
 import types
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -95,6 +97,12 @@ from databricks.sql.exc import (
     ProgrammingError,
     ServerOperationError,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_kernel_session_parameter_support(monkeypatch):
+    monkeypatch.setattr(kernel_client, "_KERNEL_SESSION_PARAMETER_SUPPORT", None)
+
 
 # ---------------------------------------------------------------------------
 # Error mapping
@@ -445,9 +453,7 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_open_session_passes_geospatial_representation_to_kernel(
-    monkeypatch, enabled
-):
+def test_open_session_passes_geospatial_representation_to_kernel(monkeypatch, enabled):
     captured = {}
 
     def fake_session(*, enable_geospatial_support=True, **kw):
@@ -708,7 +714,120 @@ def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
     assert captured["host"] == "example.cloud.databricks.com"
 
 
-def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monkeypatch):
+def test_kernel_session_signature_is_reused(monkeypatch):
+    class Session:
+        def __init__(self, *, driver_name=None, max_connections=None):
+            pass
+
+    signature = MagicMock(wraps=kernel_client.inspect.signature)
+    monkeypatch.setattr(kernel_client._kernel, "Session", Session)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
+
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is True
+    assert kernel_client._kernel_session_accepts_kwarg("max_connections") is True
+    assert kernel_client._kernel_session_accepts_kwarg("unsupported") is False
+    signature.assert_called_once_with(Session)
+
+
+@pytest.mark.parametrize("signature_error", [None, TypeError, ValueError])
+def test_kernel_session_signature_is_shared_across_threads(
+    monkeypatch, signature_error
+):
+    class Session:
+        def __init__(self, *, driver_name=None):
+            pass
+
+    inspect_signature = kernel_client.inspect.signature
+    lock = threading.Lock()
+    lock_attempted = threading.Event()
+    signature_started = threading.Event()
+    release_signature = threading.Event()
+
+    class NotifyingLock:
+        def __enter__(self):
+            lock_attempted.set()
+            return lock.__enter__()
+
+        def __exit__(self, *args):
+            return lock.__exit__(*args)
+
+    def inspect_session(session_type):
+        signature_started.set()
+        assert release_signature.wait(timeout=10)
+        if signature_error is not None:
+            raise signature_error("no signature found for builtin type")
+        return inspect_signature(session_type)
+
+    signature = MagicMock(side_effect=inspect_session)
+    monkeypatch.setattr(kernel_client._kernel, "Session", Session)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
+    monkeypatch.setattr(
+        kernel_client, "_KERNEL_SESSION_PARAMETER_SUPPORT_LOCK", NotifyingLock()
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(
+            kernel_client._kernel_session_accepts_kwarg, "driver_name"
+        )
+        try:
+            assert signature_started.wait(timeout=10)
+            lock_attempted.clear()
+            second = executor.submit(
+                kernel_client._kernel_session_accepts_kwarg, "unsupported"
+            )
+            assert lock_attempted.wait(timeout=10)
+        finally:
+            release_signature.set()
+        assert first.result(timeout=10) is (signature_error is None)
+        assert second.result(timeout=10) is False
+
+    signature.assert_called_once_with(Session)
+
+
+@pytest.mark.parametrize("signature_error", [None, TypeError, ValueError])
+def test_kernel_session_signature_refreshes_when_class_changes(
+    monkeypatch, signature_error
+):
+    class OriginalSession:
+        def __init__(self, *, driver_name=None, **kwargs):
+            pass
+
+    class ReplacementSession:
+        def __init__(self, *, max_connections=None):
+            pass
+
+    inspect_signature = kernel_client.inspect.signature
+
+    def inspect_session(session_type):
+        if session_type is OriginalSession and signature_error is not None:
+            raise signature_error("no signature found for builtin type")
+        return inspect_signature(session_type)
+
+    signature = MagicMock(side_effect=inspect_session)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
+    monkeypatch.setattr(kernel_client._kernel, "Session", OriginalSession)
+
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is (
+        signature_error is None
+    )
+    assert kernel_client._kernel_session_accepts_kwarg("arbitrary_option") is (
+        signature_error is None
+    )
+    signature.assert_called_once_with(OriginalSession)
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", ReplacementSession)
+
+    assert kernel_client._kernel_session_accepts_kwarg("max_connections") is True
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is False
+    assert kernel_client._kernel_session_accepts_kwarg("arbitrary_option") is False
+    assert signature.call_count == 2
+    signature.assert_called_with(ReplacementSession)
+
+
+@pytest.mark.parametrize("signature_error", [TypeError, ValueError])
+def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(
+    monkeypatch, signature_error
+):
     """When ``inspect.signature(_kernel.Session)`` raises (a PyO3 class built
     without ``#[pyo3(signature=...)]`` exposes no ``__text_signature__``, so
     ``inspect.signature`` raises ``ValueError``), the gate must fall
@@ -728,11 +847,12 @@ def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monke
         def __init__(self, *args, **kwargs):  # pragma: no cover - never called
             pass
 
-    def raise_value_error(_obj):
-        raise ValueError("no signature found for builtin type")
+    signature = MagicMock(
+        side_effect=signature_error("no signature found for builtin type")
+    )
 
     monkeypatch.setattr(kernel_client._kernel, "Session", NonIntrospectableSession)
-    monkeypatch.setattr(kernel_client.inspect, "signature", raise_value_error)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
 
     assert kernel_client._kernel_session_accepts_kwarg("driver_name") is False
 
@@ -759,6 +879,7 @@ def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monke
     assert (
         kwargs == {}
     ), f"expected no phase-7 kwargs when signature unreadable, got {kwargs}"
+    signature.assert_called_once_with(NonIntrospectableSession)
 
 
 def test_execute_command_forwards_parameters_to_bind_param():
