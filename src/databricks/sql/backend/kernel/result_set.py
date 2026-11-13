@@ -31,8 +31,9 @@ kernel-side batch sizing.
 from __future__ import annotations
 
 import logging
+import os
 from collections import deque
-from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
+from typing import Any, BinaryIO, Deque, List, Optional, TYPE_CHECKING, Union, cast
 
 import pyarrow
 
@@ -40,6 +41,7 @@ from databricks.sql.backend.kernel._errors import wrap_kernel_exception
 from databricks.sql.backend.kernel.type_mapping import description_from_arrow_schema
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.result_set import ResultSet
+from databricks.sql.exc import OperationalError, ProgrammingError
 from databricks.sql.types import Row
 
 if TYPE_CHECKING:
@@ -83,7 +85,7 @@ class KernelResultSet(ResultSet):
             has_more_rows=True,
             results_queue=None,
             description=description_from_arrow_schema(schema),
-            is_staging_operation=False,
+            is_staging_operation=kernel_handle.is_volume_operation,
             lz4_compressed=False,
             arrow_schema_bytes=None,
         )
@@ -100,6 +102,64 @@ class KernelResultSet(ResultSet):
         # stays O(1) instead of walking the deque.
         self._buffered_count: int = 0
         self._exhausted: bool = False
+
+    def complete_staging_operation(
+        self,
+        allowed_paths: Union[None, str, List[str]],
+        input_stream: Optional[BinaryIO] = None,
+    ) -> None:
+        paths = (
+            [allowed_paths] if isinstance(allowed_paths, str) else (allowed_paths or [])
+        )
+        try:
+            outcome = self._complete_volume_operation(paths)
+            if outcome == "not_volume":
+                return
+            if outcome == "needs_input_stream":
+                try:
+                    if input_stream is None:
+                        raise ProgrammingError(
+                            "No input stream provided for streaming operation"
+                        )
+                    data = input_stream.read()
+                except BaseException:
+                    self.close()
+                    raise
+                outcome = self._complete_volume_operation(paths, data)
+            if outcome != "completed":
+                raise ProgrammingError("Volume operation did not complete")
+            self._buffer.clear()
+            self._buffered_count = 0
+            self._exhausted = True
+            self.has_more_rows = False
+            self.status = CommandState.SUCCEEDED
+        finally:
+            cast("KernelDatabricksClient", self.backend).finish_volume_operation(
+                self.command_id
+            )
+
+    def _complete_volume_operation(
+        self, paths: List[str], input_bytes: Optional[bytes] = None
+    ) -> str:
+        try:
+            return self._kernel_handle.complete_volume_operation(
+                paths, input_bytes=input_bytes
+            )
+        except Exception as exc:
+            os_code = getattr(exc, "local_os_error", None)
+            if os_code is not None:
+                local_path = getattr(exc, "local_path", None)
+                if os.name == "nt":
+                    raise OSError(
+                        0, "Local file operation failed", local_path, os_code
+                    ) from exc
+                raise OSError(os_code, os.strerror(os_code), local_path) from exc
+            http_status = getattr(exc, "http_status", None)
+            if http_status is not None:
+                raise OperationalError(
+                    f"Staging operation over HTTP was unsuccessful: {http_status}"
+                ) from exc
+            raise wrap_kernel_exception("complete_volume_operation", exc) from exc
 
     # ----- internal helpers -----
 
@@ -244,18 +304,7 @@ class KernelResultSet(ResultSet):
             self.has_been_closed_server_side = True
             self.status = CommandState.CLOSED
             return
-        try:
-            self._kernel_handle.close()
-        except Exception as exc:
-            # close() failures are not actionable at the connector
-            # level; log and swallow so the cursor's __del__ /
-            # connection close path stays clean.
-            logger.warning("Error closing kernel handle: %s", exc)
-        # Honor the base ``ResultSet`` contract: notify the backend.
-        # For async results, ``backend.close_command`` drops the
-        # retained owning handle and parent Statement. Sync-execute and
-        # metadata paths never registered in ``_async_handles`` to begin
-        # with, so this call is tolerant bookkeeping for them.
+        # Signal through the detached canceller before close waits for a transfer's native lock.
         backend = cast("KernelDatabricksClient", self.backend)
         try:
             backend.close_command(self.command_id)
@@ -263,6 +312,13 @@ class KernelResultSet(ResultSet):
             logger.warning(
                 "backend.close_command from result-set close failed: %s", exc
             )
+        try:
+            self._kernel_handle.close()
+        except Exception as exc:
+            # close() failures are not actionable at the connector
+            # level; log and swallow so the cursor's __del__ /
+            # connection close path stays clean.
+            logger.warning("Error closing kernel handle: %s", exc)
         self._buffer.clear()
         self._buffered_count = 0
         self._kernel_handle = None
