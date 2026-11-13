@@ -12,7 +12,6 @@ from typing import (
     BinaryIO,
     TYPE_CHECKING,
 )
-import pandas
 
 try:
     import pyarrow
