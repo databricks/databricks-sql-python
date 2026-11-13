@@ -29,11 +29,17 @@ class _LazyPyarrow(types.ModuleType):
     """
 
     def __getattr__(self, name: str) -> Any:
-        try:
-            module = importlib.import_module("pyarrow")
-        except ImportError as e:
+        # A failed import is tried once, as an eager import was: retrying
+        # would rerun pyarrow's (and numpy's) partial initialization each time.
+        error = self.__dict__.get("_import_error")
+        if error is None:
+            try:
+                module = importlib.import_module("pyarrow")
+            except ImportError as e:
+                self.__dict__["_import_error"] = error = e
+        if error is not None:
             # AttributeError, so hasattr() and getattr(..., default) still work.
-            raise AttributeError(f"pyarrow could not be imported: {e}") from e
+            raise AttributeError(f"pyarrow could not be imported: {error}") from error
         for namespace in _NAMESPACES:
             if namespace.get("pyarrow") is self:
                 namespace["pyarrow"] = module

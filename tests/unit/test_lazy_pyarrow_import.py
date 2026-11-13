@@ -160,12 +160,17 @@ def test_optional_pyarrow_is_none_when_not_installed(monkeypatch):
 
 
 def test_unimportable_pyarrow_raises_attribute_error(monkeypatch):
+    attempts = []
+
     def broken(name):
+        attempts.append(name)
         raise ImportError("numpy ABI mismatch")
 
     monkeypatch.setattr(optional_pyarrow_module.importlib, "import_module", broken)
     lazy = optional_pyarrow_module._LazyPyarrow("pyarrow")
     assert not hasattr(lazy, "Table")
     assert getattr(lazy, "Table", None) is None
-    with pytest.raises(AttributeError, match="numpy ABI mismatch"):
+    with pytest.raises(AttributeError, match="numpy ABI mismatch") as raised:
         lazy.Table
+    assert isinstance(raised.value.__cause__, ImportError)
+    assert attempts == ["pyarrow"], "a failed import is not retried"
