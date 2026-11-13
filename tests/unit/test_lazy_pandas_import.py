@@ -25,7 +25,42 @@ def _run(script: str) -> subprocess.CompletedProcess:
         [sys.executable, "-c", textwrap.dedent(script)],
         capture_output=True,
         text=True,
+        timeout=120,
     )
+
+
+def _table_ipc_hex() -> str:
+    # Children read the table from IPC bytes: building it from Python lists
+    # makes pyarrow import pandas itself, which would hide what the
+    # conversion imports.
+    import io
+
+    import pyarrow
+    import pyarrow.ipc
+
+    table = pyarrow.table({"a": [1, None], "b": ["x", "y"]})
+    sink = io.BytesIO()
+    with pyarrow.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().hex()
+
+
+def _convert_rows_script(disable_pandas: bool) -> str:
+    return f"""
+        import sys
+        from unittest.mock import MagicMock
+        import pyarrow.ipc
+        from databricks.sql.result_set import ResultSet
+
+        table = pyarrow.ipc.open_stream(bytes.fromhex("{_table_ipc_hex()}")).read_all()
+        assert "pandas" not in sys.modules
+        rs = MagicMock()
+        rs.connection.disable_pandas = {disable_pandas}
+        rs.description = [("a",), ("b",)]
+        rows = ResultSet._convert_arrow_table(rs, table)
+        assert [tuple(r) for r in rows] == [(1, "x"), (None, "y")], rows
+        print("pandas" in sys.modules)
+        """
 
 
 # Sentinel exit codes, distinct from the 1 of an uncaught exception.
@@ -64,19 +99,12 @@ def test_connect_path_does_not_import_pandas(module_name):
 
 
 def test_row_conversion_imports_pandas_on_first_use():
-    proc = _run("""
-        import sys
-        from unittest.mock import MagicMock
-        import pyarrow
-        from databricks.sql.result_set import ResultSet
-
-        assert "pandas" not in sys.modules
-        rs = MagicMock()
-        rs.connection.disable_pandas = False
-        rs.description = [("a",), ("b",)]
-        table = pyarrow.table({"a": [1, None], "b": ["x", "y"]})
-        rows = ResultSet._convert_arrow_table(rs, table)
-        assert "pandas" in sys.modules
-        assert [tuple(r) for r in rows] == [(1, "x"), (None, "y")], rows
-        """)
+    proc = _run(_convert_rows_script(disable_pandas=False))
     assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "True", "the pandas path should import pandas"
+
+
+def test_disable_pandas_never_imports_pandas():
+    proc = _run(_convert_rows_script(disable_pandas=True))
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "False", "_disable_pandas=True imported pandas"
