@@ -80,8 +80,13 @@ def test_kernel_connect_defers_pyarrow_to_the_first_result():
         handle.arrow_schema.side_effect = RuntimeError("stop after import")
         try:
             conn.session.backend._make_result_set(handle, conn.cursor(), None)
-        except Exception:
-            pass
+        except Exception as e:
+            # Only the sentinel may stop it (the result set wraps it).
+            cause = e
+            while cause is not None and str(cause) != "stop after import":
+                cause = cause.__cause__ or cause.__context__
+            if cause is None:
+                raise
         assert "pyarrow" in sys.modules, "the first result imports pyarrow"
         """)
     assert proc.returncode == 0, proc.stderr
