@@ -1,0 +1,113 @@
+"""pandas must load on the first row conversion, not when connect() is imported.
+
+Each check runs in a fresh interpreter because ``sys.modules`` is process-global.
+"""
+
+import subprocess
+import sys
+import textwrap
+
+import pytest
+
+pytest.importorskip("pyarrow")
+
+CONNECT_PATH_MODULES = [
+    "databricks.sql",
+    "databricks.sql.client",
+    "databricks.sql.result_set",
+    "databricks.sql.utils",
+    "databricks.sql.backend.thrift_backend",
+    "databricks.sql.backend.kernel.client",
+    "databricks.sql.backend.kernel.result_set",
+    "databricks.sql.backend.sea.backend",
+]
+
+
+def _run(script: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(script)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def _table_ipc_hex() -> str:
+    # Children read the table from IPC bytes: building it from Python lists
+    # makes pyarrow import pandas itself, which would hide what the
+    # conversion imports.
+    import io
+
+    import pyarrow
+    import pyarrow.ipc
+
+    table = pyarrow.table({"a": [1, None], "b": ["x", "y"]})
+    sink = io.BytesIO()
+    with pyarrow.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().hex()
+
+
+def _convert_rows_script(disable_pandas: bool) -> str:
+    return f"""
+        import sys
+        from unittest.mock import MagicMock
+        import pyarrow.ipc
+        from databricks.sql.result_set import ResultSet
+
+        table = pyarrow.ipc.open_stream(bytes.fromhex("{_table_ipc_hex()}")).read_all()
+        assert "pandas" not in sys.modules
+        rs = MagicMock()
+        rs.connection.disable_pandas = {disable_pandas}
+        rs.description = [("a",), ("b",)]
+        rows = ResultSet._convert_arrow_table(rs, table)
+        assert [tuple(r) for r in rows] == [(1, "x"), (None, "y")], rows
+        print("pandas" in sys.modules)
+        """
+
+
+# Sentinel exit codes, distinct from the 1 of an uncaught exception.
+_NO_PANDAS, _PANDAS_LOADED, _MISSING_OPTIONAL_DEP = 10, 11, 12
+# Only a missing optional extra may skip; any other import error fails.
+_OPTIONAL_DEPS = ("databricks_sql_kernel", "pyarrow")
+
+
+@pytest.mark.parametrize("module_name", CONNECT_PATH_MODULES)
+def test_connect_path_does_not_import_pandas(module_name):
+    proc = _run(f"""
+        import sys
+        try:
+            import {module_name}  # noqa: F401
+        except ImportError as e:
+            # The kernel backend re-raises a missing wheel as a friendlier
+            # ImportError, so look for the missing extra along the chain.
+            cause = e
+            while cause is not None and not (
+                isinstance(cause, ModuleNotFoundError)
+                and cause.name in {_OPTIONAL_DEPS!r}
+            ):
+                cause = cause.__cause__ or cause.__context__
+            if cause is None:
+                raise
+            print(cause.name)
+            sys.exit({_MISSING_OPTIONAL_DEP})
+        sys.exit({_PANDAS_LOADED} if "pandas" in sys.modules else {_NO_PANDAS})
+        """)
+    if proc.returncode == _MISSING_OPTIONAL_DEP:
+        pytest.skip(f"{module_name} needs {proc.stdout.strip()}, not installed")
+    assert proc.returncode != _PANDAS_LOADED, f"importing {module_name} imported pandas"
+    assert (
+        proc.returncode == _NO_PANDAS
+    ), f"unexpected exit {proc.returncode}:\n{proc.stderr}"
+
+
+def test_row_conversion_imports_pandas_on_first_use():
+    proc = _run(_convert_rows_script(disable_pandas=False))
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "True", "the pandas path should import pandas"
+
+
+def test_disable_pandas_never_imports_pandas():
+    proc = _run(_convert_rows_script(disable_pandas=True))
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "False", "_disable_pandas=True imported pandas"
