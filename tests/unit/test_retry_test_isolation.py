@@ -89,7 +89,8 @@ def test_background_telemetry_does_not_receive_retry_errors(pending_telemetry):
         assert validate.call_count == 2
 
 
-def test_mocked_connections_do_not_leak_into_a_shared_pool():
+@pytest.mark.parametrize("transport_error", [False, True])
+def test_mocked_connections_do_not_leak_into_a_shared_pool(transport_error):
     ready, release = Event(), Event()
     responses = [
         {"status": 429, "headers": {"Retry-After": "0"}, "redirect_location": None},
@@ -115,6 +116,10 @@ def test_mocked_connections_do_not_leak_into_a_shared_pool():
         assert ready.wait(timeout=5)
         try:
             with mock_sequential_server_responses(responses) as mocked_connection:
+                if transport_error:
+                    mocked_connection.return_value.request.side_effect = OSError(
+                        "Some arbitrary network error"
+                    )
                 with pytest.raises(MaxRetryError):
                     pool.urlopen(
                         "POST",
@@ -125,6 +130,10 @@ def test_mocked_connections_do_not_leak_into_a_shared_pool():
                     )
                 release.set()
                 assert future.result(timeout=5) == [200, 200]
-                assert mocked_connection.return_value.getresponse.call_count == 2
+                expected_responses = 0 if transport_error else 2
+                assert (
+                    mocked_connection.return_value.getresponse.call_count
+                    == expected_responses
+                )
         finally:
             release.set()

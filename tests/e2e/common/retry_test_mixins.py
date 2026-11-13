@@ -34,11 +34,12 @@ def _mock_pool_method(method_name):
     with ExitStack() as stack:
         stack.enter_context(patch.object(HTTPSConnectionPool, method_name, dispatch))
         if method_name == "_get_conn":
+            mock_method.return_value.close.return_value = None
             original_put = HTTPSConnectionPool._put_conn
 
             def put_connection(pool, connection):
                 # Fake acquisition never removed a slot from the real queue.
-                if connection is not mock_method.return_value:
+                if threading.current_thread() is not test_thread:
                     return original_put(pool, connection)
 
             stack.enter_context(
