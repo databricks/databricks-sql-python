@@ -49,7 +49,7 @@ class _FakeKernelHandle:
         self.closed = True
 
 
-def _make_rs(handle, *, disable_pandas=False) -> KernelResultSet:
+def _make_rs(handle, *, disable_pandas=False, schema_cache=None) -> KernelResultSet:
     # The base ResultSet __init__ takes a `connection` ref it never
     # actually dereferences during these buffer tests, so a Mock is
     # fine.
@@ -63,6 +63,7 @@ def _make_rs(handle, *, disable_pandas=False) -> KernelResultSet:
         command_id=CommandId.from_sea_statement_id("smoke-test"),
         arraysize=100,
         buffer_size_bytes=1024,
+        schema_cache=schema_cache,
     )
 
 
@@ -517,3 +518,144 @@ def test_fetch_methods_return_the_pandas_path_values():
     _assert_same_rows(_make_rs(_FakeKernelHandle(schema, [batch])).fetchall(), expected)
     rs = _make_rs(_FakeKernelHandle(schema, [batch]))
     _assert_same_rows([rs.fetchone()] + rs.fetchmany(5), expected)
+
+
+# ----- per-connection schema cache -----
+
+
+def _reimported(schema: pa.Schema) -> pa.Schema:
+    """An equal but distinct schema object, as each kernel statement returns."""
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, schema):
+        pass
+    return pa.ipc.open_stream(sink.getvalue()).schema
+
+
+def test_equal_schemas_reuse_what_is_derived_from_them():
+    schema = pa.schema(
+        [
+            pa.field("n", pa.int64()),
+            pa.field("v", pa.string(), metadata={b"databricks.type_name": b"VARIANT"}),
+        ]
+    )
+    cache = kernel_result_set._SchemaCache()
+    first = _make_rs(_FakeKernelHandle(_reimported(schema), []), schema_cache=cache)
+    second = _make_rs(_FakeKernelHandle(_reimported(schema), []), schema_cache=cache)
+    assert first._result_schema is second._result_schema
+    assert (
+        first.description
+        == second.description
+        == _make_rs(_FakeKernelHandle(schema, [])).description
+    )
+    assert [c[1] for c in first.description] == ["bigint", "variant"]
+    # Each result set still gets its own description list.
+    first.description.append("changed")
+    assert len(second.description) == 2
+
+    batch = pa.RecordBatch.from_arrays(
+        [pa.array([1, 2]), pa.array(['{"a":1}', None])], schema=schema
+    )
+    rows = _make_rs(_FakeKernelHandle(schema, [batch]), schema_cache=cache).fetchall()
+    assert [tuple(r) for r in rows] == [(1, '{"a":1}'), (2, None)]
+    assert rows[0].v == '{"a":1}'
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        pa.schema([pa.field("n", pa.int32())]),
+        pa.schema([pa.field("m", pa.int64())]),
+        pa.schema(
+            [pa.field("n", pa.int64(), metadata={b"databricks.type_name": b"MAP"})]
+        ),
+    ],
+)
+def test_a_different_schema_is_derived_again(other):
+    cache = kernel_result_set._SchemaCache()
+    first = _make_rs(
+        _FakeKernelHandle(pa.schema([pa.field("n", pa.int64())]), []),
+        schema_cache=cache,
+    )
+    second = _make_rs(_FakeKernelHandle(other, []), schema_cache=cache)
+    assert first._result_schema is not second._result_schema
+    assert second.description == _make_rs(_FakeKernelHandle(other, [])).description
+    assert first.description != second.description
+
+
+# ----- rows built from record batches -----
+
+
+def _spy_to_table():
+    return patch.object(
+        KernelResultSet,
+        "_to_table",
+        autospec=True,
+        side_effect=KernelResultSet._to_table,
+    )
+
+
+def test_small_results_are_converted_from_batches_without_a_table():
+    schema = pa.schema([("n", pa.int64()), ("s", pa.string())])
+
+    def batch(lo, hi):
+        return pa.RecordBatch.from_arrays(
+            [pa.array(range(lo, hi)), pa.array([str(i) for i in range(lo, hi)])],
+            schema=schema,
+        )
+
+    expected = [(i, str(i)) for i in range(7)]
+    with _spy_to_table() as to_table:
+        rs = _make_rs(
+            _FakeKernelHandle(schema, [batch(0, 3), batch(3, 5), batch(5, 7)])
+        )
+        first = rs.fetchone()
+        rows = [first] + rs.fetchmany(3) + rs.fetchall()
+    to_table.assert_not_called()
+    assert [tuple(r) for r in rows] == expected
+    assert rows[-1].s == "6" and rs.rownumber == 7
+
+    limit = kernel_result_set._max_rows_without_pandas(schema.types)
+    with _spy_to_table() as to_table:
+        rs = _make_rs(
+            _FakeKernelHandle(schema, [batch(0, limit), batch(limit, limit + 1)])
+        )
+        assert len(rs.fetchall()) == limit + 1
+    to_table.assert_called_once()
+
+
+def test_a_batch_whose_schema_differs_still_fails_as_before():
+    schema = pa.schema([("n", pa.int64())])
+    other = pa.RecordBatch.from_arrays([pa.array(["x"])], names=["n"])
+    with pytest.raises(pa.ArrowInvalid):
+        _make_rs(_FakeKernelHandle(schema, [other])).fetchall()
+
+
+def test_the_cost_budget_is_computed_once_per_schema_not_per_fetch():
+    schema = pa.schema([("n", pa.int64())])
+    cache = kernel_result_set._SchemaCache()
+    with patch.object(
+        kernel_result_set,
+        "_max_rows_without_pandas",
+        wraps=kernel_result_set._max_rows_without_pandas,
+    ) as budget:
+        for _ in range(3):
+            rs = _make_rs(
+                _FakeKernelHandle(
+                    _reimported(schema),
+                    [_batch(schema, [1, 2]), _batch(schema, [3, 4])],
+                ),
+                schema_cache=cache,
+            )
+            assert [
+                r[0] for r in [rs.fetchone()] + rs.fetchmany(2) + rs.fetchall()
+            ] == [
+                1,
+                2,
+                3,
+                4,
+            ]
+        assert budget.call_count == 1
+        _make_rs(
+            _FakeKernelHandle(pa.schema([("m", pa.int64())]), []), schema_cache=cache
+        )
+        assert budget.call_count == 2
