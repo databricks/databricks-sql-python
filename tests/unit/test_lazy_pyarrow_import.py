@@ -35,7 +35,7 @@ sys.modules["databricks_sql_kernel"] = fake
 def _run(body: str) -> subprocess.CompletedProcess:
     script = _FAKE_KERNEL + textwrap.dedent(body)
     return subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=120
     )
 
 
