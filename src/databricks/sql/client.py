@@ -88,6 +88,7 @@ if TYPE_CHECKING:
         TSparkParameter,
     )
 from databricks.sql.telemetry.telemetry_client import (
+    NoopTelemetryClient,
     TelemetryHelper,
     TelemetryClientFactory,
 )
@@ -473,6 +474,13 @@ class Connection:
         self.enable_telemetry = kwargs.get("enable_telemetry", True)
         self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
 
+        if self._kernel_owns_telemetry():
+            # The kernel exports this connection's telemetry. Registering with the
+            # Python factory would only serialize concurrent connects on its lock
+            # and start an idle flush thread.
+            self._telemetry_client = NoopTelemetryClient()
+            return
+
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             session_id_hex=self.get_session_id_hex(),
@@ -542,6 +550,9 @@ class Connection:
             user_agent=self.session.useragent_header,
             session_id=self.get_session_id_hex(),
         )
+
+    def _kernel_owns_telemetry(self) -> bool:
+        return bool(getattr(self.session, "use_kernel", False))
 
     def _open_session_with_reyden_fallback(
         self,
@@ -772,7 +783,8 @@ class Connection:
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        TelemetryClientFactory.close(host_url=self.session.host)
+        if not self._kernel_owns_telemetry():
+            TelemetryClientFactory.close(host_url=self.session.host)
 
         # Close HTTP client that was created by this connection
         if self.http_client:

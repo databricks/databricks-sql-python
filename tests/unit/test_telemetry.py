@@ -530,6 +530,70 @@ class TestTelemetryFactory:
 
         mock_export_failure_log.assert_not_called()
 
+    @staticmethod
+    def _kernel_connection(mock_session):
+        session = mock_session.return_value
+        session.use_kernel = True
+        session.host = "test-host"
+        return sql.connect(
+            server_hostname="test-host", http_path="/test-path", use_kernel=True
+        )
+
+    @staticmethod
+    def _init_python_client(host_url):
+        with patch(
+            "databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers"
+        ):
+            TelemetryClientFactory.initialize_telemetry_client(
+                telemetry_enabled=True,
+                session_id_hex="thrift-session",
+                auth_provider=AccessTokenAuthProvider("token"),
+                host_url=host_url,
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+                client_context=MagicMock(),
+            )
+
+    @patch("databricks.sql.client.Session")
+    def test_kernel_connection_skips_python_telemetry_pipeline(self, mock_session):
+        """The kernel owns telemetry for use_kernel connections, so connect and
+        close must not start the Python factory (lock, flush thread, executor)."""
+        conn = self._kernel_connection(mock_session)
+
+        assert isinstance(conn._telemetry_client, NoopTelemetryClient)
+        assert TelemetryClientFactory._clients == {}
+        assert TelemetryClientFactory._initialized is False
+
+        conn.close()
+        assert TelemetryClientFactory._clients == {}
+        assert TelemetryClientFactory._initialized is False
+
+    @patch("databricks.sql.client.Session")
+    def test_kernel_connection_leaves_shared_host_client_alone(self, mock_session):
+        """A kernel connection must not take or drop a reference on the Python
+        client that a Thrift connection to the same host is using."""
+        self._init_python_client("test-host")
+        holder = TelemetryClientFactory._clients["test-host"]
+
+        conn = self._kernel_connection(mock_session)
+        assert holder.refcount == 1
+        conn.close()
+
+        assert holder.refcount == 1
+        assert TelemetryClientFactory._clients["test-host"] is holder
+
+    @patch("databricks.sql.client.Session")
+    def test_thrift_telemetry_after_kernel_connection_is_not_noop(self, mock_session):
+        """A kernel connection opened first must not leave a no-op client
+        registered for the host that later Thrift connections would reuse."""
+        conn = self._kernel_connection(mock_session)
+        self._init_python_client("test-host")
+
+        assert isinstance(
+            TelemetryClientFactory.get_telemetry_client("test-host"), TelemetryClient
+        )
+        conn.close()
+        TelemetryClientFactory.close(host_url="test-host")
+
 
 @patch("databricks.sql.client.Session")
 class TestTelemetryFeatureFlag:
