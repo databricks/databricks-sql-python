@@ -1,10 +1,21 @@
 from enum import Enum
 import logging
+import sys
 from typing import Optional, List
 from urllib.parse import urlparse
 from databricks.sql.common.http import HttpMethod
 
 logger = logging.getLogger(__name__)
+
+
+def is_token_federation_provider(auth_provider) -> bool:
+    """``isinstance(auth_provider, TokenFederationProvider)`` without importing
+    token federation (and jwt) just to learn that it isn't in use: an instance
+    can only exist once its module has been imported."""
+    module = sys.modules.get("databricks.sql.auth.token_federation")
+    return module is not None and isinstance(
+        auth_provider, module.TokenFederationProvider
+    )
 
 
 class AuthType(Enum):

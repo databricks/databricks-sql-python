@@ -80,7 +80,7 @@ from databricks.sql.auth.auth import (
     PYSQL_OAUTH_SCOPES,
 )
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
-from databricks.sql.auth.token_federation import TokenFederationProvider
+from databricks.sql.auth.common import is_token_federation_provider
 from databricks.sql.exc import NotSupportedError, ProgrammingError
 
 logger = logging.getLogger(__name__)
@@ -115,8 +115,8 @@ def _is_pat(auth_provider: Optional[AuthProvider]) -> bool:
     """
     if isinstance(auth_provider, AccessTokenAuthProvider):
         return True
-    if isinstance(auth_provider, TokenFederationProvider) and isinstance(
-        auth_provider.external_provider, AccessTokenAuthProvider
+    if is_token_federation_provider(auth_provider) and isinstance(
+        getattr(auth_provider, "external_provider", None), AccessTokenAuthProvider
     ):
         return True
     return False

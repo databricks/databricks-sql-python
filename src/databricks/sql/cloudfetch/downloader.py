@@ -11,7 +11,6 @@ from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.event import StatementType
-from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 if TYPE_CHECKING:
     # Imported for type annotations only. ``from __future__ import annotations``

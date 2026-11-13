@@ -34,24 +34,19 @@ from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     ExternalAuthProvider,
 )
-from databricks.sql.auth.token_federation import TokenFederationProvider
+from databricks.sql.auth.common import is_token_federation_provider
 import sys
 import platform
 import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
-from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.exc import RequestError
-from databricks.sql.telemetry.telemetry_push_client import (
-    ITelemetryPushClient,
-    TelemetryPushClient,
-    CircuitBreakerTelemetryPushClient,
-)
 from databricks.sql.common.url_utils import normalize_host_with_protocol
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
+    from databricks.sql.telemetry.telemetry_push_client import ITelemetryPushClient
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +85,7 @@ class TelemetryHelper:
 
         if not auth_provider:
             return None
-        if isinstance(auth_provider, TokenFederationProvider):
+        if is_token_federation_provider(auth_provider):
             return TelemetryHelper.get_auth_mechanism(auth_provider.external_provider)
         if isinstance(auth_provider, AccessTokenAuthProvider):
             return AuthMech.PAT
@@ -107,7 +102,7 @@ class TelemetryHelper:
 
         if not auth_provider:
             return None
-        if isinstance(auth_provider, TokenFederationProvider):
+        if is_token_federation_provider(auth_provider):
             return TelemetryHelper.get_auth_flow(auth_provider.external_provider)
         if isinstance(auth_provider, DatabricksOAuthProvider):
             if auth_provider._access_token and auth_provider._refresh_token:
@@ -213,6 +208,14 @@ class TelemetryClient(BaseTelemetryClient):
         self._host_url = host_url
         self._executor = executor
 
+        # Imported here, not at module load, so connect() paths that never
+        # export telemetry don't import urllib3 and pybreaker.
+        from databricks.sql.common.unified_http_client import UnifiedHttpClient
+        from databricks.sql.telemetry.telemetry_push_client import (
+            CircuitBreakerTelemetryPushClient,
+            TelemetryPushClient,
+        )
+
         # Create own HTTP client from client context
         self._http_client = UnifiedHttpClient(client_context)
 
@@ -220,7 +223,7 @@ class TelemetryClient(BaseTelemetryClient):
         if client_context.telemetry_circuit_breaker_enabled:
             # Create circuit breaker telemetry push client
             # (circuit breakers created on-demand)
-            self._telemetry_push_client: ITelemetryPushClient = (
+            self._telemetry_push_client: "ITelemetryPushClient" = (
                 CircuitBreakerTelemetryPushClient(
                     TelemetryPushClient(self._http_client),
                     host_url,

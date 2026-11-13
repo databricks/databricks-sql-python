@@ -72,10 +72,11 @@ from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
 
 from databricks.sql.auth.common import AuthType, ClientContext
-from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 
 if TYPE_CHECKING:
+    from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
     # Type-annotation-only imports (deferred by ``from __future__ import
     # annotations``). ``get_protocol_version`` and ``_prepare_native_parameters``
     # are typed with these Thrift-generated types, but the Thrift backend and
@@ -141,6 +142,11 @@ def __getattr__(name: str) -> Any:
         from databricks.sql.thrift_api.TCLIService import ttypes
 
         return getattr(ttypes, name)
+    if name == "UnifiedHttpClient":
+        # Same pattern, so kernel connections don't import urllib3.
+        from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
+        return UnifiedHttpClient
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -413,11 +419,14 @@ class Connection:
         )
 
         client_context = build_client_context(server_hostname, __version__, **kwargs)
-        # The kernel owns its HTTP transport.
+        # The kernel owns its HTTP transport. Resolved through the module so
+        # the class (and urllib3) load only when a connection needs it.
+        import databricks.sql.client as _client_module
+
         self.http_client: Optional[UnifiedHttpClient] = (
             None
             if kwargs.get("use_kernel", False)
-            else UnifiedHttpClient(client_context)
+            else _client_module.UnifiedHttpClient(client_context)
         )
 
         try:

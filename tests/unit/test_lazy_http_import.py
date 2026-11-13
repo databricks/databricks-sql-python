@@ -1,7 +1,9 @@
-"""Importing the connector must not import requests or the OAuth client libraries.
+"""Importing the connector must not import the Python HTTP and OAuth client stack.
 
-They are only needed by the auth flows and HTTP paths that use them. Each check runs
-in a fresh interpreter because ``sys.modules`` is process-global.
+requests, urllib3, oauthlib, jwt and pybreaker are only needed by the auth flows,
+the Python HTTP client and telemetry export that use them; a kernel connection uses
+none of them. Each check runs in a fresh interpreter because ``sys.modules`` is
+process-global.
 """
 
 import subprocess
@@ -17,10 +19,14 @@ MODULES = [
     "databricks.sql",
     "databricks.sql.client",
     "databricks.sql.session",
+    "databricks.sql.auth.auth",
     "databricks.sql.auth.authenticators",
     "databricks.sql.common.http",
+    "databricks.sql.cloudfetch.downloader",
+    "databricks.sql.telemetry.telemetry_client",
+    "databricks.sql.backend.kernel.client",
 ]
-UNWANTED = ["requests", "oauthlib"]
+UNWANTED = ["requests", "urllib3", "oauthlib", "jwt", "pybreaker"]
 
 
 @pytest.mark.parametrize("module_name", MODULES)
@@ -67,3 +73,37 @@ def test_oauth_provider_still_builds_its_manager():
             http_client=MagicMock(),
         )
     manager.assert_called_once()
+
+
+def test_token_federation_check_does_not_import_it():
+    script = """
+        import sys
+        from databricks.sql.auth.common import is_token_federation_provider
+        from databricks.sql.auth.authenticators import AccessTokenAuthProvider
+        assert not is_token_federation_provider(AccessTokenAuthProvider("t"))
+        assert "databricks.sql.auth.token_federation" not in sys.modules
+        """
+    proc = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(script)],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_token_federation_check_matches_real_providers():
+    from unittest.mock import MagicMock
+
+    from databricks.sql.auth.authenticators import AccessTokenAuthProvider
+    from databricks.sql.auth.common import is_token_federation_provider
+    from databricks.sql.auth.token_federation import TokenFederationProvider
+    from databricks.sql.telemetry.models.enums import AuthMech
+    from databricks.sql.telemetry.telemetry_client import TelemetryHelper
+
+    wrapped = TokenFederationProvider(
+        hostname="example.cloud.databricks.com",
+        external_provider=AccessTokenAuthProvider("t"),
+        http_client=MagicMock(),
+    )
+    assert is_token_federation_provider(wrapped)
+    assert TelemetryHelper.get_auth_mechanism(wrapped) == AuthMech.PAT

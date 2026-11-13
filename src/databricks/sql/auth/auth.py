@@ -8,7 +8,6 @@ from databricks.sql.auth.authenticators import (
     AzureServicePrincipalCredentialProvider,
 )
 from databricks.sql.auth.common import AuthType, ClientContext
-from databricks.sql.auth.token_federation import TokenFederationProvider
 
 
 def get_auth_provider(cfg: ClientContext, http_client):
@@ -67,6 +66,8 @@ def get_auth_provider(cfg: ClientContext, http_client):
 
     # Always wrap with token federation (falls back gracefully if not needed)
     if base_provider:
+        from databricks.sql.auth.token_federation import TokenFederationProvider
+
         return TokenFederationProvider(
             hostname=cfg.hostname,
             external_provider=base_provider,
