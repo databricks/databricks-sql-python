@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock, Mock, PropertyMock
 import itertools
 from decimal import Decimal
 from datetime import datetime, date
+from types import SimpleNamespace
 from uuid import UUID
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -170,6 +171,38 @@ class ClientTestSuite(unittest.TestCase):
         with self.assertRaises(Error) as cm:
             connection.cursor()
         self.assertIn("closed", str(cm.exception))
+
+    def test_connection_tracks_only_open_cursors(self):
+        thrift = patch("%s.session.ThriftDatabricksClient" % self.PACKAGE_NAME)
+        # session.py imports the kernel client lazily; a fake module keeps the
+        # test independent of the kernel wheel.
+        kernel = patch.dict(
+            sys.modules,
+            {
+                "%s.backend.kernel.client"
+                % self.PACKAGE_NAME: SimpleNamespace(KernelDatabricksClient=MagicMock())
+            },
+        )
+        for backend_patch, extra in ((thrift, {}), (kernel, {"use_kernel": True})):
+            with self.subTest(**extra), backend_patch:
+                connection = databricks.sql.connect(
+                    **self.DUMMY_CONNECTION_ARGS, **extra
+                )
+                for _ in range(3):
+                    with connection.cursor():
+                        pass
+                open_cursors = [connection.cursor(), connection.cursor()]
+                result_set = Mock()
+                open_cursors[0].active_result_set = result_set
+                closed_twice = connection.cursor()
+                closed_twice.close()
+                closed_twice.close()
+                self.assertEqual(list(connection._cursors), open_cursors)
+
+                connection.close()
+                self.assertFalse(any(cursor.open for cursor in open_cursors))
+                result_set.close.assert_called_once()
+                self.assertEqual(list(connection._cursors), [])
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     @patch("%s.client.Cursor" % PACKAGE_NAME)

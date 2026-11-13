@@ -407,7 +407,9 @@ class Connection:
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
-        self._cursors = []  # type: List[Cursor]
+        # Open cursors, in creation order. Cursor.close() removes its entry, so a
+        # long-lived connection does not keep every cursor it ever created.
+        self._cursors: Dict[Cursor, None] = {}
         self.telemetry_batch_size = kwargs.get(
             "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
@@ -755,7 +757,7 @@ class Connection:
             result_buffer_size_bytes=buffer_size_bytes,
             row_limit=row_limit,
         )
-        self._cursors.append(cursor)
+        self._cursors[cursor] = None
         return cursor
 
     def close(self) -> None:
@@ -764,7 +766,7 @@ class Connection:
 
     def _close(self, close_cursors=True) -> None:
         if close_cursors:
-            for cursor in self._cursors:
+            for cursor in list(self._cursors):
                 cursor.close()
 
         try:
@@ -1978,6 +1980,7 @@ class Cursor:
 
     def close(self) -> None:
         """Close cursor"""
+        self.connection._cursors.pop(self, None)
         self.open = False
         self.active_command_id = None
         if self.active_result_set:
