@@ -35,7 +35,6 @@ import databricks.sql as sql
 from databricks.sql.backend.types import CommandState
 from databricks.sql.exc import (
     DatabaseError,
-    NotSupportedError,
     OperationalError,
     ServerOperationError,
 )
@@ -861,30 +860,6 @@ def test_scientific_notation_decimal_parameter_binds(conn):
         # 1E+2 == 100, round-trips cleanly at scale 0.
         cur.execute("SELECT ? AS d", [DecimalParameter(decimal.Decimal("1E+2"))])
         assert int(cur.fetchall()[0][0]) == 100
-
-
-# ── Staging / volume — fail loud, not silent no-op ────────────────
-
-
-def test_staging_put_raises_not_supported(conn):
-    """A PUT (volume/staging) statement fails loud on the kernel path
-    rather than silently no-opping (which would make ETL ingest
-    stale/missing data). (CUJ-gap audit)"""
-    with conn.cursor() as cur:
-        with pytest.raises(NotSupportedError, match="staging"):
-            cur.execute("PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'")
-
-
-def test_comment_prefixed_staging_put_raises_not_supported(conn):
-    """A comment-prefixed staging op (common in ETL scripts) must also
-    fail loud — the leading-verb detection strips SQL comments first, so
-    it can't slip past into the silent-no-op bug (PR #825 review #1)."""
-    with conn.cursor() as cur:
-        with pytest.raises(NotSupportedError, match="staging"):
-            cur.execute(
-                "-- upload the daily extract\n"
-                "PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'"
-            )
 
 
 # ── Error fidelity — diagnostic-info reaches .context ─────────────

@@ -5,6 +5,8 @@ network and no Rust extension dependency."""
 from __future__ import annotations
 
 from collections import deque
+import errno
+import io
 from typing import Deque
 from unittest.mock import MagicMock
 
@@ -28,6 +30,7 @@ class _FakeKernelHandle:
         self._schema = schema
         self._batches: Deque[pa.RecordBatch] = deque(batches)
         self.closed = False
+        self.is_volume_operation = False
 
     def arrow_schema(self) -> pa.Schema:
         return self._schema
@@ -243,3 +246,90 @@ def test_close_skips_kernel_call_when_connection_already_closed(int_schema):
     # …but local state is still terminal so __del__ is idempotent:
     assert rs.status == CommandState.CLOSED
     assert rs.has_been_closed_server_side is True
+
+
+@pytest.mark.parametrize("data", [b"payload", b""])
+def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock(
+        side_effect=["needs_input_stream", "completed"]
+    )
+    rs = _make_rs(handle)
+    stream = io.BytesIO(data)
+    rs.complete_staging_operation("/allowed", stream)
+    assert stream.tell() == len(data)
+    assert handle.complete_volume_operation.call_args_list == [
+        ((["/allowed"],), {"input_bytes": None}),
+        ((["/allowed"],), {"input_bytes": data}),
+    ]
+    assert rs.fetchall() == []
+    rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
+
+
+@pytest.mark.parametrize("outcome", ["completed", "not_volume"])
+def test_volume_does_not_read_irrelevant_stream(int_schema, outcome):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.complete_volume_operation = MagicMock(return_value=outcome)
+    rs = _make_rs(handle)
+    stream = MagicMock()
+    rs.complete_staging_operation(None, stream)
+    stream.read.assert_not_called()
+    assert len(rs.fetchall()) == (1 if outcome == "not_volume" else 0)
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_volume_missing_or_failed_input_closes_without_masking_error(
+    int_schema, missing
+):
+    from databricks.sql.exc import ProgrammingError
+
+    handle = _FakeKernelHandle(int_schema, [])
+    handle.complete_volume_operation = MagicMock(return_value="needs_input_stream")
+    rs = _make_rs(handle)
+    error = RuntimeError("stream read failed")
+    stream = MagicMock()
+    stream.read.side_effect = error
+    with pytest.raises(ProgrammingError if missing else RuntimeError) as raised:
+        rs.complete_staging_operation([], None if missing else stream)
+    if not missing:
+        assert raised.value is error
+    assert handle.closed
+    handle.complete_volume_operation.assert_called_once()
+
+
+def test_volume_preserves_local_os_error_and_filename(int_schema):
+    handle = _FakeKernelHandle(int_schema, [])
+    error = RuntimeError("local file failure")
+    error.local_os_error = errno.ENOENT
+    error.local_path = "/allowed/missing"
+    handle.complete_volume_operation = MagicMock(side_effect=error)
+    rs = _make_rs(handle)
+    with pytest.raises(FileNotFoundError) as raised:
+        rs.complete_staging_operation(["/allowed"])
+    assert raised.value.errno == errno.ENOENT
+    assert raised.value.filename == "/allowed/missing"
+
+
+def test_volume_close_signals_backend_before_native_lock(int_schema):
+    handle = _FakeKernelHandle(int_schema, [])
+    rs = _make_rs(handle)
+    handle.close = MagicMock(
+        side_effect=lambda: rs.backend.close_command.assert_called_once_with(
+            rs.command_id
+        )
+    )
+    rs.close()
+    handle.close.assert_called_once()
+
+
+def test_volume_http_404_is_an_operational_error(int_schema):
+    from databricks.sql.exc import OperationalError
+
+    handle = _FakeKernelHandle(int_schema, [])
+    error = RuntimeError("storage response")
+    error.http_status = 404
+    handle.complete_volume_operation = MagicMock(side_effect=error)
+    rs = _make_rs(handle)
+    with pytest.raises(OperationalError, match="404"):
+        rs.complete_staging_operation([])
