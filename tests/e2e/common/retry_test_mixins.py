@@ -1,4 +1,4 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import threading
 import time
 from typing import Optional, List
@@ -21,7 +21,7 @@ from databricks.sql.exc import (
 
 @contextmanager
 def _mock_pool_method(method_name):
-    """Mock synchronous test requests without intercepting background telemetry."""
+    """Mock the calling test thread; worker threads use the original pool methods."""
     original = getattr(HTTPSConnectionPool, method_name)
     test_thread = threading.current_thread()
     mock_method = MagicMock()
@@ -31,7 +31,19 @@ def _mock_pool_method(method_name):
             return mock_method(*args, **kwargs)
         return original(pool, *args, **kwargs)
 
-    with patch.object(HTTPSConnectionPool, method_name, dispatch):
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(HTTPSConnectionPool, method_name, dispatch))
+        if method_name == "_get_conn":
+            original_put = HTTPSConnectionPool._put_conn
+
+            def put_connection(pool, connection):
+                # Fake acquisition never removed a slot from the real queue.
+                if connection is not mock_method.return_value:
+                    return original_put(pool, connection)
+
+            stack.enter_context(
+                patch.object(HTTPSConnectionPool, "_put_conn", put_connection)
+            )
         yield mock_method
 
 

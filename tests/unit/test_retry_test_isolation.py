@@ -19,6 +19,7 @@ from tests.e2e.common.retry_test_mixins import (
 @contextmanager
 def _offline_pool():
     connection = MagicMock()
+    connection.sock = None
     connection.close.return_value = None
     connection.getresponse.side_effect = lambda: SimpleHttpResponse(200, {})
     with HTTPSConnectionPool("example.invalid") as pool, patch.object(
@@ -86,3 +87,44 @@ def test_background_telemetry_does_not_receive_retry_errors(pending_telemetry):
         with pytest.raises(MaxRetryError):
             pool.urlopen("POST", "/sql", retries=Retry(total=1, allowed_methods=None))
         assert validate.call_count == 2
+
+
+def test_mocked_connections_do_not_leak_into_a_shared_pool():
+    ready, release = Event(), Event()
+    responses = [
+        {"status": 429, "headers": {"Retry-After": "0"}, "redirect_location": None},
+        {"status": 503, "headers": {}, "redirect_location": None},
+    ]
+    with _offline_pool() as pool, ThreadPoolExecutor(max_workers=1) as executor:
+        connection = pool._new_conn.return_value
+
+        def new_connection():
+            # Hold the real pool's slot while the test sends mocked requests.
+            ready.set()
+            assert release.wait(timeout=5)
+            return connection
+
+        def send():
+            return [
+                pool.urlopen("POST", "/telemetry-ext", retries=False).status
+                for _ in range(2)
+            ]
+
+        pool._new_conn.side_effect = new_connection
+        future = executor.submit(send)
+        assert ready.wait(timeout=5)
+        try:
+            with mock_sequential_server_responses(responses) as mocked_connection:
+                with pytest.raises(MaxRetryError):
+                    pool.urlopen(
+                        "POST",
+                        "/sql",
+                        retries=Retry(
+                            total=1, status_forcelist=[429, 503], allowed_methods=None
+                        ),
+                    )
+                release.set()
+                assert future.result(timeout=5) == [200, 200]
+                assert mocked_connection.return_value.getresponse.call_count == 2
+        finally:
+            release.set()
