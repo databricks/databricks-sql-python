@@ -37,10 +37,18 @@ def test_module_does_not_import_http_client_libraries(module_name):
         import sys
         try:
             import {module_name}  # noqa: F401
-        except ModuleNotFoundError as e:
-            if e.name not in {_OPTIONAL_DEPS!r}:
+        except ImportError as e:
+            # The kernel backend re-raises a missing wheel as a friendlier
+            # ImportError, so look for the missing extra along the chain.
+            cause = e
+            while cause is not None and not (
+                isinstance(cause, ModuleNotFoundError)
+                and cause.name in {_OPTIONAL_DEPS!r}
+            ):
+                cause = cause.__cause__ or cause.__context__
+            if cause is None:
                 raise
-            print(e.name)
+            print(cause.name)
             sys.exit({_MISSING_OPTIONAL_DEP})
         loaded = [m for m in {UNWANTED!r} if m in sys.modules]
         print(loaded)
