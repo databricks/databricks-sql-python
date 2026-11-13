@@ -249,7 +249,8 @@ are forwarded when supported by the installed kernel binding.
 ### Volume file paths
 
 With `use_kernel=True`, SQL `PUT`, `GET` and `REMOVE` complete their file
-operations before execution returns. `PUT` and `GET` require paths within
+operations before `execute()` or `get_async_execution_result()` returns.
+`PUT` and `GET` require paths within
 `staging_allowed_local_path`. Both the requested path and its resolved target
 must lie within a configured root. Symlinks within those roots are permitted;
 symlinks leading outside are rejected. This is stricter than the Thrift
