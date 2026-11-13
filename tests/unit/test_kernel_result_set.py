@@ -298,8 +298,9 @@ def test_volume_missing_or_failed_input_closes_without_masking_error(
     handle.complete_volume_operation.assert_called_once()
 
 
-def test_volume_preserves_local_os_error_and_filename(int_schema):
-    handle = _FakeKernelHandle(int_schema, [])
+def test_failed_volume_consumes_instructions_and_preserves_os_error(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
     error = RuntimeError("local file failure")
     error.local_os_error = errno.ENOENT
     error.local_path = "/allowed/missing"
@@ -309,6 +310,8 @@ def test_volume_preserves_local_os_error_and_filename(int_schema):
         rs.complete_staging_operation(["/allowed"])
     assert raised.value.errno == errno.ENOENT
     assert raised.value.filename == "/allowed/missing"
+    assert rs.fetchall() == []
+    rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
 
 
 def test_volume_close_signals_backend_before_native_lock(int_schema):
