@@ -28,16 +28,28 @@ def _run(script: str) -> subprocess.CompletedProcess:
     )
 
 
+# Sentinel exit codes, distinct from the 1 of an uncaught exception.
+_NO_PANDAS, _PANDAS_LOADED, _IMPORT_FAILED = 10, 11, 12
+
+
 @pytest.mark.parametrize("module_name", CONNECT_PATH_MODULES)
 def test_connect_path_does_not_import_pandas(module_name):
     proc = _run(f"""
         import sys
-        import {module_name}  # noqa: F401
-        sys.exit(1 if "pandas" in sys.modules else 0)
+        try:
+            import {module_name}  # noqa: F401
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            sys.exit({_IMPORT_FAILED})
+        sys.exit({_PANDAS_LOADED} if "pandas" in sys.modules else {_NO_PANDAS})
         """)
-    if proc.returncode not in (0, 1):
+    if proc.returncode == _IMPORT_FAILED:
         pytest.skip(f"{module_name} not importable here:\n{proc.stderr}")
-    assert proc.returncode == 0, f"importing {module_name} imported pandas"
+    assert proc.returncode != _PANDAS_LOADED, f"importing {module_name} imported pandas"
+    assert (
+        proc.returncode == _NO_PANDAS
+    ), f"unexpected exit {proc.returncode}:\n{proc.stderr}"
 
 
 def test_row_conversion_imports_pandas_on_first_use():
