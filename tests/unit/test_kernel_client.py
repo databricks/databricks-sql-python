@@ -344,6 +344,58 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
     assert captured.get("complex_types_as_json") is expected_flag
 
 
+@pytest.mark.parametrize(
+    "kwargs, configuration, expected",
+    [
+        ({}, {"TIMEZONE": "UTC"}, {"TIMEZONE": "UTC"}),
+        (
+            {"use_cloud_fetch": True},
+            {"can_cloud_download": "false"},
+            {"can_cloud_download": "false"},
+        ),
+        ({"use_cloud_fetch": False}, None, {"cloudfetch_enabled": "false"}),
+        (
+            {"use_cloud_fetch": False},
+            {"TIMEZONE": "UTC"},
+            {"TIMEZONE": "UTC", "cloudfetch_enabled": "false"},
+        ),
+        (
+            {"use_cloud_fetch": False},
+            {"can_cloud_download": "true"},
+            {"can_cloud_download": "true", "cloudfetch_enabled": "false"},
+        ),
+        (
+            {"use_cloud_fetch": False},
+            {"CLOUDFETCH_ENABLED": "true", "cloudfetch_enabled": "true"},
+            {"CLOUDFETCH_ENABLED": "true", "cloudfetch_enabled": "false"},
+        ),
+    ],
+)
+def test_open_session_honors_cloudfetch_option(
+    monkeypatch, kwargs, configuration, expected
+):
+    captured = {}
+
+    def fake_session(**options):
+        captured.update(options)
+        session = MagicMock()
+        session.session_id = "sess-id"
+        return session
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        **kwargs,
+    )
+    original = dict(configuration) if configuration is not None else None
+    client.open_session(configuration, catalog=None, schema=None)
+    assert captured["session_conf"] == expected
+    assert configuration == original
+
+
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
 def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     captured = {}

@@ -308,6 +308,7 @@ class KernelDatabricksClient(DatabricksClient):
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
+        self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         # Opt-in native GEOMETRY / GEOGRAPHY support. True requests
         # the canonical Arrow struct and surfaces as ``{"srid": int, "wkb":
         # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
@@ -408,12 +409,13 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> SessionId:
         if self._kernel_session is not None:
             raise InterfaceError("KernelDatabricksClient already has an open session.")
-        # ``session_configuration`` flows through to the kernel's
-        # ``session_conf`` map verbatim; the SEA endpoint enforces
-        # its own allow-list and rejects unknown keys.
+        # The kernel consumes client settings locally before forwarding server parameters.
         session_conf: Optional[Dict[str, str]] = None
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
+        if not self._use_cloud_fetch:
+            session_conf = session_conf or {}
+            session_conf["cloudfetch_enabled"] = "false"
         # The kwarg builds run INSIDE the try so the ``finally`` scrub
         # below always fires — including when ``kernel_auth_kwargs``
         # itself raises mid-build (e.g. an OAuth token-exchange failure
