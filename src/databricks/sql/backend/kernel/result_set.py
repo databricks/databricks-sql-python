@@ -111,10 +111,13 @@ class KernelResultSet(ResultSet):
         paths = (
             [allowed_paths] if isinstance(allowed_paths, str) else (allowed_paths or [])
         )
+        consume_instructions = self.is_staging_operation
         try:
             outcome = self._complete_volume_operation(paths)
             if outcome == "not_volume":
+                consume_instructions = False
                 return
+            consume_instructions = True
             if outcome == "needs_input_stream":
                 try:
                     if input_stream is None:
@@ -128,12 +131,14 @@ class KernelResultSet(ResultSet):
                 outcome = self._complete_volume_operation(paths, data)
             if outcome != "completed":
                 raise ProgrammingError("Volume operation did not complete")
-            self._buffer.clear()
-            self._buffered_count = 0
-            self._exhausted = True
-            self.has_more_rows = False
             self.status = CommandState.SUCCEEDED
         finally:
+            if consume_instructions:
+                self._buffer.clear()
+                self._buffer_offset = 0
+                self._buffered_count = 0
+                self._exhausted = True
+                self.has_more_rows = False
             cast("KernelDatabricksClient", self.backend).finish_volume_operation(
                 self.command_id
             )
