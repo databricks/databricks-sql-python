@@ -18,7 +18,7 @@ from databricks.sql.common.optional_pyarrow import optional_pyarrow
 if TYPE_CHECKING:
     import pyarrow
 else:
-    pyarrow = optional_pyarrow()
+    pyarrow = optional_pyarrow(globals())
 import json
 import os
 import decimal

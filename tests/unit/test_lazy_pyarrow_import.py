@@ -121,6 +121,36 @@ def test_lazy_pyarrow_resolves_to_the_real_module():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_first_use_rebinds_the_modules_to_the_real_pyarrow():
+    # After the first read, hot-path reads go to the real module, not the
+    # stand-in's __getattr__.
+    proc = _run("""
+        import databricks.sql.client as client
+        import databricks.sql.result_set as result_set
+        import databricks.sql.utils as utils
+
+        stand_in = utils.pyarrow
+        assert "pyarrow" not in sys.modules
+        assert all(m.pyarrow is stand_in for m in (client, result_set))
+        stand_in.Table
+        real = sys.modules["pyarrow"]
+        assert all(m.pyarrow is real for m in (client, utils, result_set))
+        assert stand_in.Table is real.Table
+        """)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_rebinding_leaves_a_replaced_global_alone(monkeypatch):
+    stand_in = optional_pyarrow_module._LazyPyarrow("pyarrow")
+    replaced, holding = {"pyarrow": "patched"}, {"pyarrow": stand_in}
+    monkeypatch.setattr(optional_pyarrow_module, "_NAMESPACES", [replaced, holding])
+    import pyarrow
+
+    assert stand_in.Table is pyarrow.Table
+    assert holding["pyarrow"] is pyarrow
+    assert replaced["pyarrow"] == "patched"
+
+
 def test_optional_pyarrow_is_none_when_not_installed(monkeypatch):
     monkeypatch.setitem(sys.modules, "pyarrow", None)
     monkeypatch.setattr(
