@@ -122,3 +122,15 @@ def test_optional_pyarrow_is_none_when_not_installed(monkeypatch):
         optional_pyarrow_module.importlib.util, "find_spec", lambda name: None
     )
     assert optional_pyarrow() is None
+
+
+def test_unimportable_pyarrow_raises_attribute_error(monkeypatch):
+    def broken(name):
+        raise ImportError("numpy ABI mismatch")
+
+    monkeypatch.setattr(optional_pyarrow_module.importlib, "import_module", broken)
+    lazy = optional_pyarrow_module._LazyPyarrow("pyarrow")
+    assert not hasattr(lazy, "Table")
+    assert getattr(lazy, "Table", None) is None
+    with pytest.raises(AttributeError, match="numpy ABI mismatch"):
+        lazy.Table
