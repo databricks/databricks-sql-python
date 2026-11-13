@@ -1007,72 +1007,6 @@ def test_execute_command_forwards_row_limit(row_limit):
 
 
 # ---------------------------------------------------------------------------
-# Staging / volume operations — fail loud (not silently no-op)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        "PUT '/local/f.csv' INTO '/Volumes/c/s/v/f.csv'",
-        "  put '/local/f' into '/Volumes/...'",  # leading ws + lowercase
-        "GET '/Volumes/c/s/v/f' TO '/local/f'",
-        "REMOVE '/Volumes/c/s/v/f'",
-    ],
-)
-def test_staging_operation_raises_not_supported(operation):
-    """Volume/staging PUT/GET/REMOVE must FAIL LOUD on the kernel path
-    (the kernel can't perform the presigned-URL transfer; silently
-    no-opping would make ETL ingest stale/missing data)."""
-    c = _make_client()
-    c._kernel_session = MagicMock()
-    cursor = MagicMock()
-    cursor.arraysize = 100
-    cursor.buffer_size_bytes = 1024
-
-    with pytest.raises(NotSupportedError, match="staging"):
-        c.execute_command(
-            operation=operation,
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            lz4_compression=False,
-            cursor=cursor,
-            use_cloud_fetch=False,
-            parameters=[],
-            async_op=False,
-            enforce_embedded_schema_correctness=False,
-        )
-
-
-@pytest.mark.parametrize(
-    "operation, is_staging",
-    [
-        ("PUT '/f' INTO '/v'", True),
-        ("get '/v' to '/f'", True),
-        ("REMOVE '/v'", True),
-        # Comment-prefixed staging ops MUST still be caught — otherwise
-        # they slip into the silent-no-op bug this guard exists to close
-        # (regression: review #1 on PR #825). ETL scripts commonly
-        # prefix statements with comments.
-        ("-- upload the file\nPUT '/f' INTO '/v'", True),
-        ("/* staging */ PUT '/f' INTO '/v'", True),
-        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", True),  # mixed, multiple
-        ("   \n\t PUT '/f' INTO '/v'", True),  # leading whitespace only
-        ("SELECT 'GET' AS x", False),  # word appears but not leading verb
-        ("SELECT * FROM puts", False),
-        ("-- PUT in a comment\nSELECT 1", False),  # verb only in comment
-        ("/* PUT */ SELECT 1", False),
-        ("INSERT INTO t VALUES (1)", False),
-        ("", False),
-        ("-- just a comment", False),  # comment only, no statement
-    ],
-)
-def test_is_staging_statement(operation, is_staging):
-    assert kernel_client._is_staging_statement(operation) is is_staging
-
-
-# ---------------------------------------------------------------------------
 # Sync cancel wiring (cursor.cancel() during a blocking execute())
 # ---------------------------------------------------------------------------
 
@@ -1140,6 +1074,7 @@ def test_execute_command_registers_and_clears_sync_canceller():
             )
         return MagicMock(
             statement_id="stmt-id",
+            is_volume_operation=False,
             arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
         )
 
@@ -2781,3 +2716,32 @@ class TestKernelHttpHeadersForwarding:
             monkeypatch, [("Authorization", "Bearer x"), ("x-databricks-org-id", "1")]
         )
         assert "http_headers" not in captured
+
+
+@pytest.mark.parametrize("is_volume", [False, True])
+def test_sync_volume_canceller_survives_until_completion(is_volume):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    stmt = c._kernel_session.statement.return_value
+    stmt.execute.return_value = MagicMock(
+        statement_id="volume-id",
+        is_volume_operation=is_volume,
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    result = c.execute_command(
+        operation="/* command */ PUT '/local/f' INTO '/Volumes/c/s/v/f'",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=MagicMock(arraysize=100, buffer_size_bytes=1024),
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+    assert result.is_staging_operation is is_volume
+    c.cancel_command(result.command_id)
+    assert stmt.canceller.return_value.cancel.called is is_volume
+    c.finish_volume_operation(result.command_id)
+    assert not c._volume_handles

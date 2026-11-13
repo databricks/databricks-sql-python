@@ -4,6 +4,7 @@ from unittest.mock import patch, Mock, MagicMock
 import pytest
 
 import databricks.sql.client as client
+from databricks.sql.result_set import ResultSet
 
 
 class TestStreamingPut:
@@ -15,7 +16,7 @@ class TestStreamingPut:
 
     def _setup_mock_staging_put_stream_response(self, mock_backend):
         """Helper method to set up mock staging PUT stream response."""
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=ResultSet)
         mock_result_set.is_staging_operation = True
         mock_backend.execute_command.return_value = mock_result_set
 

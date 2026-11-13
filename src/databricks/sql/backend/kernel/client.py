@@ -16,8 +16,6 @@ Phase 1 gaps documented in the integration design:
 
 - ``query_tags`` on execute is not supported (kernel exposes
   ``statement_conf`` but PyO3 doesn't surface it).
-- Volume PUT/GET (staging operations): kernel has no Volume API
-  yet. Users on Thrift-only paths.
 """
 
 from __future__ import annotations
@@ -35,6 +33,7 @@ from typing import (
     Optional,
     Set,
     TYPE_CHECKING,
+    Tuple,
     Union,
 )
 
@@ -84,41 +83,6 @@ logger = logging.getLogger(__name__)
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
-# Leading verbs of SQL volume/staging statements. Detected by the
-# leading token (case-insensitive) so the kernel backend can fail loud
-# on staging ops it can't service — see ``execute_command``.
-_STAGING_VERBS = ("PUT", "GET", "REMOVE")
-
-
-def _strip_leading_sql_comments(sql: str) -> str:
-    """Strip leading whitespace and SQL comments (``-- …`` line and
-    ``/* … */`` block, possibly several) from ``sql``, returning the
-    remainder.
-
-    Needed so staging detection sees the real leading verb: a
-    comment-prefixed staging op (``-- upload\\nPUT …`` or
-    ``/* c */ PUT …``, common in ETL scripts) must still be classified
-    as staging, or it would slip past the guard into the silent-no-op
-    bug. Block comments do not nest in Databricks SQL, so a simple
-    scan-to-``*/`` is correct.
-    """
-    i = 0
-    n = len(sql)
-    while i < n:
-        if sql[i].isspace():
-            i += 1
-        elif sql.startswith("--", i):
-            # Line comment: skip to end of line (or string).
-            nl = sql.find("\n", i)
-            i = n if nl == -1 else nl + 1
-        elif sql.startswith("/*", i):
-            # Block comment: skip to closing */ (or end if unterminated).
-            close = sql.find("*/", i + 2)
-            i = n if close == -1 else close + 2
-        else:
-            break
-    return sql[i:]
-
 
 def _is_not_found(exc: BaseException) -> bool:
     """True iff ``exc`` is a kernel ``NotFound`` error (HTTP 404 /
@@ -153,21 +117,6 @@ def _catalog_or_none(value: Optional[str]) -> Optional[str]:
     if value is None or value in ("%", "*"):
         return None
     return value
-
-
-def _is_staging_statement(operation: str) -> bool:
-    """True iff ``operation`` is a volume/staging statement (PUT / GET /
-    REMOVE).
-
-    Strips leading whitespace + SQL comments first (so a comment-
-    prefixed staging op is still caught), then matches the leading token
-    only — so a normal query that merely *contains* the word (e.g.
-    ``SELECT 'GET' AS x``) isn't misflagged.
-    """
-    stripped = _strip_leading_sql_comments(operation)
-    # First whitespace-delimited token, uppercased.
-    verb = stripped.split(None, 1)[0].upper() if stripped.strip() else ""
-    return verb in _STAGING_VERBS
 
 
 class _KernelSessionParameterSupport(NamedTuple):
@@ -436,6 +385,8 @@ class KernelDatabricksClient(DatabricksClient):
         # Guarded by its own lock — cancel can race execute teardown.
         self._sync_cancellers: Dict[int, Any] = {}
         self._sync_cancellers_lock = threading.RLock()
+        # Retain the mutable owner until its transfer completes; dropping it cancels the result.
+        self._volume_handles: Dict[str, Tuple[Any, Any]] = {}
 
     # ── Session lifecycle ──────────────────────────────────────────
 
@@ -565,6 +516,19 @@ class KernelDatabricksClient(DatabricksClient):
     def close_session(self, session_id: SessionId) -> None:
         if self._kernel_session is None:
             return
+        with self._sync_cancellers_lock:
+            cancellers = list(self._sync_cancellers.values()) + [
+                entry[1] for entry in self._volume_handles.values()
+            ]
+            self._sync_cancellers.clear()
+            self._volume_handles.clear()
+        for canceller in cancellers:
+            try:
+                canceller.cancel()
+            except Exception:
+                logger.debug(
+                    "Statement cancellation during session close failed", exc_info=True
+                )
         # Close any tracked async handles first so they fire their
         # server-side CloseStatement before the session goes away.
         with self._async_handles_lock:
@@ -633,24 +597,6 @@ class KernelDatabricksClient(DatabricksClient):
         # ``_async_statements`` and closed by ``close_command``); the sync
         # path drops it in finally. ``close_stmt`` is the post-success
         # decision flag — it stays True on sync, flips to False on async.
-        # Volume/staging (PUT/GET/REMOVE) is not supported on the kernel
-        # path: the kernel returns the staging control row as a normal
-        # result set (``KernelResultSet.is_staging_operation`` is always
-        # False), so the connector's ``_handle_staging_operation`` never
-        # fires and NO file is transferred. Rather than silently no-op
-        # (the Thrift path performs the presigned-URL upload/download),
-        # fail loud at the call site so ETL scripts don't ingest
-        # stale/missing data. Detected by the leading SQL verb — the
-        # only signal available pre-execute, since the kernel exposes no
-        # staging marker today.
-        if _is_staging_statement(operation):
-            raise NotSupportedError(
-                "Volume / staging operations (PUT / GET / REMOVE) are not "
-                "supported on the kernel backend (use_kernel=True); the file "
-                "transfer would silently not happen. Use the Thrift backend "
-                "for staging operations."
-            )
-
         close_stmt = True
         try:
             try:
@@ -692,6 +638,13 @@ class KernelDatabricksClient(DatabricksClient):
                     # Canceller is best-effort; never block execute on it.
                     pass
                 executed = stmt.execute()
+                if executed.is_volume_operation:
+                    command_id = CommandId.from_sea_statement_id(executed.statement_id)
+                    with self._sync_cancellers_lock:
+                        self._volume_handles[command_id.guid] = (
+                            stmt,
+                            self._sync_cancellers[id(cursor)],
+                        )
                 # Execute succeeded: the kernel now owns the statement
                 # lifecycle. It auto-closes the server statement when the
                 # result stream is fully drained (``ExecutedStatement::
@@ -764,16 +717,22 @@ class KernelDatabricksClient(DatabricksClient):
         try:
             return self._make_result_set(executed, cursor, command_id)
         except Exception as exc:
+            self.finish_volume_operation(command_id)
             raise _wrap_kernel_exception("execute_command", exc) from exc
 
+    def finish_volume_operation(self, command_id: CommandId) -> None:
+        with self._sync_cancellers_lock:
+            self._volume_handles.pop(command_id.guid, None)
+
     def cancel_command(self, command_id: CommandId) -> None:
-        with self._async_handles_lock:
-            handle = self._async_handles.get(command_id.guid)
+        with self._sync_cancellers_lock:
+            volume = self._volume_handles.get(command_id.guid)
+        handle = volume[1] if volume is not None else None
         if handle is None:
-            # Sync-execute paths fully materialise the result before
-            # ``execute_command`` returns, so by the time
-            # cancel_command can fire there's nothing in flight.
-            # Match the Thrift backend's tolerant behaviour.
+            with self._async_handles_lock:
+                handle = self._async_handles.get(command_id.guid)
+        if handle is None:
+            # Completed synchronous operations have no retained canceller.
             logger.debug("cancel_command: no in-flight async handle for %s", command_id)
             return
         try:
@@ -822,6 +781,13 @@ class KernelDatabricksClient(DatabricksClient):
         return True
 
     def close_command(self, command_id: CommandId) -> None:
+        with self._sync_cancellers_lock:
+            volume = self._volume_handles.pop(command_id.guid, None)
+        if volume is not None:
+            try:
+                volume[1].cancel()
+            except Exception:
+                logger.debug("Volume cancellation during close failed", exc_info=True)
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)

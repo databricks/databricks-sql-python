@@ -409,6 +409,14 @@ class ClientTestSuite(unittest.TestCase):
                 for k, v in req_args.items():
                     self.assertEqual(v, call_args[k])
 
+    def test_staging_uses_native_completion_without_fetching_instructions(self):
+        cursor = client.Cursor(Mock(), Mock())
+        result = Mock(spec=["complete_staging_operation"])
+        cursor.active_result_set = result
+        stream = Mock()
+        cursor._handle_staging_operation("/allowed", stream)
+        result.complete_staging_operation.assert_called_once_with("/allowed", stream)
+
     def test_cancel_command_calls_the_backend(self):
         mock_thrift_backend = Mock()
         cursor = client.Cursor(Mock(), mock_thrift_backend)
