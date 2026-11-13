@@ -15,7 +15,7 @@ from databricks.sql.common.optional_pyarrow import optional_pyarrow
 pytest.importorskip("pyarrow")
 
 # Sentinel exit codes, distinct from the 1 of an uncaught exception.
-_CLEAN, _LOADED, _IMPORT_FAILED = 10, 11, 12
+_CLEAN, _LOADED = 10, 11
 UNWANTED = ["pyarrow", "numpy", "pandas"]
 
 # Stand-in for the kernel wheel so a kernel connect() runs without a server.
@@ -50,19 +50,14 @@ def _run(body: str) -> subprocess.CompletedProcess:
     ],
 )
 def test_connect_path_modules_do_not_import_pyarrow(module_name):
+    # The kernel wheel is faked and pyarrow is present, so any import error is
+    # a real failure (exit 1), never a skip.
     proc = _run(f"""
-        try:
-            import {module_name}  # noqa: F401
-        except BaseException:
-            import traceback
-            traceback.print_exc()
-            sys.exit({_IMPORT_FAILED})
+        import {module_name}  # noqa: F401
         loaded = [m for m in {UNWANTED!r} if m in sys.modules]
         print(loaded)
         sys.exit({_LOADED} if loaded else {_CLEAN})
         """)
-    if proc.returncode == _IMPORT_FAILED:
-        pytest.skip(f"{module_name} not importable here:\n{proc.stderr}")
     assert proc.returncode != _LOADED, f"importing {module_name} loaded {proc.stdout}"
     assert (
         proc.returncode == _CLEAN
