@@ -1,10 +1,12 @@
 from contextlib import contextmanager
+import threading
 import time
 from typing import Optional, List
 from unittest.mock import MagicMock, PropertyMock, patch
 import io
 
 import pytest
+from urllib3.connectionpool import HTTPSConnectionPool
 from urllib3.exceptions import MaxRetryError
 
 from databricks.sql.auth.retry import DatabricksRetryPolicy
@@ -15,97 +17,22 @@ from databricks.sql.exc import (
     SessionAlreadyClosedError,
     UnsafeToRetryError,
 )
-from databricks.sql.telemetry.telemetry_client import (
-    NoopTelemetryClient,
-    TelemetryClient,
-    TelemetryClientFactory,
-    _TelemetryClientHolder,
-)
 
 
 @contextmanager
-def _isolated_from_telemetry():
-    # Tests that mock urllib3 globally (via _get_conn / _validate_conn) also
-    # intercept background telemetry pushes from the shared
-    # TelemetryClientFactory executor — inflating mock.call_count and breaking
-    # assertions like `call_count == 6`. Three layers of defence:
-    #
-    #   1. Drain TelemetryClientFactory and override initialize_telemetry_client
-    #      so new connections install NoopTelemetryClient (which submits nothing).
-    #   2. Patch TelemetryClient._send_telemetry to a no-op as a backstop — covers
-    #      any real TelemetryClient instance that slips in (e.g. a stale module-
-    #      global, a code path that bypasses initialize_telemetry_client, or
-    #      anything created before this context entered).
-    #   3. Patch TelemetryClient._export_event to a no-op so even if a real
-    #      client receives an event, the event never reaches the queue and the
-    #      flush logic never fires.
-    #
-    # Without layer 2/3 we have observed `/telemetry-ext` requests showing up
-    # in merge_group runs (concurrent CI load on the warehouse stresses paths
-    # that single-test runs don't hit), inflating retry-test counts and
-    # producing flaky AssertionErrors.
-    with TelemetryClientFactory._lock:
-        saved_clients = TelemetryClientFactory._clients
-        saved_executor = TelemetryClientFactory._executor
-        saved_initialized = TelemetryClientFactory._initialized
-        for holder in list(saved_clients.values()):
-            try:
-                holder.client.close()
-            except Exception:
-                pass
-        if saved_executor is not None:
-            try:
-                TelemetryClientFactory._stop_flush_thread()
-                saved_executor.shutdown(wait=True)
-            except Exception:
-                pass
-        TelemetryClientFactory._clients = {}
-        TelemetryClientFactory._executor = None
-        TelemetryClientFactory._initialized = False
+def _mock_pool_method(method_name):
+    """Mock synchronous test requests without intercepting background telemetry."""
+    original = getattr(HTTPSConnectionPool, method_name)
+    test_thread = threading.current_thread()
+    mock_method = MagicMock()
 
-    def _install_noop(*args, host_url=None, **kwargs):
-        host_url = TelemetryClientFactory.getHostUrlSafely(host_url)
-        with TelemetryClientFactory._lock:
-            TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
-                NoopTelemetryClient()
-            )
+    def dispatch(pool, *args, **kwargs):
+        if threading.current_thread() is test_thread:
+            return mock_method(*args, **kwargs)
+        return original(pool, *args, **kwargs)
 
-    def _noop_send(self, events):
-        return None
-
-    def _noop_export(self, event):
-        return None
-
-    try:
-        def _noop_send_with_unified_client(self, *args, **kwargs):
-            return None
-
-        with patch.object(
-            TelemetryClientFactory,
-            "initialize_telemetry_client",
-            staticmethod(_install_noop),
-        ), patch.object(
-            TelemetryClient, "_send_telemetry", _noop_send
-        ), patch.object(
-            TelemetryClient, "_export_event", _noop_export
-        ), patch.object(
-            # Backstop layer 4: no-op the actual HTTP boundary. _send_telemetry
-            # only suppresses NEW submissions; a future already submitted (e.g. by
-            # the holder.client.close() flush above, which runs before these
-            # patches apply) still calls _send_with_unified_client on a background
-            # thread and would hit the network inside the test's urllib3 mock.
-            # Patching the HTTP method itself closes that already-submitted-future
-            # gap for any caller of this helper.
-            TelemetryClient,
-            "_send_with_unified_client",
-            _noop_send_with_unified_client,
-        ):
-            yield
-    finally:
-        with TelemetryClientFactory._lock:
-            TelemetryClientFactory._clients = saved_clients
-            TelemetryClientFactory._executor = saved_executor
-            TelemetryClientFactory._initialized = saved_initialized
+    with patch.object(HTTPSConnectionPool, method_name, dispatch):
+        yield mock_method
 
 
 class Client429ResponseMixin:
@@ -260,7 +187,7 @@ def mocked_server_response(
     
     mock_response = SimpleHttpResponse(status, headers, redirect_location)
 
-    with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
+    with _mock_pool_method("_get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
         try:
             yield getconn_mock
@@ -288,7 +215,7 @@ def mock_sequential_server_responses(responses: List[dict]):
         for resp in responses
     ]
 
-    with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
+    with _mock_pool_method("_get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.side_effect = mock_responses
         try:
             yield getconn_mock
@@ -306,21 +233,7 @@ class PySQLRetryTestsMixin:
         "_retry_stop_after_attempts_count": 5,
         "_retry_stop_after_attempts_duration": 30,
         "_retry_delay_default": 0.5,
-        # Disable telemetry on every retry-count test. These tests patch urllib3
-        # globally (HTTPSConnectionPool._get_conn / _validate_conn) and assert the
-        # connection's own request was retried exactly N times. With telemetry on
-        # (the default), the same connection makes two kinds of side-channel HTTP
-        # calls through the same mocked pool that inflate the count and flake the
-        # assertion:
-        #   1. A synchronous feature-flag GET during Connection.__init__
-        #      (is_telemetry_enabled -> FeatureFlagsContext._refresh_flags), and
-        #   2. Async telemetry POSTs to /telemetry-ext from the background executor
-        #      and the periodic flush thread.
-        # enable_telemetry=False short-circuits is_telemetry_enabled before the
-        # feature-flag fetch and installs a NoopTelemetryClient, removing both
-        # sources at their origin without changing the retry behavior under test.
-        # Every test in this mixin merges _retry_policy into its connection params,
-        # so setting it here covers them all. See also _isolated_from_telemetry().
+        # Avoid synchronous feature-flag requests during connection setup.
         "enable_telemetry": False,
     }
 
@@ -331,10 +244,7 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_urllib3_settings_are_honored(
-        self, mock_send_telemetry, extra_params
-    ):
+    def test_retry_urllib3_settings_are_honored(self, extra_params):
         """Databricks overrides some of urllib3's configuration. This tests confirms that what configuration
         we DON'T override is preserved in urllib3's internals
         """
@@ -361,12 +271,9 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_oserror_retries(self, mock_send_telemetry, extra_params):
+    def test_oserror_retries(self, extra_params):
         """If a network error occurs during make_request, the request is retried according to policy"""
-        with _isolated_from_telemetry(), patch(
-            "urllib3.connectionpool.HTTPSConnectionPool._validate_conn",
-        ) as mock_validate_conn:
+        with _mock_pool_method("_validate_conn") as mock_validate_conn:
             mock_validate_conn.side_effect = OSError("Some arbitrary network error")
             with pytest.raises(MaxRetryError) as cm:
                 extra_params = {**extra_params, **self._retry_policy}
@@ -382,14 +289,13 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_max_count_not_exceeded(self, mock_send_telemetry, extra_params):
+    def test_retry_max_count_not_exceeded(self, extra_params):
         """GIVEN the max_attempts_count is 5
         WHEN the server sends nothing but 429 responses
         THEN the connector issues six request (original plus five retries)
             before raising an exception
         """
-        with _isolated_from_telemetry(), mocked_server_response(
+        with mocked_server_response(
             status=429, headers={"Retry-After": "0"}
         ) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
@@ -405,8 +311,7 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_exponential_backoff(self, mock_send_telemetry, extra_params):
+    def test_retry_exponential_backoff(self, extra_params):
         """GIVEN the retry policy is configured for reasonable exponential backoff
         WHEN the server sends nothing but 429 responses with retry-afters
         THEN the connector will use those retry-afters values as floor
@@ -415,7 +320,7 @@ class PySQLRetryTestsMixin:
         retry_policy["_retry_delay_min"] = 1
 
         time_start = time.time()
-        with _isolated_from_telemetry(), mocked_server_response(
+        with mocked_server_response(
             status=429, headers={"Retry-After": "8"}
         ) as mock_obj:
             with pytest.raises(RequestError) as cm:
@@ -636,10 +541,7 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_3xx_redirect_codes_are_not_retried(
-        self, mock_send_telemetry, extra_params
-    ):
+    def test_3xx_redirect_codes_are_not_retried(self, extra_params):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy receives a 302 redirect
         THEN the connector does not retry since 3xx codes are not retried per policy
@@ -672,9 +574,8 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_3xx_codes_not_retried_regardless_of_max_redirects_setting(
-        self, mock_send_telemetry, extra_params
+        self, extra_params
     ):
         """GIVEN the connector is configured without a custom max_redirects
         WHEN the DatabricksRetryPolicy receives a 302 redirect
