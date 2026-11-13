@@ -1,0 +1,129 @@
+"""pyarrow (and the numpy it imports) load on the first result, not in connect().
+
+Each check runs in a fresh interpreter because ``sys.modules`` is process-global.
+"""
+
+import subprocess
+import sys
+import textwrap
+
+import pytest
+
+from databricks.sql.common import optional_pyarrow as optional_pyarrow_module
+from databricks.sql.common.optional_pyarrow import optional_pyarrow
+
+pytest.importorskip("pyarrow")
+
+# Sentinel exit codes, distinct from the 1 of an uncaught exception.
+_CLEAN, _LOADED, _IMPORT_FAILED = 10, 11, 12
+UNWANTED = ["pyarrow", "numpy", "pandas"]
+
+# Stand-in for the kernel wheel so a kernel connect() runs without a server.
+_FAKE_KERNEL = """
+import sys
+import types
+from unittest.mock import MagicMock
+
+fake = types.ModuleType("databricks_sql_kernel")
+fake.KernelError = type("KernelError", (Exception,), {})
+fake.Session = MagicMock()
+fake.Session.return_value.session_id = "01ef-session"
+sys.modules["databricks_sql_kernel"] = fake
+"""
+
+
+def _run(body: str) -> subprocess.CompletedProcess:
+    script = _FAKE_KERNEL + textwrap.dedent(body)
+    return subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True
+    )
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "databricks.sql",
+        "databricks.sql.client",
+        "databricks.sql.utils",
+        "databricks.sql.result_set",
+        "databricks.sql.backend.kernel.client",
+    ],
+)
+def test_connect_path_modules_do_not_import_pyarrow(module_name):
+    proc = _run(f"""
+        try:
+            import {module_name}  # noqa: F401
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            sys.exit({_IMPORT_FAILED})
+        loaded = [m for m in {UNWANTED!r} if m in sys.modules]
+        print(loaded)
+        sys.exit({_LOADED} if loaded else {_CLEAN})
+        """)
+    if proc.returncode == _IMPORT_FAILED:
+        pytest.skip(f"{module_name} not importable here:\n{proc.stderr}")
+    assert proc.returncode != _LOADED, f"importing {module_name} loaded {proc.stdout}"
+    assert (
+        proc.returncode == _CLEAN
+    ), f"unexpected exit {proc.returncode}:\n{proc.stderr}"
+
+
+def test_kernel_connect_defers_pyarrow_to_the_first_result():
+    proc = _run(f"""
+        from databricks import sql
+
+        conn = sql.connect(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            access_token="dapi-xyz",
+            use_kernel=True,
+        )
+        loaded = [m for m in {UNWANTED!r} if m in sys.modules]
+        assert not loaded, f"connect() loaded {{loaded}}"
+        handle = MagicMock()
+        handle.arrow_schema.side_effect = RuntimeError("stop after import")
+        try:
+            conn.session.backend._make_result_set(handle, conn.cursor(), None)
+        except Exception:
+            pass
+        assert "pyarrow" in sys.modules, "the first result imports pyarrow"
+        """)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_without_pyarrow_the_optional_globals_are_none():
+    proc = _run("""
+        sys.modules["pyarrow"] = None  # makes `import pyarrow` fail
+        import databricks.sql.client as client
+        import databricks.sql.result_set as result_set
+        import databricks.sql.utils as utils
+
+        assert client.pyarrow is None
+        assert utils.pyarrow is None
+        assert result_set.pyarrow is None
+        """)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_lazy_pyarrow_resolves_to_the_real_module():
+    proc = _run("""
+        from databricks.sql.common.optional_pyarrow import optional_pyarrow
+
+        lazy = optional_pyarrow()
+        assert "pyarrow" not in sys.modules and lazy is not None
+        assert lazy.Table is sys.modules["pyarrow"].Table
+        import pyarrow
+
+        assert isinstance(pyarrow.table({"a": [1]}), lazy.Table)
+        assert optional_pyarrow() is pyarrow
+        """)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_optional_pyarrow_is_none_when_not_installed(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pyarrow", None)
+    monkeypatch.setattr(
+        optional_pyarrow_module.importlib.util, "find_spec", lambda name: None
+    )
+    assert optional_pyarrow() is None

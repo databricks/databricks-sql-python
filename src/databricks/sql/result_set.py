@@ -5,10 +5,12 @@ from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 
-try:
+from databricks.sql.common.optional_pyarrow import optional_pyarrow
+
+if TYPE_CHECKING:
     import pyarrow
-except ImportError:
-    pyarrow = None
+else:
+    pyarrow = optional_pyarrow()
 
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
