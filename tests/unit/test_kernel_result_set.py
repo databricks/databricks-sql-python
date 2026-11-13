@@ -262,6 +262,8 @@ def _columns_skipping_pandas():
         "i32": pa.array([1, None, -(2**31), 2**31 - 1], pa.int32()),
         "i64": pa.array([1, None, -(2**63), 2**63 - 1], pa.int64()),
         "u8": pa.array([1, None, 0, 255], pa.uint8()),
+        "u16": pa.array([1, None, 0, 2**16 - 1], pa.uint16()),
+        "u32": pa.array([1, None, 0, 2**32 - 1], pa.uint32()),
         "u64": pa.array([1, None, 0, 2**64 - 1], pa.uint64()),
         "bool": pa.array([True, None, False, True]),
         "f32": pa.array([0.1, None, float("inf"), -0.0], pa.float32()),
@@ -287,10 +289,6 @@ def _columns_skipping_pandas():
                 datetime.date(9999, 12, 31),
             ]
         ),
-        "date64": pa.array(
-            [datetime.date(2024, 2, 29), None, datetime.date(1970, 1, 1), None],
-            pa.date64(),
-        ),
         "ts": pa.array(
             [
                 datetime.datetime(2024, 1, 1, 1, 2, 3, 4),
@@ -300,6 +298,7 @@ def _columns_skipping_pandas():
             ],
             pa.timestamp("us"),
         ),
+        "ts_s": pa.array([0, None, -1, 2], pa.timestamp("s")),
         "ts_ms": pa.array([0, None, 1, 2], pa.timestamp("ms")),
         "ts_utc": pa.array(
             [
@@ -316,10 +315,13 @@ def _columns_skipping_pandas():
             pa.timestamp("us", tz="America/Los_Angeles"),
         ),
         "ts_offset": pa.array([0, None, 1, 2], pa.timestamp("us", tz="+05:30")),
-        "time": pa.array([0, None, 1, 86399999999], pa.time64("us")),
-        "time32": pa.array([0, None, 1, 2], pa.time32("ms")),
         "null": pa.nulls(4),
     }
+
+
+def test_every_type_skipping_pandas_has_a_column_above():
+    covered = {column.type.id for column in _columns_skipping_pandas().values()}
+    assert covered == set(kernel_result_set._VALUE_WEIGHTS)
 
 
 def _columns_needing_pandas():
@@ -328,6 +330,12 @@ def _columns_needing_pandas():
         "f64_nan": pa.array([float("nan"), None, 1.0, 2.0]),
         "f32_nan": pa.array([1.0, float("nan"), None, 2.0], pa.float32()),
         "ts_ns": pa.array([1, None, 1000, 2], pa.timestamp("ns")),
+        # Out-of-range values convert differently; see
+        # test_out_of_range_values_convert_as_on_the_pandas_path.
+        "date64": pa.array([0, None, 86_400_000, -1], pa.date64()),
+        "time32_s": pa.array([0, None, 1, 2], pa.time32("s")),
+        "time32_ms": pa.array([0, None, 1, 2], pa.time32("ms")),
+        "time64": pa.array([0, None, 1, 86_399_999_999], pa.time64("us")),
         "time_ns": pa.array([1000, None, 2000, 0], pa.time64("ns")),
         "duration": pa.array([0, None, 1, 2], pa.duration("us")),
         "interval": pa.array(
@@ -391,10 +399,12 @@ def test_small_results_skip_pandas_with_the_same_values(name):
             names=["k", name, "k"],
         ),
     ]
-    for table in tables:
-        rows, expected, used_pandas = _convert(table)
-        assert not used_pandas
-        _assert_same_rows(rows, expected)
+    # Values only; the cost budget is tested separately.
+    with patch.object(kernel_result_set, "_MAX_COST_WITHOUT_PANDAS", 10**9):
+        for table in tables:
+            rows, expected, used_pandas = _convert(table)
+            assert not used_pandas
+            _assert_same_rows(rows, expected)
 
 
 @pytest.mark.parametrize("name", sorted(_columns_needing_pandas()))
@@ -407,25 +417,70 @@ def test_results_whose_values_could_differ_use_pandas(name):
     assert len(rows) == len(expected) == 4
 
 
-def test_large_results_use_pandas():
-    limit = kernel_result_set._MAX_ROWS_WITHOUT_PANDAS
+@pytest.mark.parametrize(
+    "types",
+    [
+        [pa.int64()],
+        [pa.float64()] * 16,
+        [pa.string()] * 3,
+        [pa.decimal128(38, 4), pa.int32(), pa.string(), pa.date32()],
+        [pa.timestamp("us", "Etc/UTC")],
+        [pa.timestamp("us"), pa.binary()] * 50,
+    ],
+    ids=["int", "16_doubles", "3_strings", "mixed", "tz_timestamp", "wide"],
+)
+def test_results_over_the_cost_budget_use_pandas(types):
+    limit = kernel_result_set._max_rows_without_pandas(types)
+    assert 0 < limit <= kernel_result_set._MAX_ROWS_WITHOUT_PANDAS
     for num_rows, expect_pandas in ((limit, False), (limit + 1, True)):
-        rows, expected, used_pandas = _convert(pa.table({"n": list(range(num_rows))}))
+        table = pa.table(
+            [pa.nulls(num_rows, t) for t in types],
+            names=[f"c{i}" for i in range(len(types))],
+        )
+        rows, expected, used_pandas = _convert(table)
         assert used_pandas is expect_pandas
         _assert_same_rows(rows, expected)
 
 
-def test_tz_aware_timestamps_skip_pandas_only_in_tiny_results():
-    limit = kernel_result_set._MAX_ROWS_WITHOUT_PANDAS_TZ
-    for tz, num_rows, expect_pandas in (
-        ("Etc/UTC", limit, False),
-        ("Etc/UTC", limit + 1, True),
-        (None, limit + 1, False),
+def test_cost_budget_scales_with_width_and_type():
+    max_rows = kernel_result_set._max_rows_without_pandas
+    assert max_rows([pa.int64()]) == kernel_result_set._MAX_ROWS_WITHOUT_PANDAS
+    assert max_rows([pa.int64()] * 64) < max_rows([pa.int64()] * 8)
+    assert max_rows([pa.date32()] * 8) < max_rows([pa.int64()] * 8)
+    assert max_rows([pa.timestamp("us", "UTC")]) < max_rows([pa.timestamp("us")])
+    # Too costly for even one row; only empty results skip pandas.
+    assert max_rows([pa.timestamp("us", "UTC")] * 3) == 0
+    assert max_rows([]) == -1
+    assert max_rows([pa.int64(), pa.list_(pa.int64())]) == -1
+    assert max_rows([pa.timestamp("ns")]) == -1
+
+
+@pytest.mark.parametrize(
+    "column, expected",
+    [
+        # Before 1970 and not whole days: to_pylist() rounds down.
+        (pa.array([-1], pa.date64()), [datetime.date(1970, 1, 1)]),
+        # Outside 0-24h: to_pylist() wraps around.
+        (pa.array([86_400], pa.time32("s")), ValueError),
+        (pa.array([-1], pa.time64("us")), ValueError),
+        # Past datetime's range: to_pylist() raises OverflowError instead.
+        (pa.array([2_932_897], pa.date32()), ValueError),
+        (pa.array([253_402_300_800_000_000], pa.timestamp("us", "UTC")), ValueError),
+    ],
+    ids=["date64", "time32", "time64", "date32", "timestamp"],
+)
+def test_out_of_range_values_convert_as_on_the_pandas_path(column, expected):
+    table = pa.table({"c": column})
+    rs = _make_rs(_FakeKernelHandle(table.schema, []))
+    for convert in (
+        rs._convert_arrow_table,
+        lambda t: ResultSet._convert_arrow_table(rs, t),
     ):
-        column = pa.array(range(num_rows), pa.timestamp("us", tz=tz))
-        rows, expected, used_pandas = _convert(pa.table({"t": column}))
-        assert used_pandas is expect_pandas
-        _assert_same_rows(rows, expected)
+        if isinstance(expected, list):
+            assert [row[0] for row in convert(table)] == expected
+        else:
+            with pytest.raises(expected):
+                convert(table)
 
 
 def test_empty_results_skip_pandas():
@@ -435,7 +490,8 @@ def test_empty_results_skip_pandas():
 
 
 def test_fetch_methods_return_the_pandas_path_values():
-    schema = pa.schema([("d", pa.decimal128(38, 4)), ("t", pa.timestamp("us", "UTC"))])
+    schema = pa.schema([("d", pa.decimal128(38, 4)), ("t", pa.timestamp("us"))])
+    assert kernel_result_set._max_rows_without_pandas(schema.types) >= 3
     batch = pa.RecordBatch.from_arrays(
         [
             pa.array(

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
+from typing import Any, Deque, List, Optional, Tuple, TYPE_CHECKING, cast
 
 import pyarrow
 
@@ -48,71 +48,102 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Results with at most this many rows are converted to rows with to_pylist()
-# instead of through a pandas DataFrame, whose fixed cost (hundreds of
-# microseconds) dominates small results.
+# Small results are converted with to_pylist() instead of through a pandas
+# DataFrame, whose fixed cost (100-300 µs) dominates them. to_pylist() costs
+# more per value, so a result skips pandas only while its row count times the
+# sum of its column weights (per-value cost relative to an integer) is within
+# _MAX_COST_WITHOUT_PANDAS, which kept it at least 25% cheaper than pandas for
+# every type and width measured (pyarrow 23, pandas 1.3-3.1).
 _MAX_ROWS_WITHOUT_PANDAS = 128
-# pyarrow converts tz-aware timestamps to Python values far more slowly than
-# pandas does, so results with one skip pandas only when tiny.
-_MAX_ROWS_WITHOUT_PANDAS_TZ = 4
+_MAX_COST_WITHOUT_PANDAS = 1024
 
 # Types for which to_pylist() returns the same values as the pandas path in
-# ResultSet._convert_arrow_table. Floats only qualify without NaN, which pandas
-# turns into None or keeps depending on its version; timestamps and time64 only
-# when not in nanoseconds.
+# ResultSet._convert_arrow_table, with their weights. Floats only qualify
+# without NaN, which pandas turns into None or keeps depending on its version;
+# timestamps only when not in nanoseconds.
 _FLOAT_TYPE_IDS = frozenset(t.id for t in (pyarrow.float32(), pyarrow.float64()))
-_UNIT_TYPE_IDS = frozenset(
-    t.id for t in (pyarrow.timestamp("us"), pyarrow.time64("us"))
-)
-_SAME_AS_PANDAS_TYPE_IDS = _FLOAT_TYPE_IDS | frozenset(
-    t.id
-    for t in (
-        pyarrow.int8(),
-        pyarrow.int16(),
-        pyarrow.int32(),
-        pyarrow.int64(),
-        pyarrow.uint8(),
-        pyarrow.uint16(),
-        pyarrow.uint32(),
-        pyarrow.uint64(),
-        pyarrow.bool_(),
-        pyarrow.decimal128(1),
-        pyarrow.decimal256(1),
-        pyarrow.string(),
-        pyarrow.large_string(),
-        pyarrow.binary(),
-        pyarrow.large_binary(),
-        pyarrow.binary(1),
-        pyarrow.date32(),
-        pyarrow.date64(),
-        pyarrow.time32("s"),
-        pyarrow.null(),
-    )
-)
+_TIMESTAMP_TYPE_ID = pyarrow.timestamp("us").id
+_VALUE_WEIGHTS = {
+    **{
+        t.id: 1
+        for t in (
+            pyarrow.int8(),
+            pyarrow.int16(),
+            pyarrow.int32(),
+            pyarrow.int64(),
+            pyarrow.uint8(),
+            pyarrow.uint16(),
+            pyarrow.uint32(),
+            pyarrow.uint64(),
+            pyarrow.bool_(),
+            pyarrow.float32(),
+            pyarrow.float64(),
+            pyarrow.null(),
+        )
+    },
+    **{t.id: 3 for t in (pyarrow.string(), pyarrow.large_string())},
+    **{
+        t.id: 6
+        for t in (
+            pyarrow.binary(),
+            pyarrow.large_binary(),
+            pyarrow.binary(1),
+            pyarrow.decimal128(1),
+            pyarrow.decimal256(1),
+        )
+    },
+    pyarrow.date32().id: 12,
+    _TIMESTAMP_TYPE_ID: 12,
+}
+# pyarrow looks the time zone up again for every tz-aware value, which costs
+# tens of microseconds when pytz isn't installed.
+_TZ_TIMESTAMP_WEIGHT = 400
 
 
-def _rows_without_pandas(table: pyarrow.Table, row_factory: Row) -> Optional[List[Row]]:
+def _max_rows_without_pandas(types: List[pyarrow.DataType]) -> int:
+    """The most rows of a result with these column types that are converted
+    with to_pylist(); -1 if such results always go through pandas."""
+    total = 0
+    for arrow_type in types:
+        weight = _VALUE_WEIGHTS.get(arrow_type.id)
+        if weight is None:
+            return -1
+        if arrow_type.id == _TIMESTAMP_TYPE_ID:
+            if arrow_type.unit == "ns":
+                return -1
+            if arrow_type.tz is not None:
+                weight = _TZ_TIMESTAMP_WEIGHT
+        total += weight
+    if total == 0:
+        return -1
+    return min(_MAX_ROWS_WITHOUT_PANDAS, _MAX_COST_WITHOUT_PANDAS // total)
+
+
+def _rows_without_pandas(
+    table: pyarrow.Table, description: List[Tuple]
+) -> Optional[List[Row]]:
     """The rows of ``table`` built from ``to_pylist()``, or None if the table
-    must go through pandas (too many rows, or a column whose values could
+    must go through pandas (too costly, or a column whose values could
     differ)."""
     num_rows = table.num_rows
-    if num_rows > _MAX_ROWS_WITHOUT_PANDAS or table.num_columns == 0:
+    # No weight is below 1, so this rules out larger results without
+    # looking at every column type.
+    if num_rows * table.num_columns > _MAX_COST_WITHOUT_PANDAS:
         return None
-    for arrow_type in table.schema.types:
-        if arrow_type.id in _UNIT_TYPE_IDS:
-            if arrow_type.unit == "ns":
-                return None
-            tz = getattr(arrow_type, "tz", None)
-            if tz is not None and num_rows > _MAX_ROWS_WITHOUT_PANDAS_TZ:
-                return None
-        elif arrow_type.id not in _SAME_AS_PANDAS_TYPE_IDS:
-            return None
+    if num_rows > _max_rows_without_pandas(table.schema.types):
+        return None
     columns = []
     for column in table.itercolumns():
-        values = column.to_pylist()
+        try:
+            values = column.to_pylist()
+        except Exception:
+            # E.g. a date past 9999-12-31: pandas then raises its own error,
+            # as it does without this fast path.
+            return None
         if column.type.id in _FLOAT_TYPE_IDS and any(v != v for v in values):
             return None
         columns.append(values)
+    row_factory = Row(*[c[0] for c in description])
     return [row_factory(*values) for values in zip(*columns)]
 
 
@@ -271,8 +302,7 @@ class KernelResultSet(ResultSet):
 
     def _convert_arrow_table(self, table):
         if self.connection.disable_pandas is not True:
-            row_factory = Row(*[c[0] for c in self.description])
-            rows = _rows_without_pandas(table, row_factory)
+            rows = _rows_without_pandas(table, self.description)
             if rows is not None:
                 return rows
         return super()._convert_arrow_table(table)
