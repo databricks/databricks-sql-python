@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import logging
+import warnings
 from enum import Enum, auto
 from typing import Optional, Sequence, Any, TYPE_CHECKING
 
 from databricks.sql.exc import NotSupportedError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     # Type-annotation-only imports. ``from __future__ import annotations`` keeps
@@ -600,6 +604,15 @@ class DecimalParameter(DbsqlParameterBase):
         If set, `scale` and `precision` must both be set. If neither is set, the value
         will be casted to the smallest possible DECIMAL type that can contain it.
 
+        When set, `precision` and `scale` declare a DECIMAL(precision, scale) type. If
+        the value has more fractional digits than `scale`, the bound scale (and so the
+        precision) is widened to fit them (capped at precision 38) so they are not lost;
+        the declared integer room (`precision - scale`) is kept, so a value with more
+        integer digits than that is still rejected by the server as out of range
+        (except, for backward compatibility, with `scale=0`: see the CHANGELOG).
+        Round the `Decimal` yourself (e.g. with `Decimal.quantize`) before binding if
+        you need it narrowed to the declared scale.
+
         :value:
             The value to bind for this parameter. This will be casted to a DECIMAL.
         :name:
@@ -615,33 +628,236 @@ class DecimalParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         :scale:
-            The maximum precision (total number of digits) of the number between 1 and 38.
+            The number of digits to the right of the decimal point. If the value itself
+            has more fractional digits, the value's scale is used so no digits are lost
+            (unless the value needs more than 38 digits in total; the excess fractional
+            digits are then rounded by the server).
         :precision:
-            The number of digits to the right of the decimal point.
+            The precision (total number of digits) of the number, between 1 and 38.
+            `precision - scale` integer digits are allowed; if the scale is widened to
+            fit the value, the precision grows by the same amount (up to 38).
         """
         self.value: decimal.Decimal = value
         self.name = name
         self.scale = scale
         self.precision = precision
+        self._legacy_swapped = False
 
         if not self.valid_scale_and_precision():
             raise ValueError(
-                "DecimalParameter requires both or none of scale and precision to be set"
+                "DecimalParameter requires both or none of scale and precision to be set, "
+                "as integers"
             )
 
+        if self.scale is not None:
+            # Range-check scale before the precision=0 fallback below, so a clearly
+            # invalid scale is reported rather than hidden behind a migration warning.
+            if self.scale < 0:
+                raise ValueError(
+                    "DecimalParameter scale must be >= 0, got {}".format(self.scale)
+                )
+            if self.scale > self.MAX_PRECISION:
+                raise ValueError(
+                    "DecimalParameter scale must be between 0 and {}, got {}".format(
+                        self.MAX_PRECISION, self.scale
+                    )
+                )
+
+        if self.precision == 0:
+            # Earlier releases treated precision=0 as falsy, i.e. "unset", and inferred
+            # the type from the value. Keep that behaviour for now (swapping e.g.
+            # scale=5, precision=0 into DECIMAL(5,0) would silently round the value),
+            # but warn so callers migrate before this becomes an error, like the
+            # other legacy-convention calls below.
+            warnings.warn(
+                "DecimalParameter received precision=0 (scale={}); ignoring scale and "
+                "precision and inferring the DECIMAL type from the value, as earlier "
+                "releases did. `precision` must be between 1 and {}; pass both as None "
+                "to infer the type. This will raise ValueError in a future "
+                "release.".format(self.scale, self.MAX_PRECISION),
+                FutureWarning,
+                stacklevel=2,
+            )
+            self.scale = None
+            self.precision = None
+
+        if self.scale is not None and self.precision is not None:
+            # Range-check the raw arguments *before* the legacy swap below, so a call
+            # that is simply invalid (rather than written for the legacy convention)
+            # gets an error naming the argument the caller actually passed, and no
+            # misleading migration warning. (scale was range-checked above.)
+            if not 1 <= self.precision <= self.MAX_PRECISION:
+                raise ValueError(
+                    "DecimalParameter precision must be between 1 and {}, got {}".format(
+                        self.MAX_PRECISION, self.precision
+                    )
+                )
+
+        if self.scale == 0 and self.precision is not None:
+            # Earlier releases also treated scale=0 as falsy, i.e. "unset", and
+            # inferred the type from the value. Honouring DECIMAL(precision, 0) is
+            # only a regression when the value has more integer digits than
+            # `precision` (the server would now reject a call that used to work), so
+            # keep the inferred type for exactly that case, with a warning.
+            normalized = self._normalized_value_digits()
+            if normalized is not None:
+                digits, exponent = normalized
+                if max(len(digits) + exponent, 0) > self.precision:
+                    warnings.warn(
+                        "DecimalParameter received scale=0, precision={} for a value "
+                        "with more than {} integer digits; ignoring scale and "
+                        "precision and inferring the DECIMAL type from the value, as "
+                        "earlier releases did. Declare a precision large enough for "
+                        "the value, or pass both as None to infer the type. This "
+                        "will raise ValueError in a future release.".format(
+                            self.precision, self.precision
+                        ),
+                        FutureWarning,
+                        stacklevel=2,
+                    )
+                    self.scale = None
+                    self.precision = None
+
+        if (
+            self.scale is not None
+            and self.precision is not None
+            and self.scale > self.precision
+        ):
+            # Earlier releases documented these arguments the other way round
+            # (scale = total digits, precision = fractional digits). A valid
+            # DECIMAL can never have scale > precision, so this can only be a call
+            # written for the old convention: keep it working for now (swap the
+            # arguments) but warn so callers migrate before this becomes an error.
+            # scale == precision is deliberately *not* handled here: it reads the
+            # same under both conventions, so it gets the SQL meaning and is widened
+            # like any correctly ordered call (documented in the CHANGELOG).
+            warnings.warn(
+                "DecimalParameter received scale ({}) > precision ({}); interpreting the "
+                "arguments using the legacy (swapped) convention as DECIMAL({},{}). "
+                "`precision` is the total number of digits and `scale` is the number of "
+                "digits after the decimal point, as in SQL DECIMAL(precision, scale). "
+                "Swap your arguments; this will raise ValueError in a future "
+                "release. Legacy-convention calls keep the previous behaviour (the "
+                "server rounds the value to the declared scale); with correctly "
+                "ordered arguments the bound scale is widened to fit the value's "
+                "fractional digits instead.".format(
+                    self.scale, self.precision, self.scale, self.precision
+                ),
+                # FutureWarning (not DeprecationWarning) so end users see it by
+                # default, not only when the call originates from __main__.
+                FutureWarning,
+                stacklevel=2,
+            )
+            self.scale, self.precision = self.precision, self.scale
+            # Preserve the old bound type exactly (no widening) for these callers,
+            # so the only change they see is the warning.
+            # No re-validation needed: the swapped scale is the raw precision
+            # (already 1..38) and the swapped precision is the raw scale (already
+            # > that and <= 38), so the result is always a valid DECIMAL.
+            self._legacy_swapped = True
+
     def valid_scale_and_precision(self):
+        def _is_int(x):
+            # bool is a subclass of int; reject it so precision=True/scale=False
+            # cannot silently bind DECIMAL(1,0).
+            return isinstance(x, int) and not isinstance(x, bool)
+
         if (self.scale is None and self.precision is None) or (
-            isinstance(self.scale, int) and isinstance(self.precision, int)
+            _is_int(self.scale) and _is_int(self.precision)
         ):
             return True
         else:
             return False
 
     def _cast_expr(self):
-        if self.scale and self.precision:
-            return self.CAST_EXPR.format(self.scale, self.precision)
+        if self.scale is not None and self.precision is not None:
+            if self._legacy_swapped:
+                # Legacy-convention call: bind the declared type unchanged, as
+                # earlier releases did, so existing rounding is preserved.
+                return self.CAST_EXPR.format(self.precision, self.scale)
+            precision, scale = self._effective_precision_and_scale(
+                self.precision, self.scale
+            )
+            if (precision, scale) != (self.precision, self.scale):
+                logger.debug(
+                    "DecimalParameter declared DECIMAL(%d,%d) is bound as DECIMAL(%d,%d) "
+                    "to fit the value's fractional digits (precision capped at 38)",
+                    self.precision,
+                    self.scale,
+                    precision,
+                    scale,
+                )
+            # SQL DECIMAL type syntax is DECIMAL(precision, scale)
+            return self.CAST_EXPR.format(precision, scale)
         else:
             return self.calculate_decimal_cast_string(self.value)
+
+    MAX_PRECISION = 38
+
+    def _normalized_value_digits(self):
+        """Return ``(digits, exponent)`` of the value with insignificant trailing
+        fractional zeros stripped, or None if the value is not a finite number."""
+        value = self.value
+        if not isinstance(value, decimal.Decimal):
+            # The value is sent to the server as str(value), so inspect that same
+            # textual form; this makes int / float / str values widen like Decimals.
+            try:
+                value = decimal.Decimal(str(value))
+            except (decimal.InvalidOperation, ValueError, TypeError):
+                return None
+        sign, digits, exponent = value.as_tuple()
+        if not isinstance(exponent, int):
+            # NaN / Infinity
+            return None
+
+        # Trailing fractional zeros carry no information, so ignore them: otherwise
+        # Decimal("1.50") and Decimal("1.5") would bind different types for the same
+        # declared parameter. (Stripping keeps len(digits) + exponent unchanged.)
+        while exponent < 0 and len(digits) > 1 and digits[-1] == 0:
+            digits = digits[:-1]
+            exponent += 1
+        if digits == (0,):
+            # Zero (e.g. Decimal("0.000")) has no significant fractional digits
+            exponent = max(exponent, 0)
+        return digits, exponent
+
+    def _effective_precision_and_scale(self, precision: int, scale: int):
+        """Widen a declared DECIMAL(precision, scale) so the value's fractional digits
+        fit: the value's own scale is authoritative over an under-declared target
+        scale. The declared integer room (``precision - scale``) is never widened, so
+        a value with more integer digits is still rejected by the server as out of
+        range, as in earlier releases.
+
+        Exception: the total is capped at MAX_PRECISION (38) digits. If the value
+        needs more than that (e.g. a scale over 38), the cast is clamped and the
+        server rounds away the fractional digits that do not fit.
+        """
+        normalized = self._normalized_value_digits()
+        if normalized is None:
+            return precision, scale
+        digits, exponent = normalized
+
+        value_scale = max(-exponent, 0)
+        declared_int_digits = precision - scale
+        # Integer room is never widened past the declared one: an overflowing value
+        # is left for the server to reject as out of range.
+        value_int_digits = min(max(len(digits) + exponent, 0), declared_int_digits)
+
+        desired_scale = max(scale, value_scale)
+
+        # Allocate the (at most MAX_PRECISION) digits by priority so that, when the
+        # cap is hit, the value's own digits win over extra declared room
+        # (similar to Spark's decimal precision adjustment):
+        #   1. the value's integer digits, 2. the value's fractional digits,
+        #   3. extra declared integer room, 4. extra declared fractional room.
+        int_digits = value_int_digits
+        effective_scale = min(value_scale, self.MAX_PRECISION - int_digits)
+        remaining = self.MAX_PRECISION - int_digits - effective_scale
+        extra_int = min(declared_int_digits - int_digits, remaining)
+        int_digits += extra_int
+        remaining -= extra_int
+        effective_scale += min(desired_scale - effective_scale, remaining)
+        return int_digits + effective_scale, effective_scale
 
     def calculate_decimal_cast_string(self, input: decimal.Decimal) -> str:
         """Returns the smallest SQL cast argument that can contain the passed decimal
