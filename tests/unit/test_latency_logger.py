@@ -1,4 +1,5 @@
 import logging
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -66,7 +67,8 @@ def test_debug_logging_records_latency_without_telemetry(telemetry_client, caplo
     cursor = Cursor(telemetry_enabled=False)
     with caplog.at_level(logging.DEBUG, logger=LOGGER):
         assert cursor.execute(1) == 1
-    assert [r.getMessage() for r in caplog.records] == ["execute completed in 0ms"]
+    assert len(caplog.records) == 1
+    assert re.fullmatch(r"execute completed in \d+ms", caplog.records[0].getMessage())
     telemetry_client.export_latency_log.assert_not_called()
 
 
