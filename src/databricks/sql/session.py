@@ -338,6 +338,7 @@ class Session:
                 request_timeout_secs=kwargs.get("_socket_timeout"),
                 max_connections=kwargs.get("_pool_maxsize") or None,
                 use_cloud_fetch=kwargs.get("use_cloud_fetch", True),
+                max_download_threads=kwargs.get("max_download_threads", 10),
                 enable_geospatial_support=kwargs.get(
                     "enable_geospatial_support", False
                 ),
