@@ -400,7 +400,10 @@ def test_open_session_honors_cloudfetch_option(
     )
     original = dict(configuration) if configuration is not None else None
     client.open_session(configuration, catalog=None, schema=None)
-    assert captured["session_conf"] == expected
+    assert captured["session_conf"] == {
+        "cloudfetch_max_chunks_in_memory": "10",
+        **expected,
+    }
     assert configuration == original
 
 
@@ -1613,11 +1616,58 @@ def test_get_query_state_returns_state_when_no_failure():
 # ---------------------------------------------------------------------------
 
 
-def test_max_download_threads_is_nonzero():
-    """Property is consulted by Thrift code paths that don't run for
-    ``use_kernel=True``; a non-zero default avoids divide-by-zero."""
-    c = _make_client()
-    assert c.max_download_threads > 0
+@pytest.mark.parametrize(
+    "threads, override",
+    [
+        (1, None),
+        (4, None),
+        (1000, None),
+        (4, "cloudfetch_max_chunks_in_memory"),
+        (4, "CLOUDFETCH_MAX_CHUNKS_IN_MEMORY"),
+    ],
+)
+def test_max_download_threads_configures_kernel(monkeypatch, threads, override):
+    captured = {}
+
+    def fake_session(**options):
+        captured.update(options)
+        return MagicMock(session_id="sess-id")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        max_download_threads=threads,
+    )
+    configuration = {"TIMEZONE": "UTC"}
+    if override:
+        configuration[override] = "2"
+    original = dict(configuration)
+    client.open_session(configuration, catalog=None, schema=None)
+    expected = (
+        original
+        if override
+        else {**original, "cloudfetch_max_chunks_in_memory": str(threads)}
+    )
+    assert captured["session_conf"] == expected
+    assert configuration == original
+    assert client.max_download_threads == threads
+
+
+@pytest.mark.parametrize("threads", [0, -1, None, "4", 1.5, True])
+def test_max_download_threads_rejects_invalid_values(threads):
+    with pytest.raises(
+        ValueError, match="max_download_threads must be a positive integer"
+    ):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            max_download_threads=threads,
+        )
 
 
 def test_synthetic_command_id_is_uuid_shaped():
