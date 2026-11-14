@@ -1622,6 +1622,7 @@ def test_get_query_state_returns_state_when_no_failure():
         (1, None),
         (4, None),
         (1000, None),
+        (10**100, None),
         (4, "cloudfetch_max_chunks_in_memory"),
         (4, "CLOUDFETCH_MAX_CHUNKS_IN_MEMORY"),
     ],
@@ -1649,7 +1650,7 @@ def test_max_download_threads_configures_kernel(monkeypatch, threads, override):
     expected = (
         original
         if override
-        else {**original, "cloudfetch_max_chunks_in_memory": str(threads)}
+        else {**original, "cloudfetch_max_chunks_in_memory": str(min(threads, 256))}
     )
     assert captured["session_conf"] == expected
     assert configuration == original

@@ -460,7 +460,7 @@ class KernelDatabricksClient(DatabricksClient):
             k.lower() == "cloudfetch_max_chunks_in_memory" for k in session_conf
         ):
             session_conf["cloudfetch_max_chunks_in_memory"] = str(
-                self._max_download_threads
+                min(self._max_download_threads, 256)
             )
         if not self._use_cloud_fetch:
             session_conf["cloudfetch_enabled"] = "false"
