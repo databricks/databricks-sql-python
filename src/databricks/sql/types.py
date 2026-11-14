@@ -257,7 +257,10 @@ class Row(tuple):
                 "Can not create Row with fields %s, expected %d values "
                 "but got %s" % (self, len(self), args)
             )
-        return _create_row(self, args)
+        # Same as _create_row(self, args), inlined: this runs once per fetched row.
+        row = _tuple_new(Row, args)
+        row.__dict__["__fields__"] = self
+        return row
 
     def __getitem__(self, item: Any) -> Any:
         if isinstance(item, (int, slice)):
@@ -309,9 +312,14 @@ class Row(tuple):
             return "<Row(%s)>" % ", ".join("%r" % field for field in self)
 
 
+_tuple_new = tuple.__new__
+
+
 def _create_row(
     fields: Union["Row", List[str]], values: Union[Tuple[Any, ...], List[Any]]
 ) -> "Row":
-    row = Row(*values)
-    row.__fields__ = fields
+    # Equivalent to ``row = Row(*values); row.__fields__ = fields`` without the
+    # Row.__new__ and Row.__setattr__ calls.
+    row = _tuple_new(Row, values)
+    row.__dict__["__fields__"] = fields
     return row

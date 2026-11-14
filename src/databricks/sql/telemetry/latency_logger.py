@@ -177,6 +177,17 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
+            # Fast check: use cached telemetry_enabled flag from connection
+            # Avoids dictionary lookup + instance check on every operation
+            connection = getattr(self, "connection", None)
+            telemetry_enabled = bool(connection) and getattr(
+                connection, "telemetry_enabled", False
+            )
+            if not telemetry_enabled and not logger.isEnabledFor(logging.DEBUG):
+                # Nothing would record the latency (always the case on kernel
+                # connections, which export telemetry from the kernel).
+                return func(self, *args, **kwargs)
+
             start_time = time.monotonic()
             try:
                 return func(self, *args, **kwargs)
@@ -186,10 +197,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 # Always log for debugging
                 logger.debug("%s completed in %dms", func.__name__, duration_ms)
 
-                # Fast check: use cached telemetry_enabled flag from connection
-                # Avoids dictionary lookup + instance check on every operation
-                connection = getattr(self, "connection", None)
-                if connection and getattr(connection, "telemetry_enabled", False):
+                if telemetry_enabled:
                     session_id_hex = connection.get_session_id_hex()
                     if session_id_hex:
                         # Telemetry enabled - extract and send
