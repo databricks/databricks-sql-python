@@ -14,13 +14,25 @@ from io import BytesIO
 from thrift.transport.TTransport import CReadableTransport
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
+from urllib3.util.ssl_ import create_urllib3_context
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
+from databricks.sql.common import ssl_context_cache
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _create_urllib3_ssl_context(cert_reqs: int, ca_file: Optional[str]):
+    # The same context urllib3 builds per connection from cert_reqs/ca_certs.
+    context = create_urllib3_context(cert_reqs=cert_reqs)
+    if ca_file:
+        context.load_verify_locations(ca_file)
+    elif hasattr(context, "load_default_certs"):
+        context.load_default_certs()
+    return context
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
@@ -59,10 +71,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
             assert self.scheme in ("http", "https")
             if self.scheme == "https":
                 if self._ssl_options is not None:
-                    # TODO: Not sure if those options are used anywhere - need to double-check
                     self.certfile = self._ssl_options.tls_client_cert_file
                     self.keyfile = self._ssl_options.tls_client_cert_key_file
-                    self.context = self._ssl_options.create_ssl_context()
+                    if not ssl_context_cache.is_cacheable(self._ssl_options):
+                        # Fail fast on a bad client identity; urllib3 loads it lazily.
+                        self._ssl_options.create_ssl_context()
             self.port = parsed.port
             self.host = parsed.hostname
             self.path = parsed.path
@@ -122,19 +135,27 @@ class THttpClient(thrift.transport.THttpClient.THttpClient, CReadableTransport):
             pool_class = HTTPConnectionPool
         elif self.scheme == "https":
             pool_class = HTTPSConnectionPool
-            _pool_kwargs.update(
-                {
-                    "cert_reqs": (
-                        ssl.CERT_REQUIRED
-                        if self._ssl_options.tls_verify
-                        else ssl.CERT_NONE
-                    ),
-                    "ca_certs": self._ssl_options.tls_trusted_ca_file,
-                    "cert_file": self._ssl_options.tls_client_cert_file,
-                    "key_file": self._ssl_options.tls_client_cert_key_file,
-                    "key_password": self._ssl_options.tls_client_cert_key_password,
-                }
+            cert_reqs = (
+                ssl.CERT_REQUIRED if self._ssl_options.tls_verify else ssl.CERT_NONE
             )
+            _pool_kwargs["cert_reqs"] = cert_reqs
+            if ssl_context_cache.is_cacheable(self._ssl_options):
+                # Otherwise urllib3 builds and loads a new context per TCP connection.
+                ca_file = self._ssl_options.tls_trusted_ca_file
+                _pool_kwargs["ssl_context"] = ssl_context_cache.get_ssl_context(
+                    "urllib3",
+                    self._ssl_options,
+                    lambda: _create_urllib3_ssl_context(cert_reqs, ca_file),
+                )
+            else:
+                _pool_kwargs.update(
+                    {
+                        "ca_certs": self._ssl_options.tls_trusted_ca_file,
+                        "cert_file": self._ssl_options.tls_client_cert_file,
+                        "key_file": self._ssl_options.tls_client_cert_key_file,
+                        "key_password": self._ssl_options.tls_client_cert_key_password,
+                    }
+                )
 
         if self.using_proxy():
             proxy_manager = ProxyManager(

@@ -20,6 +20,7 @@ except ImportError:
 
 from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 from databricks.sql.exc import RequestError
+from databricks.sql.common import ssl_context_cache
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
@@ -94,31 +95,37 @@ class UnifiedHttpClient:
         self._proxy_auth = None
         self._setup_pool_managers()
 
+    @staticmethod
+    def _create_ssl_context(ssl_options) -> ssl.SSLContext:
+        ssl_context = ssl.create_default_context()
+
+        # Configure SSL verification
+        if not ssl_options.tls_verify:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        elif not ssl_options.tls_verify_hostname:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+        # Load custom CA file if specified
+        if ssl_options.tls_trusted_ca_file:
+            ssl_context.load_verify_locations(ssl_options.tls_trusted_ca_file)
+
+        # Load a separate cert/key pair or a combined cert+key PEM. The shared
+        # helper also reports missing/empty paths before opaque stdlib SSL errors.
+        ssl_options.load_client_cert_chain(ssl_context)
+        return ssl_context
+
     def _setup_pool_managers(self):
         """Set up both direct and proxy pool managers for per-request proxy decisions."""
 
         # SSL context setup
         ssl_context = None
-        if self.config.ssl_options:
-            ssl_context = ssl.create_default_context()
-
-            # Configure SSL verification
-            if not self.config.ssl_options.tls_verify:
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-            elif not self.config.ssl_options.tls_verify_hostname:
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_REQUIRED
-
-            # Load custom CA file if specified
-            if self.config.ssl_options.tls_trusted_ca_file:
-                ssl_context.load_verify_locations(
-                    self.config.ssl_options.tls_trusted_ca_file
-                )
-
-            # Load a separate cert/key pair or a combined cert+key PEM. The shared
-            # helper also reports missing/empty paths before opaque stdlib SSL errors.
-            self.config.ssl_options.load_client_cert_chain(ssl_context)
+        ssl_options = self.config.ssl_options
+        if ssl_options:
+            ssl_context = ssl_context_cache.get_ssl_context(
+                "unified", ssl_options, lambda: self._create_ssl_context(ssl_options)
+            )
 
         # Create retry policy
         self._retry_policy = DatabricksRetryPolicy(
