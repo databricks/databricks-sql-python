@@ -316,14 +316,51 @@ def test_failed_volume_consumes_instructions_and_preserves_os_error(int_schema):
 
 def test_volume_close_signals_backend_before_native_lock(int_schema):
     handle = _FakeKernelHandle(int_schema, [])
+    handle.is_volume_operation = True
     rs = _make_rs(handle)
     handle.close = MagicMock(
-        side_effect=lambda: rs.backend.close_command.assert_called_once_with(
+        side_effect=lambda: rs.backend.cancel_command.assert_called_once_with(
             rs.command_id
         )
     )
     rs.close()
     handle.close.assert_called_once()
+
+
+def test_ordinary_close_releases_stream_before_backend(int_schema):
+    handle = _FakeKernelHandle(int_schema, [])
+    rs = _make_rs(handle)
+
+    def close_backend(_):
+        assert handle.closed
+
+    rs.backend.close_command.side_effect = close_backend
+    rs.close()
+    rs.backend.cancel_command.assert_not_called()
+    rs.backend.close_command.assert_called_once_with(rs.command_id)
+
+
+@pytest.mark.parametrize("code,status", [("NotFound", 404), ("InvalidArgument", 400)])
+def test_volume_instruction_http_error_preserves_mapping(int_schema, code, status):
+    from databricks.sql.backend.kernel import _errors
+    from databricks.sql.exc import ProgrammingError
+
+    error = _errors._kernel.KernelError("instruction read failed")
+    error.code = code
+    error.message = "instruction read failed"
+    error.http_status = status
+    error.sql_state = "22023"
+    error.query_id = "query-id"
+    handle = _FakeKernelHandle(int_schema, [])
+    handle.complete_volume_operation = MagicMock(side_effect=error)
+    rs = _make_rs(handle)
+    with pytest.raises(ProgrammingError, match="instruction read failed") as raised:
+        rs.complete_staging_operation([])
+    assert raised.value.http_status == status
+    assert raised.value.code == code
+    assert raised.value.sql_state == "22023"
+    assert raised.value.query_id == "query-id"
+    assert raised.value.__cause__ is error
 
 
 def test_volume_http_404_is_an_operational_error(int_schema):
@@ -332,6 +369,7 @@ def test_volume_http_404_is_an_operational_error(int_schema):
     handle = _FakeKernelHandle(int_schema, [])
     error = RuntimeError("storage response")
     error.http_status = 404
+    error.error_code = "VOLUME_STORAGE_HTTP_ERROR"
     handle.complete_volume_operation = MagicMock(side_effect=error)
     rs = _make_rs(handle)
     with pytest.raises(OperationalError, match="404"):
