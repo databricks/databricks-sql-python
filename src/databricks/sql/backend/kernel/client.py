@@ -347,6 +347,13 @@ class KernelDatabricksClient(DatabricksClient):
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
         self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        if (
+            isinstance(self._max_download_threads, bool)
+            or not isinstance(self._max_download_threads, int)
+            or self._max_download_threads <= 0
+        ):
+            raise ValueError("max_download_threads must be a positive integer")
         # Opt-in native GEOMETRY / GEOGRAPHY support. True requests
         # the canonical Arrow struct and surfaces as ``{"srid": int, "wkb":
         # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
@@ -448,11 +455,14 @@ class KernelDatabricksClient(DatabricksClient):
         if self._kernel_session is not None:
             raise InterfaceError("KernelDatabricksClient already has an open session.")
         # The kernel consumes client settings locally before forwarding server parameters.
-        session_conf: Optional[Dict[str, str]] = None
-        if session_configuration:
-            session_conf = {k: str(v) for k, v in session_configuration.items()}
+        session_conf = {k: str(v) for k, v in (session_configuration or {}).items()}
+        if not any(
+            k.lower() == "cloudfetch_max_chunks_in_memory" for k in session_conf
+        ):
+            session_conf["cloudfetch_max_chunks_in_memory"] = str(
+                min(self._max_download_threads, 256)
+            )
         if not self._use_cloud_fetch:
-            session_conf = session_conf or {}
             session_conf["cloudfetch_enabled"] = "false"
         # The kwarg builds run INSIDE the try so the ``finally`` scrub
         # below always fires — including when ``kernel_auth_kwargs``
@@ -1167,11 +1177,7 @@ class KernelDatabricksClient(DatabricksClient):
 
     @property
     def max_download_threads(self) -> int:
-        # CloudFetch parallelism lives kernel-side. This property is
-        # consulted by Thrift code paths that don't run for
-        # use_kernel=True; return a non-zero default so anything that
-        # peeks at it does not divide by zero.
-        return 10
+        return self._max_download_threads
 
 
 _STATE_TO_COMMAND_STATE: Dict[str, CommandState] = {
