@@ -1,3 +1,4 @@
+import importlib
 import threading
 import time
 import logging
@@ -46,9 +47,32 @@ from databricks.sql.common.url_utils import normalize_host_with_protocol
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
-    from databricks.sql.telemetry.telemetry_push_client import ITelemetryPushClient
+    from databricks.sql.common.unified_http_client import UnifiedHttpClient
+    from databricks.sql.telemetry.telemetry_push_client import (
+        CircuitBreakerTelemetryPushClient,
+        ITelemetryPushClient,
+        TelemetryPushClient,
+    )
 
 logger = logging.getLogger(__name__)
+
+
+_LAZY_NAMES = {
+    "UnifiedHttpClient": "databricks.sql.common.unified_http_client",
+    "TelemetryPushClient": "databricks.sql.telemetry.telemetry_push_client",
+    "CircuitBreakerTelemetryPushClient": "databricks.sql.telemetry.telemetry_push_client",
+    "ITelemetryPushClient": "databricks.sql.telemetry.telemetry_push_client",
+    "TokenFederationProvider": "databricks.sql.auth.token_federation",
+}
+
+
+def __getattr__(name: str) -> Any:
+    # Imported on first use rather than at load, so connect() skips them;
+    # still importable, and patchable here, as module attributes.
+    source = _LAZY_NAMES.get(name)
+    if source is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(source), name)
 
 
 class TelemetryHelper:
@@ -208,30 +232,26 @@ class TelemetryClient(BaseTelemetryClient):
         self._host_url = host_url
         self._executor = executor
 
-        # Imported here, not at module load, so connect() paths that never
+        # Resolved here, not at module load, so connect() paths that never
         # export telemetry don't import urllib3 and pybreaker.
-        from databricks.sql.common.unified_http_client import UnifiedHttpClient
-        from databricks.sql.telemetry.telemetry_push_client import (
-            CircuitBreakerTelemetryPushClient,
-            TelemetryPushClient,
-        )
+        import databricks.sql.telemetry.telemetry_client as _module
 
         # Create own HTTP client from client context
-        self._http_client = UnifiedHttpClient(client_context)
+        self._http_client = _module.UnifiedHttpClient(client_context)
 
         # Create telemetry push client based on circuit breaker enabled flag
         if client_context.telemetry_circuit_breaker_enabled:
             # Create circuit breaker telemetry push client
             # (circuit breakers created on-demand)
             self._telemetry_push_client: "ITelemetryPushClient" = (
-                CircuitBreakerTelemetryPushClient(
-                    TelemetryPushClient(self._http_client),
+                _module.CircuitBreakerTelemetryPushClient(
+                    _module.TelemetryPushClient(self._http_client),
                     host_url,
                 )
             )
         else:
             # Circuit breaker disabled - use direct telemetry push client
-            self._telemetry_push_client = TelemetryPushClient(self._http_client)
+            self._telemetry_push_client = _module.TelemetryPushClient(self._http_client)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""

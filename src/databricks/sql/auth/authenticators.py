@@ -1,11 +1,15 @@
 import abc
 import logging
-from typing import Callable, Dict, List, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, TYPE_CHECKING
 from databricks.sql.common.http import HttpHeader
 from databricks.sql.auth.endpoint import get_oauth_endpoints
 
 if TYPE_CHECKING:
-    from databricks.sql.auth.oauth import RefreshableTokenSource
+    from databricks.sql.auth.oauth import (
+        ClientCredentialsTokenSource,
+        OAuthManager,
+        RefreshableTokenSource,
+    )
 from databricks.sql.auth.common import (
     AuthType,
     get_effective_azure_login_app_id,
@@ -72,9 +76,9 @@ class DatabricksOAuthProvider(AuthProvider):
             # Convert to the corresponding scopes in the corresponding IdP
             cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
 
-            from databricks.sql.auth.oauth import OAuthManager
+            import databricks.sql.auth.authenticators as _module
 
-            self.oauth_manager = OAuthManager(
+            self.oauth_manager = _module.OAuthManager(
                 port_range=redirect_port_range,
                 client_id=client_id,
                 idp_endpoint=idp_endpoint,
@@ -205,9 +209,9 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         return AuthType.AZURE_SP_M2M.value
 
     def get_token_source(self, resource: str) -> "RefreshableTokenSource":
-        from databricks.sql.auth.oauth import ClientCredentialsTokenSource
+        import databricks.sql.auth.authenticators as _module
 
-        return ClientCredentialsTokenSource(
+        return _module.ClientCredentialsTokenSource(
             token_url=f"{self.AZURE_AAD_ENDPOINT}/{self.azure_tenant_id}/{self.AZURE_TOKEN_ENDPOINT}",
             client_id=self.azure_client_id,
             client_secret=self.azure_client_secret,
@@ -238,3 +242,17 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
             return headers
 
         return header_factory
+
+
+def __getattr__(name: str) -> Any:
+    # Imported on first use rather than at load, so connect() skips them;
+    # still importable, and patchable here, as module attributes.
+    if name in (
+        "OAuthManager",
+        "RefreshableTokenSource",
+        "ClientCredentialsTokenSource",
+    ):
+        import databricks.sql.auth.oauth as _source
+
+        return getattr(_source, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

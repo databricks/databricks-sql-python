@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 import lz4.frame
 import time
@@ -21,6 +21,16 @@ if TYPE_CHECKING:
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
+
+
+def __getattr__(name: str) -> Any:
+    # Imported on first use rather than at load, so connect() skips them;
+    # still importable, and patchable here, as module attributes.
+    if name in ("UnifiedHttpClient",):
+        import databricks.sql.common.unified_http_client as _source
+
+        return getattr(_source, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass

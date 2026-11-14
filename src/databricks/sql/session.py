@@ -44,6 +44,11 @@ def __getattr__(name: str) -> Any:
         from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
         return SeaDatabricksClient
+    if name == "UnifiedHttpClient":
+        # Same pattern, so connect() doesn't import urllib3.
+        from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
+        return UnifiedHttpClient
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

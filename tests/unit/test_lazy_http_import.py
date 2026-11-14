@@ -86,6 +86,100 @@ def test_oauth_provider_still_builds_its_manager():
     manager.assert_called_once()
 
 
+# Names these modules used to import at load, now resolved on first access.
+MOVED_NAMES = [
+    ("databricks.sql.auth.authenticators", "OAuthManager", "databricks.sql.auth.oauth"),
+    (
+        "databricks.sql.auth.authenticators",
+        "RefreshableTokenSource",
+        "databricks.sql.auth.oauth",
+    ),
+    (
+        "databricks.sql.auth.authenticators",
+        "ClientCredentialsTokenSource",
+        "databricks.sql.auth.oauth",
+    ),
+    (
+        "databricks.sql.auth.auth",
+        "TokenFederationProvider",
+        "databricks.sql.auth.token_federation",
+    ),
+    (
+        "databricks.sql.telemetry.telemetry_client",
+        "UnifiedHttpClient",
+        "databricks.sql.common.unified_http_client",
+    ),
+    (
+        "databricks.sql.telemetry.telemetry_client",
+        "TelemetryPushClient",
+        "databricks.sql.telemetry.telemetry_push_client",
+    ),
+    (
+        "databricks.sql.telemetry.telemetry_client",
+        "CircuitBreakerTelemetryPushClient",
+        "databricks.sql.telemetry.telemetry_push_client",
+    ),
+    (
+        "databricks.sql.telemetry.telemetry_client",
+        "TokenFederationProvider",
+        "databricks.sql.auth.token_federation",
+    ),
+    (
+        "databricks.sql.session",
+        "UnifiedHttpClient",
+        "databricks.sql.common.unified_http_client",
+    ),
+    (
+        "databricks.sql.cloudfetch.downloader",
+        "UnifiedHttpClient",
+        "databricks.sql.common.unified_http_client",
+    ),
+]
+
+
+@pytest.mark.parametrize("module_name, name, source", MOVED_NAMES)
+def test_moved_names_stay_importable(module_name, name, source):
+    import importlib
+
+    module = importlib.import_module(module_name)
+    assert getattr(module, name) is getattr(importlib.import_module(source), name)
+
+
+def test_patching_a_moved_name_reaches_where_it_is_used():
+    from unittest.mock import MagicMock, patch
+
+    from databricks.sql.auth.authenticators import DatabricksOAuthProvider
+    from databricks.sql.telemetry.telemetry_client import TelemetryClient
+
+    with patch(
+        "databricks.sql.auth.authenticators.OAuthManager"
+    ) as manager, patch.object(DatabricksOAuthProvider, "_initial_get_token"):
+        DatabricksOAuthProvider(
+            hostname="example.cloud.databricks.com",
+            oauth_persistence=None,
+            redirect_port_range=[8020],
+            client_id="client",
+            scopes=["sql"],
+            http_client=MagicMock(),
+        )
+    manager.assert_called_once()
+
+    context = MagicMock(telemetry_circuit_breaker_enabled=False)
+    with patch(
+        "databricks.sql.telemetry.telemetry_client.UnifiedHttpClient"
+    ) as http_client:
+        TelemetryClient(
+            telemetry_enabled=True,
+            session_id_hex="01ef",
+            auth_provider=None,
+            host_url="example.cloud.databricks.com",
+            executor=MagicMock(),
+            batch_size=10,
+            client_context=context,
+        )
+    http_client.assert_called_once_with(context)
+
+
 def test_token_federation_check_does_not_import_it():
     script = """
         import sys
