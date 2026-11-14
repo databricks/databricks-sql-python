@@ -155,7 +155,9 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
 
     This decorator measures the execution time of a method and sends telemetry
     data about the operation, including latency, statement information, and
-    execution context.
+    execution context. When the connection's telemetry is off and DEBUG logging
+    is disabled, nothing would record the latency, so the method is called
+    without timing it.
 
     Args:
         statement_type (StatementType): The type of SQL statement being executed.
@@ -177,6 +179,17 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
+            # Use the connection's cached telemetry_enabled flag (set in
+            # Connection.__init__), read once before the call. When it is off
+            # and DEBUG logging is disabled (always the case on kernel
+            # connections, which export telemetry from the kernel), skip timing.
+            connection = getattr(self, "connection", None)
+            telemetry_enabled = bool(connection) and getattr(
+                connection, "telemetry_enabled", False
+            )
+            if not telemetry_enabled and not logger.isEnabledFor(logging.DEBUG):
+                return func(self, *args, **kwargs)
+
             start_time = time.monotonic()
             try:
                 return func(self, *args, **kwargs)
@@ -186,10 +199,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 # Always log for debugging
                 logger.debug("%s completed in %dms", func.__name__, duration_ms)
 
-                # Fast check: use cached telemetry_enabled flag from connection
-                # Avoids dictionary lookup + instance check on every operation
-                connection = getattr(self, "connection", None)
-                if connection and getattr(connection, "telemetry_enabled", False):
+                if telemetry_enabled:
                     session_id_hex = connection.get_session_id_hex()
                     if session_id_hex:
                         # Telemetry enabled - extract and send
