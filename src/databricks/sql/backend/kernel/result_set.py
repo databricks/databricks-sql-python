@@ -9,14 +9,17 @@ The kernel surfaces two flavours of result-bearing handle:
   ``ExecutedAsyncStatement.await_result()``. No statement id; no
   cancel.
 
-Both implement the same three methods this class actually calls:
-``arrow_schema() / fetch_next_batch() / close()``. ``KernelResultSet``
-takes either via the ``kernel_handle`` parameter and treats them
-uniformly — the connector's ``ResultSet`` contract doesn't need to
-distinguish them.
+Both implement ``arrow_schema() / fetch_next_batch() / close()``.
+``KernelResultSet`` takes either via the ``kernel_handle`` parameter and
+treats them uniformly — the connector's ``ResultSet`` contract doesn't
+need to distinguish them. Newer kernels also have ``schema_key()`` and
+``fetch_all_rows()``: the schema key looks the cached description up
+without calling ``arrow_schema()``, and the first row fetch (unless an
+Arrow fetch came first) gets a small result's rows as Python values in
+one ``fetch_all_rows()`` call.
 
-Buffer shape mirrors the prior ADBC POC's ``AdbcResultSet``: a FIFO
-of pyarrow ``RecordBatch``es, fed one batch at a time from the
+Otherwise the buffer mirrors the prior ADBC POC's ``AdbcResultSet``: a
+FIFO of pyarrow ``RecordBatch``es, fed one batch at a time from the
 kernel as the connector calls ``fetch*``. ``fetchmany(n)`` slices
 within a batch when ``n`` is smaller than the kernel's natural
 batch size; ``fetchall`` drains the whole stream.
