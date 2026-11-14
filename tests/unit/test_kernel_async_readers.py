@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from unittest.mock import patch
 from urllib.parse import urlsplit
 
 import pytest
@@ -132,7 +133,10 @@ def async_connection(request):
         def log_message(self, *_args):
             pass
 
-    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server, patch(
+        "databricks.sql.client.UnifiedHttpClient",
+        side_effect=AssertionError("Explicit kernel must not create a Python client"),
+    ):
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         conn = None
@@ -144,6 +148,7 @@ def async_connection(request):
                 use_kernel=True,
                 enable_telemetry=False,
             )
+            assert conn.http_client is None
             yield conn, state
         finally:
             state.release.set()
@@ -178,6 +183,17 @@ def _assert_read_routes(state):
     ]
     assert len(execute_bodies) == 1
     assert execute_bodies[0]["wait_timeout"] == "0s"
+
+
+def test_sync_cursor_fetch_without_python_http_client(async_connection):
+    conn, state = async_connection
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT id AS n FROM range(1, 5)")
+        assert cursor.fetchall() == [(1,), (2,), (3,), (4,)]
+    assert any(
+        method == "GET" and path.endswith("/result/chunks/1")
+        for method, path, _ in state.requests
+    )
 
 
 def test_async_cursor_refetch_preserves_session(async_connection):
