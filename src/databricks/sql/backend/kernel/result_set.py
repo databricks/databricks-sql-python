@@ -6,7 +6,7 @@ The kernel surfaces two flavours of result-bearing handle:
 - ``ExecutedStatement`` — returned by ``Statement.execute()``. Has a
   ``statement_id`` and a ``cancel()`` method.
 - ``ResultStream`` — returned by ``Session.metadata().list_*`` and by
-  ``ExecutedAsyncStatement.await_result()``. No statement id; no
+  ``ExecutedAsyncStatement.fetch_result()`` after completion. No statement id; no
   cancel.
 
 Both implement the same three methods this class actually calls:
