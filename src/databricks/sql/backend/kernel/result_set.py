@@ -160,7 +160,10 @@ class KernelResultSet(ResultSet):
                     ) from exc
                 raise OSError(os_code, os.strerror(os_code), local_path) from exc
             http_status = getattr(exc, "http_status", None)
-            if http_status is not None:
+            if (
+                http_status is not None
+                and getattr(exc, "error_code", None) == "VOLUME_STORAGE_HTTP_ERROR"
+            ):
                 raise OperationalError(
                     f"Staging operation over HTTP was unsuccessful: {http_status}"
                 ) from exc
@@ -309,14 +312,13 @@ class KernelResultSet(ResultSet):
             self.has_been_closed_server_side = True
             self.status = CommandState.CLOSED
             return
-        # Signal through the detached canceller before close waits for a transfer's native lock.
         backend = cast("KernelDatabricksClient", self.backend)
-        try:
-            backend.close_command(self.command_id)
-        except Exception as exc:
-            logger.warning(
-                "backend.close_command from result-set close failed: %s", exc
-            )
+        if self.is_staging_operation:
+            # Cancellation must precede waiting for a transfer's native lock.
+            try:
+                backend.cancel_command(self.command_id)
+            except Exception:
+                logger.debug("Volume cancellation during close failed", exc_info=True)
         try:
             self._kernel_handle.close()
         except Exception as exc:
@@ -324,6 +326,12 @@ class KernelResultSet(ResultSet):
             # level; log and swallow so the cursor's __del__ /
             # connection close path stays clean.
             logger.warning("Error closing kernel handle: %s", exc)
+        try:
+            backend.close_command(self.command_id)
+        except Exception as exc:
+            logger.warning(
+                "backend.close_command from result-set close failed: %s", exc
+            )
         self._buffer.clear()
         self._buffered_count = 0
         self._kernel_handle = None

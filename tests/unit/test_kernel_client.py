@@ -1574,6 +1574,9 @@ def test_close_session_clears_async_handles_even_if_close_fails():
     good = MagicMock()
     bad = MagicMock()
     bad.close.side_effect = _FakeKernelError(code="Unavailable")
+    bad.cancel.side_effect = _FakeKernelError(code="Unavailable")
+    c._sync_cancellers[1] = bad
+    c._volume_handles["volume"] = (MagicMock(), good)
     c._async_handles["a"] = good
     c._async_handles["b"] = bad
     c._kernel_session = MagicMock()
@@ -1581,6 +1584,10 @@ def test_close_session_clears_async_handles_even_if_close_fails():
     assert c._async_handles == {}
     assert good.close.called
     assert bad.close.called
+    bad.cancel.assert_called_once_with()
+    good.cancel.assert_called_once_with()
+    assert c._sync_cancellers == {}
+    assert c._volume_handles == {}
 
 
 def test_close_session_closes_and_drops_swept_handles():
@@ -2747,4 +2754,17 @@ def test_sync_volume_canceller_survives_until_completion(is_volume, has_cancelle
     c.cancel_command(result.command_id)
     assert stmt.canceller.return_value.cancel.called is (is_volume and has_canceller)
     c.finish_volume_operation(result.command_id)
+    assert not c._volume_handles
+
+
+@pytest.mark.parametrize("cancel_fails", [False, True])
+def test_close_volume_command_cancels_and_removes_handle(cancel_fails):
+    c = _make_client()
+    command_id = CommandId.from_sea_statement_id("volume-id")
+    canceller = MagicMock()
+    if cancel_fails:
+        canceller.cancel.side_effect = RuntimeError("cancel failed")
+    c._volume_handles[command_id.guid] = (MagicMock(), canceller)
+    c.close_command(command_id)
+    canceller.cancel.assert_called_once_with()
     assert not c._volume_handles
