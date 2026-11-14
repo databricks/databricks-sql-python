@@ -52,7 +52,7 @@ class Session:
         self,
         server_hostname: str,
         http_path: str,
-        http_client: UnifiedHttpClient,
+        http_client: Optional[UnifiedHttpClient],
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,
@@ -299,6 +299,11 @@ class Session:
                 "telemetry_batch_size": kwargs.get(
                     "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
                 ),
+                # Kernel-only: Thrift's exporter flushes on a fixed interval.
+                # When unset the kernel keeps its own default.
+                "telemetry_flush_interval_ms": kwargs.get(
+                    "telemetry_flush_interval_ms"
+                ),
                 # Preserve the caller's explicit circuit-breaker choice. When
                 # unset, leave it as None so the kernel owns the decision --
                 # mirroring the enable_telemetry handling above rather than
@@ -332,6 +337,7 @@ class Session:
                 retry_options=kernel_retry_options,
                 request_timeout_secs=kwargs.get("_socket_timeout"),
                 max_connections=kwargs.get("_pool_maxsize") or None,
+                use_cloud_fetch=kwargs.get("use_cloud_fetch", True),
                 enable_geospatial_support=kwargs.get(
                     "enable_geospatial_support", False
                 ),

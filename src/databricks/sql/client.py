@@ -46,7 +46,6 @@ from databricks.sql.backend.reyden_warehouse_cache import (
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
     ParamEscaper,
-    inject_parameters,
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
@@ -414,7 +413,12 @@ class Connection:
         )
 
         client_context = build_client_context(server_hostname, __version__, **kwargs)
-        self.http_client = UnifiedHttpClient(client_context)
+        # The kernel owns its HTTP transport.
+        self.http_client: Optional[UnifiedHttpClient] = (
+            None
+            if kwargs.get("use_kernel", False)
+            else UnifiedHttpClient(client_context)
+        )
 
         try:
             self.session = self._open_session_with_reyden_fallback(
@@ -484,10 +488,13 @@ class Connection:
         )
 
         # Determine proxy usage
-        use_proxy = self.http_client.using_proxy()
+        use_proxy = (
+            self.http_client.using_proxy() if self.http_client is not None else False
+        )
         proxy_host_info = None
         if (
-            use_proxy
+            self.http_client is not None
+            and use_proxy
             and self.http_client.proxy_uri
             and isinstance(self.http_client.proxy_uri, str)
         ):
@@ -1211,8 +1218,7 @@ class Cursor:
                 The list is always empty because native parameters are never used under the inline approach
         """
 
-        escaped_values = self.escaper.escape_args(params)
-        rendered_statement = inject_parameters(stmt, escaped_values)
+        rendered_statement = self.escaper.render_inline(stmt, params)
 
         return rendered_statement, NO_NATIVE_PARAMS
 
@@ -1388,6 +1394,8 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+        # Kernel backends reject staging operations before reaching these handlers.
+        assert self.connection.http_client is not None
         with open(local_file, "rb") as fh:
             r = self.connection.http_client.request(
                 HttpMethod.PUT, presigned_url, body=fh.read(), headers=headers
@@ -1446,6 +1454,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+        assert self.connection.http_client is not None
         r = self.connection.http_client.request(
             HttpMethod.PUT, presigned_url, body=stream.read(), headers=headers
         )
@@ -1468,6 +1477,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+        assert self.connection.http_client is not None
         r = self.connection.http_client.request(
             HttpMethod.GET, presigned_url, headers=headers
         )
@@ -1492,6 +1502,7 @@ class Cursor:
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
+        assert self.connection.http_client is not None
         r = self.connection.http_client.request(
             HttpMethod.DELETE, presigned_url, headers=headers
         )

@@ -14,15 +14,14 @@ max_replies_per_thread: 5
 # run gets the engine's `feat:` templates instead of a misleading `fix:` prefix.
 # Add a string (all flows) or a {flow: template} map here only to override.
 
-# safe_path denylist. Only the always-on hard-denied prefixes apply here
-# (.git/ and .gitleaksignore), seeded by the engine regardless — so this key is
-# omitted. Everything else under the repo root is writable; the safeguard is the
-# human PR-review gate, not a tool-layer block. Reviewers MUST scrutinize any
-# agent-authored diff reaching .github/, .bot/, or pyproject.toml. To hard-block
-# a path at the tool layer, add it under `denied_subpaths:` (repo-relative).
+# Keep workflow code and the bot's own config/prompts outside agent edits.
+denied_subpaths:
+  - .github
+  - .bot
 
 # Filled from the tracking ISSUE the maintainer labelled. (pr_body_template has no
-# engine default, so it stays required here.)
+# engine default, so it stays required here.) Omit files_changed: follow-up
+# pushes cannot refresh that inventory, so it would go stale.
 pr_body_template: |-
   ## Summary
 
@@ -32,9 +31,6 @@ pr_body_template: |-
 
   ## Root cause & plan
   {plan}
-
-  ## Files changed
-  {files_changed}
 
   ## Test plan
   {test_plan}

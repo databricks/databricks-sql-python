@@ -21,7 +21,12 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import select
+import socket
 import sys
+import threading
 from uuid import uuid4
 
 import pytest
@@ -134,6 +139,87 @@ def conn(kernel_conn_params):
         yield c
     finally:
         c.close()
+
+
+@pytest.fixture
+def workspace_only_proxy(kernel_conn_params, monkeypatch):
+    connections = {"workspace": 0, "blocked": 0}
+    workspace = kernel_conn_params["server_hostname"] + ":443"
+    stopping = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_CONNECT(self):
+            self.close_connection = True
+            if self.path != workspace:
+                connections["blocked"] += 1
+                self.send_error(403)
+                return
+            with socket.create_connection(
+                (kernel_conn_params["server_hostname"], 443), timeout=30
+            ) as upstream:
+                connections["workspace"] += 1
+                self.send_response(200)
+                self.end_headers()
+                while not stopping.is_set():
+                    ready, _, _ = select.select([self.connection, upstream], [], [], 1)
+                    for source in ready:
+                        data = source.recv(65536)
+                        if not data:
+                            return
+                        target = (
+                            upstream if source is self.connection else self.connection
+                        )
+                        target.sendall(data)
+
+        def log_message(self, *_args):
+            pass
+
+    proxy = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+    thread.start()
+    for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.setenv(name, f"http://127.0.0.1:{proxy.server_port}")
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(name, "")
+    try:
+        yield connections
+    finally:
+        stopping.set()
+        proxy.shutdown()
+        proxy.server_close()
+        thread.join()
+
+
+def test_cloudfetch_disabled_returns_complete_large_result(
+    kernel_conn_params, workspace_only_proxy
+):
+    from databricks.sql.backend.kernel.client import KernelDatabricksClient
+
+    with sql.connect(**kernel_conn_params, use_cloud_fetch=False) as connection:
+        assert isinstance(connection.session.backend, KernelDatabricksClient)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, sha2(CAST(id AS STRING), 512) AS payload "
+                "FROM range(250000) ORDER BY id"
+            )
+            count = 0
+            payload_bytes = 0
+            digest = hashlib.sha256()
+            while rows := cursor.fetchmany(8192):
+                for identity, payload in rows:
+                    assert identity == count
+                    assert payload == hashlib.sha512(str(identity).encode()).hexdigest()
+                    payload_bytes += len(payload)
+                    digest.update(f"{identity}\t{payload}\n".encode())
+                    count += 1
+            assert count == 250000
+            assert payload_bytes == 32000000
+            assert digest.hexdigest() == (
+                "a25ada4c6c476b53e97eb6e8a945e9ce4c14cc432c7ad672dc6fb607d660c86a"
+            )
+
+    assert workspace_only_proxy["workspace"] > 0
+    assert workspace_only_proxy["blocked"] == 0
 
 
 def test_connect_with_use_kernel_opens_a_session(conn):

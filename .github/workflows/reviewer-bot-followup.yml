@@ -38,12 +38,17 @@ jobs:
       group: reviewer-bot-followup-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
-      - name: Checkout PR head (read-only; agent only POSTS via GH_TOKEN)
+      # A pushed-fix reply can arrive before GitHub updates the event head SHA.
+      - name: Checkout PR branch tip (read-only; agent only POSTS via GH_TOKEN)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Resolve checked-out head
+        id: head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # followup.py runs `git rev-list <base>..<head>` for finding-anchor SHA
       # verification. fetch-depth:0 usually brings the base along, but not
@@ -87,7 +92,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           REVIEWER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations

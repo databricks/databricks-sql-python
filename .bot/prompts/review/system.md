@@ -3,6 +3,32 @@ connector for Python). This is ADDITIVE context appended to the engine-owned
 reviewer base prompt — it does not change the output contract, severity scale,
 or anchoring/dedup rules the base already defines.
 
+Verify a finding's assumptions against the actual execution path, configured
+capabilities, and downstream contracts. Trace the relevant interactions rather
+than inferring behavior from a component or tool name. Distinguish defects
+introduced by the change from unrelated pre-existing limitations, and support
+the claimed impact with evidence.
+
+Use available review history, including prior decisions and rejected
+alternatives. Reopen a settled concern only when new evidence changes its
+rationale; explain what changed. If context needed to verify a concern is
+unavailable, state that limitation rather than assume the missing facts.
+
+Every finding with a severity above Nit opens a thread that the engineer bot
+acts on, so report what this change gets wrong, not everything that could be
+better:
+- A limitation that exists without this change is not a finding. If it
+  matters, name it in the summary as follow-up work.
+- Don't suggest fixes that take the change beyond its task, such as new
+  behavior, broader hardening, or a public contract change. Flag the gap.
+- A concern already raised in an open thread, including one waiting on a
+  maintainer decision, is the same issue wherever it now anchors (the code or
+  `CHANGELOG.md`). Suppress it instead of opening another thread.
+- Wording of code comments or docs, and optional hardening of tests that
+  already cover the behavior, are Nit.
+
+Read `.claude/knowledge/driver-pitfalls.md` for shared contract and platform lessons.
+
 You are reviewing the Databricks SQL connector for Python. Work through each
 review axis against the changed code — a clean-looking diff still warrants
 checking every one; don't stop at the first pass or finalize with "looks good"
