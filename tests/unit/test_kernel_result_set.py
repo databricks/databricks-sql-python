@@ -5,6 +5,7 @@ network and no Rust extension dependency."""
 from __future__ import annotations
 
 import datetime
+import inspect
 import logging
 from collections import deque
 from decimal import Decimal
@@ -871,6 +872,37 @@ def test_arrow_fetches_after_a_row_fetch_return_the_remaining_rows(fetch):
     assert rs.fetchall_arrow().num_rows == 0 and rs.rownumber == 4
 
 
+@pytest.mark.parametrize(
+    "name, disable_pandas",
+    [(name, False) for name in sorted(_columns_skipping_pandas())]
+    + [("f64_nan", True), ("f32_nan", True)],
+)
+def test_every_kernel_converted_type_round_trips_to_arrow(name, disable_pandas):
+    columns = {**_columns_skipping_pandas(), **_columns_needing_pandas()}
+    batch = pa.record_batch([pa.array(range(4)), columns[name]], names=["k", name])
+    with patch.object(kernel_result_set, "_MAX_COST_WITHOUT_PANDAS", 10**9):
+        handle = _FakeRowsHandle(batch.schema, [batch])
+        rs = _make_rs(handle, disable_pandas=disable_pandas)
+        assert rs.fetchone()[0] == 0
+        table = rs.fetchall_arrow()
+    assert handle.rows_calls
+    expected = pa.Table.from_batches([batch.slice(1)])
+    assert table.schema.equals(expected.schema, check_metadata=True)
+    # repr: NaN != NaN for Table.equals.
+    assert repr(table.to_pylist()) == repr(expected.to_pylist())
+    assert table.equals(expected) or disable_pandas
+
+
+class _KeyOnlyHandle(_FakeKernelHandle):
+    def schema_key(self):
+        return _FakeSchemaKey(self._schema)
+
+
+def test_handles_with_schema_keys_but_without_fetch_all_rows_use_the_batches():
+    rs = _make_rs(_KeyOnlyHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)]))
+    _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
+
+
 def test_row_fetches_after_an_arrow_fetch_use_the_buffered_batches():
     handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3), _rows_batch(3, 4)])
     rs = _make_rs(handle)
@@ -923,3 +955,29 @@ class TestKernelRowsMatchThePandasPath:
         rows_from_arrow = self._rows_from_arrow()
         table = pa.table({name: _columns_needing_pandas()[name]})
         assert rows_from_arrow(table.to_batches()) is None
+
+    def test_handles_take_the_arguments_this_module_passes(self):
+        self._rows_from_arrow()
+        import databricks_sql_kernel as kernel
+
+        for handle_type in (kernel.ExecutedStatement, kernel.ResultStream):
+            params = list(
+                inspect.signature(handle_type.fetch_all_rows).parameters.values()
+            )
+            assert [(p.name, p.kind) for p in params[1:]] == [
+                ("max_rows", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                ("nan_ok", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+            ]
+            assert callable(handle_type.schema_key)
+        schema = pa.schema(
+            [pa.field("n", pa.int64(), metadata={b"databricks.type_name": b"BIGINT"})]
+        )
+        key = kernel.SchemaKey(schema)
+        assert key == kernel.SchemaKey(_reimported(schema))
+        assert key != kernel.SchemaKey(pa.schema([pa.field("n", pa.int64())]))
+        cache = kernel_result_set._SchemaCache()
+        cache.get(schema, key)
+        assert cache.get_by_key(kernel.SchemaKey(_reimported(schema))) is not None
+        assert (
+            cache.get_by_key(kernel.SchemaKey(pa.schema([("m", pa.int64())]))) is None
+        )

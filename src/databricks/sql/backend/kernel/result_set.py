@@ -393,8 +393,11 @@ class KernelResultSet(ResultSet):
         if not self._try_kernel_rows or self._buffer or self._exhausted:
             return False
         self._try_kernel_rows = False
+        fetch_all_rows = getattr(self._kernel_handle, "fetch_all_rows", None)
+        if fetch_all_rows is None:
+            return False
         try:
-            rows = self._kernel_handle.fetch_all_rows(
+            rows = fetch_all_rows(
                 self._result_schema.max_rows_without_pandas,
                 self.connection.disable_pandas is True,
             )
