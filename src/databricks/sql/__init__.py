@@ -3,6 +3,7 @@ import datetime
 from databricks.sql.exc import *
 
 # PEP 249 module globals
+# (see https://peps.python.org/pep-0249/#globals)
 apilevel = "2.0"
 threadsafety = 1  # Threads may share the module, but not connections.
 
