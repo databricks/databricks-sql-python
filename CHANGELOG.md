@@ -6,6 +6,7 @@
 - Speed up Thrift response handling: read replies in 1 MiB chunks and decode them with Thrift's C-accelerated protocol, and stop stringifying every request/response for the default no-op debug logger. Wide result schemas, metadata calls with many rows, and inline Arrow results benefit most.
 - Speed up fetching small results on the kernel backend (`use_kernel=True`): they are converted to rows without building a pandas DataFrame when that is cheaper and gives the same values, which cut client CPU per query by 47% in a local benchmark of 200 concurrent sessions running one-row queries against a mock server.
 - Cut more per-query work on the kernel backend: reuse the cursor description while a connection's statements return the same result schema, and build small results' rows straight from the record batches instead of first combining them into a table.
+- With a kernel that provides `fetch_all_rows`, the kernel backend gets small results' rows as Python values built by the kernel and reuses the cursor description without converting the schema to pyarrow, which raised one-process `SELECT 1` throughput with 800 sessions by about 65% against a Real-Time warehouse.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.

@@ -202,6 +202,9 @@ jobs:
       - name: Drive use_kernel=True through the REAL wheel — routing (offline)
         if: steps.deps.outputs.venv-usable == 'true'
         run: .venv/bin/python -m pytest tests/unit/test_session.py -m realkernel -v
+      - name: Real kernel row values match the pandas path (offline)
+        if: steps.deps.outputs.venv-usable == 'true'
+        run: .venv/bin/python -m pytest tests/unit/test_kernel_result_set.py -m realkernel -v
 
       # --- Fallback path: same-repo PRs / cache miss use JFrog (unchanged) --
       - name: Setup Poetry
@@ -239,6 +242,10 @@ jobs:
         # instantiates the real KernelDatabricksClient (not a stub, not a
         # Thrift fallback). Fails loudly if the real wheel is shadowed.
         run: poetry run python -m pytest tests/unit/test_session.py -m realkernel -v
+      - name: Real kernel row values match the pandas path
+        if: steps.deps.outputs.cache-hit != 'true'
+        # Skipped until the installed kernel has fetch_all_rows.
+        run: poetry run python -m pytest tests/unit/test_kernel_result_set.py -m realkernel -v
 
   check-linting:
     runs-on:
