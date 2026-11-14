@@ -1,3 +1,4 @@
+import importlib
 from typing import Any, Optional, List, TYPE_CHECKING
 
 from databricks.sql.auth.authenticators import (
@@ -140,11 +141,15 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
     return get_auth_provider(cfg, http_client)
 
 
+_LAZY_NAMES = {
+    "TokenFederationProvider": "databricks.sql.auth.token_federation",
+}
+
+
 def __getattr__(name: str) -> Any:
     # Imported on first use rather than at load, so connect() skips them;
     # still importable, and patchable here, as module attributes.
-    if name in ("TokenFederationProvider",):
-        import databricks.sql.auth.token_federation as _source
-
-        return getattr(_source, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    source = _LAZY_NAMES.get(name)
+    if source is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(source), name)

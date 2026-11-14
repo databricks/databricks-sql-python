@@ -1,3 +1,4 @@
+import importlib
 import abc
 import logging
 from typing import Any, Callable, Dict, List, TYPE_CHECKING
@@ -244,15 +245,17 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         return header_factory
 
 
+_LAZY_NAMES = {
+    "OAuthManager": "databricks.sql.auth.oauth",
+    "RefreshableTokenSource": "databricks.sql.auth.oauth",
+    "ClientCredentialsTokenSource": "databricks.sql.auth.oauth",
+}
+
+
 def __getattr__(name: str) -> Any:
     # Imported on first use rather than at load, so connect() skips them;
     # still importable, and patchable here, as module attributes.
-    if name in (
-        "OAuthManager",
-        "RefreshableTokenSource",
-        "ClientCredentialsTokenSource",
-    ):
-        import databricks.sql.auth.oauth as _source
-
-        return getattr(_source, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    source = _LAZY_NAMES.get(name)
+    if source is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(source), name)

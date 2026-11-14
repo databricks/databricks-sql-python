@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass
 from typing import Any, Optional, TYPE_CHECKING
@@ -23,14 +24,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_LAZY_NAMES = {
+    "UnifiedHttpClient": "databricks.sql.common.unified_http_client",
+}
+
+
 def __getattr__(name: str) -> Any:
     # Imported on first use rather than at load, so connect() skips them;
     # still importable, and patchable here, as module attributes.
-    if name in ("UnifiedHttpClient",):
-        import databricks.sql.common.unified_http_client as _source
-
-        return getattr(_source, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    source = _LAZY_NAMES.get(name)
+    if source is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(source), name)
 
 
 @dataclass
