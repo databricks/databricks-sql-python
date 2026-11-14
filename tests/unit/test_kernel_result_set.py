@@ -922,13 +922,14 @@ def test_handles_with_schema_keys_but_without_fetch_all_rows_use_the_batches():
     _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
 
 
-def test_row_fetches_after_an_arrow_fetch_use_the_buffered_batches():
+@pytest.mark.parametrize("taken", [1, 3], ids=["mid_batch", "batch_boundary"])
+def test_row_fetches_after_an_arrow_fetch_stay_on_the_arrow_path(taken):
     handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3), _rows_batch(3, 4)])
     rs = _make_rs(handle)
-    assert rs.fetchmany_arrow(1).num_rows == 1
+    assert rs.fetchmany_arrow(taken).num_rows == taken
     rows = rs.fetchall()
     assert handle.rows_calls == []
-    _assert_same_rows(rows, _expected_rows(_rows_batch(1, 3), _rows_batch(3, 4)))
+    _assert_same_rows(rows, _expected_rows(_rows_batch(taken, 4)))
 
 
 def test_kernel_row_errors_are_mapped():
@@ -936,6 +937,25 @@ def test_kernel_row_errors_are_mapped():
     handle.fetch_all_rows = MagicMock(side_effect=RuntimeError("boom"))
     with pytest.raises(OperationalError, match="fetch_all_rows"):
         _make_rs(handle).fetchall()
+
+
+def test_a_fetch_after_a_kernel_row_error_returns_every_row_once():
+    batches = [_rows_batch(0, 2), _rows_batch(2, 4), _rows_batch(4, 5)]
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, batches)
+
+    def pull_two_then_fail(max_rows, nan_ok=False):
+        # As the kernel does when reading fails mid-way: the batches read so
+        # far stay queued for fetch_next_batch.
+        handle._pending.extend([handle._batches.popleft() for _ in range(2)])
+        raise RuntimeError("connection reset")
+
+    handle.fetch_all_rows = pull_two_then_fail
+    rs = _make_rs(handle)
+    with pytest.raises(OperationalError):
+        rs.fetchone()
+    rows = [rs.fetchone()] + rs.fetchall()
+    _assert_same_rows(rows, _expected_rows(*batches))
+    assert rs.rownumber == 5
 
 
 def test_close_drops_kernel_rows():

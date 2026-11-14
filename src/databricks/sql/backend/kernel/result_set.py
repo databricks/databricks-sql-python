@@ -276,7 +276,8 @@ class KernelResultSet(ResultSet):
         self._schema: pyarrow.Schema = result_schema.schema
         # Kernels with schema keys can also return small results as rows of
         # Python values (``fetch_all_rows``), skipping pyarrow. Tried once,
-        # on the first row fetch, for types the pandas-free path converts.
+        # on the first row fetch unless an Arrow fetch came first, for types
+        # the pandas-free path converts.
         self._try_kernel_rows = (
             key is not None and result_schema.max_rows_without_pandas >= 0
         )
@@ -448,6 +449,7 @@ class KernelResultSet(ResultSet):
     def fetchall_arrow(self) -> pyarrow.Table:
         if self._kernel_rows is not None:
             return self._kernel_rows_to_arrow(None)
+        self._try_kernel_rows = False
         return self._drain()
 
     def fetchmany_arrow(self, size: int) -> pyarrow.Table:
@@ -457,6 +459,7 @@ class KernelResultSet(ResultSet):
             return pyarrow.Table.from_batches([], schema=self._schema)
         if self._kernel_rows is not None:
             return self._kernel_rows_to_arrow(size)
+        self._try_kernel_rows = False
         self._ensure_buffered(size)
         return self._take_buffered(size)
 
