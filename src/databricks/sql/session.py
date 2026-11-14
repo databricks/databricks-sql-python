@@ -12,7 +12,6 @@ from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
-from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.agent import detect as detect_agent
 from databricks.sql.common.feature_flag import (
     FeatureFlagsContext,
@@ -23,6 +22,7 @@ from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.backend.sea.backend import SeaDatabricksClient
+    from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,11 @@ def __getattr__(name: str) -> Any:
         from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
         return SeaDatabricksClient
+    if name == "UnifiedHttpClient":
+        # Same pattern, so connect() doesn't import urllib3.
+        from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
+        return UnifiedHttpClient
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -52,7 +57,7 @@ class Session:
         self,
         server_hostname: str,
         http_path: str,
-        http_client: Optional[UnifiedHttpClient],
+        http_client: Optional["UnifiedHttpClient"],
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,

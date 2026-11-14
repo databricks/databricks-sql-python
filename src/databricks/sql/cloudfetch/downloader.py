@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 import lz4.frame
 import time
@@ -11,7 +12,6 @@ from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.event import StatementType
-from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 if TYPE_CHECKING:
     # Imported for type annotations only. ``from __future__ import annotations``
@@ -22,6 +22,20 @@ if TYPE_CHECKING:
     from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
+
+
+_LAZY_NAMES = {
+    "UnifiedHttpClient": "databricks.sql.common.unified_http_client",
+}
+
+
+def __getattr__(name: str) -> Any:
+    # Imported on first use rather than at load, so connect() skips them;
+    # still importable, and patchable here, as module attributes.
+    source = _LAZY_NAMES.get(name)
+    if source is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(source), name)
 
 
 @dataclass

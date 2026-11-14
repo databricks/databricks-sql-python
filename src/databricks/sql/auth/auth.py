@@ -1,4 +1,5 @@
-from typing import Optional, List
+import importlib
+from typing import Any, Optional, List, TYPE_CHECKING
 
 from databricks.sql.auth.authenticators import (
     AuthProvider,
@@ -8,7 +9,9 @@ from databricks.sql.auth.authenticators import (
     AzureServicePrincipalCredentialProvider,
 )
 from databricks.sql.auth.common import AuthType, ClientContext
-from databricks.sql.auth.token_federation import TokenFederationProvider
+
+if TYPE_CHECKING:
+    from databricks.sql.auth.token_federation import TokenFederationProvider
 
 
 def get_auth_provider(cfg: ClientContext, http_client):
@@ -67,7 +70,9 @@ def get_auth_provider(cfg: ClientContext, http_client):
 
     # Always wrap with token federation (falls back gracefully if not needed)
     if base_provider:
-        return TokenFederationProvider(
+        import databricks.sql.auth.auth as _module
+
+        return _module.TokenFederationProvider(
             hostname=cfg.hostname,
             external_provider=base_provider,
             http_client=http_client,
@@ -134,3 +139,17 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),
     )
     return get_auth_provider(cfg, http_client)
+
+
+_LAZY_NAMES = {
+    "TokenFederationProvider": "databricks.sql.auth.token_federation",
+}
+
+
+def __getattr__(name: str) -> Any:
+    # Imported on first use rather than at load, so connect() skips them;
+    # still importable, and patchable here, as module attributes.
+    source = _LAZY_NAMES.get(name)
+    if source is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(source), name)

@@ -1,14 +1,6 @@
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from enum import Enum
-import threading
 from dataclasses import dataclass
-from contextlib import contextmanager
-from typing import Generator, Optional
 import logging
-from requests.adapters import HTTPAdapter
-from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 
 logger = logging.getLogger(__name__)
 
