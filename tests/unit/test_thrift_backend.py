@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
 from urllib3 import HTTPSConnectionPool
+import lz4.frame
 
 try:
     import pyarrow
@@ -2200,42 +2201,119 @@ class ThriftBackendTestSuite(unittest.TestCase):
             arrow_batches, lz4_compressed, schema
         )
 
-    @patch("lz4.frame.decompress")
-    @patch("pyarrow.ipc.open_stream")
-    def test_convert_arrow_based_set_to_arrow_table(
-        self, open_stream_mock, lz4_decompress_mock
-    ):
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+    @staticmethod
+    def _arrow_set(n_batches, rows_per_batch, lz4_compressed, zeros=False, **lz4_kw):
+        n = n_batches * rows_per_batch
+        table = pyarrow.table(
+            {
+                "id": pyarrow.array([0] * n if zeros else range(n), pyarrow.int64()),
+                "s": pyarrow.array([None if zeros else str(i) for i in range(n)]),
+            }
         )
-
-        lz4_decompress_mock.return_value = bytearray("Testing", "utf-8")
-
-        schema = (
-            pyarrow.schema(
-                [
-                    pyarrow.field("column1", pyarrow.int32()),
-                ]
+        arrow_batches = []
+        for record_batch in table.to_batches(max_chunksize=rows_per_batch):
+            data = record_batch.serialize().to_pybytes()
+            arrow_batches.append(
+                ttypes.TSparkArrowBatch(
+                    batch=(
+                        lz4.frame.compress(data, **lz4_kw) if lz4_compressed else data
+                    ),
+                    rowCount=record_batch.num_rows,
+                )
             )
-            .serialize()
-            .to_pybytes()
+        return table, arrow_batches, table.schema.serialize().to_pybytes()
+
+    def test_convert_arrow_based_set_to_arrow_table(self):
+        for n_batches in (1, 2, 3, 72):
+            for lz4_compressed in (False, True):
+                table, arrow_batches, schema = self._arrow_set(
+                    n_batches, 14, lz4_compressed
+                )
+                result, n_rows = utils.convert_arrow_based_set_to_arrow_table(
+                    arrow_batches, lz4_compressed, schema
+                )
+                self.assertEqual(n_rows, n_batches * 14)
+                self.assertTrue(result.equals(table), (n_batches, lz4_compressed))
+
+    @unittest.skipUnless(utils._PYARROW_HAS_LZ4, "pyarrow lacks the lz4 codec")
+    def test_convert_arrow_based_set_decodes_many_lz4_batches_in_one_call(self):
+        # Each lz4.frame.decompress call releases the GIL; many-batch results must
+        # not pay that per batch.
+        real_decompress = lz4.frame.decompress
+        for n_batches, expected_calls in ((2, 2), (72, 0)):
+            table, arrow_batches, schema = self._arrow_set(n_batches, 14, True)
+            with patch(
+                "lz4.frame.decompress", side_effect=real_decompress
+            ) as decompress:
+                result, _ = utils.convert_arrow_based_set_to_arrow_table(
+                    arrow_batches, True, schema
+                )
+            self.assertEqual(decompress.call_count, expected_calls)
+            self.assertTrue(result.equals(table))
+
+    def test_convert_arrow_based_set_without_pyarrow_lz4_codec(self):
+        table, arrow_batches, schema = self._arrow_set(72, 14, True)
+        real_decompress = lz4.frame.decompress
+        with patch.object(utils, "_PYARROW_HAS_LZ4", False):
+            with patch(
+                "lz4.frame.decompress", side_effect=real_decompress
+            ) as decompress:
+                result, n_rows = utils.convert_arrow_based_set_to_arrow_table(
+                    arrow_batches, True, schema
+                )
+        self.assertEqual(decompress.call_count, 72)
+        self.assertEqual(n_rows, 72 * 14)
+        self.assertTrue(result.equals(table))
+
+    def test_convert_arrow_based_set_corrupt_lz4_raises_runtime_error(self):
+        def truncate(batch):
+            return batch[:-20]
+
+        def flip_byte(batch):
+            corrupted = bytearray(batch)
+            corrupted[len(corrupted) // 2] ^= 0xFF
+            return bytes(corrupted)
+
+        # Truncation is detected with or without checksums. A flipped byte is only
+        # detected with checksums, which the warehouse sets.
+        checksums = {"block_checksum": True, "content_checksum": True}
+        cases = [(truncate, {}), (truncate, checksums), (flip_byte, checksums)]
+        for n_batches in (1, 72):
+            for which in (n_batches // 2, -1):
+                for corrupt, lz4_kw in cases:
+                    _, arrow_batches, schema = self._arrow_set(
+                        n_batches, 14, True, **lz4_kw
+                    )
+                    arrow_batches[which].batch = corrupt(arrow_batches[which].batch)
+                    with self.assertRaises(
+                        RuntimeError, msg=(n_batches, which, corrupt.__name__, lz4_kw)
+                    ):
+                        utils.convert_arrow_based_set_to_arrow_table(
+                            arrow_batches, True, schema
+                        )
+
+    @unittest.skipUnless(utils._PYARROW_HAS_LZ4, "pyarrow lacks the lz4 codec")
+    def test_convert_arrow_based_set_lz4_memory_error_is_not_wrapped(self):
+        _, arrow_batches, schema = self._arrow_set(72, 14, True)
+        with patch.object(
+            utils.pyarrow, "CompressedInputStream", side_effect=pyarrow.ArrowMemoryError
+        ):
+            with self.assertRaises(MemoryError):
+                utils.convert_arrow_based_set_to_arrow_table(
+                    arrow_batches, True, schema
+                )
+
+    def test_convert_arrow_based_set_with_highly_compressible_batches(self):
+        # Decompressed output far larger than the first read size.
+        table, arrow_batches, schema = self._arrow_set(4, 50000, True, zeros=True)
+        decompressed = sum(len(lz4.frame.decompress(b.batch)) for b in arrow_batches)
+        compressed = sum(len(b.batch) for b in arrow_batches)
+        self.assertGreater(decompressed, 4 * compressed + 65536)
+        result, n_rows = utils.convert_arrow_based_set_to_arrow_table(
+            arrow_batches, True, schema
         )
-
-        arrow_batches = [
-            ttypes.TSparkArrowBatch(batch=bytearray("Testing", "utf-8"), rowCount=1)
-            for _ in range(10)
-        ]
-        utils.convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
-        lz4_decompress_mock.assert_not_called()
-
-        utils.convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
-        lz4_decompress_mock.assert_called()
+        self.assertEqual(n_rows, 200000)
+        self.assertTrue(result.equals(table))
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
         # Deliberately duplicate the column name to check that dups work

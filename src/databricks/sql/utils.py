@@ -20,8 +20,10 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping, Set as AbstractSet
 from decimal import Decimal
 from enum import Enum
+import mmap
 import re
 import secrets
+import sys
 
 import lz4.frame
 
@@ -1011,19 +1013,167 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
         raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
 
+_PYARROW_HAS_LZ4 = pyarrow is not None and pyarrow.Codec.is_available("lz4")
+_LZ4_MAX_READ_BYTES = 16 * 1024 * 1024
+# Each live map is one VMA (vm.max_map_count, 65530 by default), so smaller streams
+# stay on the heap: reaching that limit takes over 64 GB of inline results held at once.
+_INLINE_ARROW_MMAP_MIN_BYTES = 1024 * 1024
+# Untouched pages of the reservation cost no memory; overflow grows the map.
+_LZ4_RATIO_ESTIMATE = 4
+# The heap retention this works around was measured with glibc.
+_INLINE_ARROW_USE_MMAP = sys.platform.startswith("linux")
+
+
+def _decompress_lz4_frames_into(out: "_ArrowStreamBuffer", frames: List[bytes]) -> None:
+    # Each batch is one LZ4 frame; decode them all in one native call. Every
+    # lz4.frame.decompress call releases the GIL, and with many busy threads each
+    # release can wait a full switch interval.
+    # A temporary copy of the compressed row set, freed once it is decoded.
+    compressed = b"".join(frames)
+    nbytes = min(_LZ4_RATIO_ESTIMATE * len(compressed) + 65536, _LZ4_MAX_READ_BYTES)
+    try:
+        with pyarrow.CompressedInputStream(
+            pyarrow.BufferReader(compressed), "lz4"
+        ) as stream:
+            out.append_stream(stream, nbytes)
+    except MemoryError:
+        raise
+    except (OSError, pyarrow.ArrowException) as e:
+        # Raise what python-lz4 raises, so the error type doesn't depend on batch count.
+        raise RuntimeError(f"LZ4 decompression failed: {e}") from e
+
+
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
-    ba = bytearray()
-    ba += schema_bytes
+    # Roughly a lower bound on the stream size (LZ4 framing adds a few bytes to
+    # incompressible data)
+    min_size = len(schema_bytes) + sum(len(b.batch) for b in arrow_batches)
+    stream = _ArrowStreamBuffer(
+        min_size,
+        len(schema_bytes)
+        + (min_size - len(schema_bytes))
+        * (_LZ4_RATIO_ESTIMATE if lz4_compressed else 1),
+    )
+    stream.append(schema_bytes)
     n_rows = 0
-    for arrow_batch in arrow_batches:
-        n_rows += arrow_batch.rowCount
-        ba += (
-            lz4.frame.decompress(arrow_batch.batch)
-            if lz4_compressed
-            else arrow_batch.batch
-        )
-    arrow_table = pyarrow.ipc.open_stream(ba).read_all()
+    # The Arrow path releases the GIL about twice, so it only helps from 3 batches.
+    # Without a map (non-Linux, or mmap failed) it is limited to results under 1 MiB
+    # compressed: decoding large ones into the heap through Arrow used more memory
+    # than main with glibc. A highly compressible result can still decode into the heap.
+    if (
+        lz4_compressed
+        and len(arrow_batches) > 2
+        and _PYARROW_HAS_LZ4
+        and (stream.mapped or min_size < _INLINE_ARROW_MMAP_MIN_BYTES)
+    ):
+        n_rows = sum(arrow_batch.rowCount for arrow_batch in arrow_batches)
+        _decompress_lz4_frames_into(stream, [b.batch for b in arrow_batches])
+    else:
+        for arrow_batch in arrow_batches:
+            n_rows += arrow_batch.rowCount
+            stream.append(
+                lz4.frame.decompress(arrow_batch.batch)
+                if lz4_compressed
+                else arrow_batch.batch
+            )
+    arrow_table = pyarrow.ipc.open_stream(stream.getbuffer()).read_all()
     return arrow_table, n_rows
+
+
+class _ArrowStreamBuffer:
+    """Accumulates an inline Arrow IPC stream in a private anonymous memory map.
+
+    The table reads the stream zero-copy, so this buffer lives as long as the result.
+    On the glibc heap such buffers often stayed resident after the result was freed
+    (~1 GB per 1 GB of inline results); a mapping is returned to the OS. A stream starts
+    on the heap and moves to a map once it reaches the floor (up front when its
+    compressed size already does). Small streams, mmap failures and non-Linux
+    platforms use a bytearray, as before.
+    """
+
+    def __init__(self, min_size: int, size_estimate: int):
+        self._map: Optional[mmap.mmap] = None
+        self._bytes = bytearray()
+        self._size = 0
+        self._size_estimate = size_estimate
+        self._can_map = _INLINE_ARROW_USE_MMAP and hasattr(mmap, "MAP_PRIVATE")
+        if min_size >= _INLINE_ARROW_MMAP_MIN_BYTES:
+            self._start_map(size_estimate)
+
+    def _start_map(self, size: int) -> None:
+        if not self._can_map:
+            return
+        self._can_map = False
+        try:
+            # Python defaults anonymous maps to MAP_SHARED (shmem, shared on fork).
+            self._map = mmap.mmap(-1, size, flags=mmap.MAP_PRIVATE)
+        except (OSError, ValueError):
+            return
+        if self._size:
+            self._map[: self._size] = self._bytes
+            self._bytes = bytearray()
+
+    def append_stream(self, stream, chunk_size: int) -> None:
+        """Copy a decompressing stream to the end, reading straight into the map."""
+        while True:
+            if self._map is None:
+                chunk = stream.read(chunk_size)
+                if not chunk:
+                    return
+                self.append(chunk)
+                continue
+            if self._size == len(self._map):
+                # Grow only if the stream has more: an exact fill must not resize
+                probe = stream.read(1)
+                if not probe:
+                    return
+                self.append(probe)
+                continue
+            with memoryview(self._map) as view:
+                n = stream.readinto(view[self._size :])
+            if not n:
+                return
+            self._size += n
+
+    def append(self, data: bytes) -> None:
+        end = self._size + len(data)
+        if self._map is None and end >= _INLINE_ARROW_MMAP_MIN_BYTES:
+            self._start_map(max(self._size_estimate, 2 * end))
+        self._ensure_capacity(end)
+        if self._map is not None:
+            self._map[self._size : end] = data
+        else:
+            self._bytes += data
+        self._size = end
+
+    def _ensure_capacity(self, end: int) -> None:
+        if self._map is not None and end > len(self._map):
+            for new_size in (max(end, 2 * len(self._map)), end):
+                try:
+                    self._map.resize(new_size)
+                    break
+                except (OSError, SystemError, ValueError, BufferError):
+                    pass
+            else:
+                # mremap failed (memory pressure): continue on the heap, which briefly
+                # holds a second copy of what was written; a new map would fail too.
+                with memoryview(self._map) as view:
+                    self._bytes += view[: self._size]
+                self._map = None
+
+    @property
+    def mapped(self) -> bool:
+        return self._map is not None
+
+    def getbuffer(self):
+        if self._map is None:
+            return self._bytes
+        if len(self._map) > self._size:
+            # Release the unused reservation (commit charge under strict overcommit)
+            try:
+                self._map.resize(self._size)
+            except (OSError, SystemError, ValueError, BufferError):
+                pass
+        return pyarrow.py_buffer(self._map).slice(0, self._size)
 
 
 def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
