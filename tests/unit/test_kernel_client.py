@@ -1439,7 +1439,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     c._kernel_session = MagicMock()
     owning_stream = MagicMock()
     # ``KernelResultSet.__init__`` calls ``arrow_schema()``; make that
-    # raise so ``_make_result_set`` fails after a successful await.
+    # raise so ``_make_result_set`` fails after a successful fetch.
     owning_stream.arrow_schema.side_effect = _FakeKernelError(code="Internal")
     owning_handle = MagicMock()
     owning_handle.fetch_result.return_value = owning_stream

@@ -923,6 +923,7 @@ class KernelDatabricksClient(DatabricksClient):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
+        """Fetch results after the cursor has confirmed successful completion."""
         # Prefer the original owning async handle for the first
         # in-process result stream. The kernel attaches the real
         # ExecuteStatementAsync telemetry to that handle; attached
