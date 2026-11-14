@@ -518,7 +518,7 @@ class KernelDatabricksClient(DatabricksClient):
             return
         with self._sync_cancellers_lock:
             cancellers = list(self._sync_cancellers.values()) + [
-                entry[1] for entry in self._volume_handles.values()
+                entry[1] for entry in self._volume_handles.values() if entry[1] is not None
             ]
             self._sync_cancellers.clear()
             self._volume_handles.clear()
@@ -643,7 +643,7 @@ class KernelDatabricksClient(DatabricksClient):
                     with self._sync_cancellers_lock:
                         self._volume_handles[command_id.guid] = (
                             stmt,
-                            self._sync_cancellers[id(cursor)],
+                            self._sync_cancellers.get(id(cursor)),
                         )
                 # Execute succeeded: the kernel now owns the statement
                 # lifecycle. It auto-closes the server statement when the
@@ -783,7 +783,7 @@ class KernelDatabricksClient(DatabricksClient):
     def close_command(self, command_id: CommandId) -> None:
         with self._sync_cancellers_lock:
             volume = self._volume_handles.pop(command_id.guid, None)
-        if volume is not None:
+        if volume is not None and volume[1] is not None:
             try:
                 volume[1].cancel()
             except Exception:
@@ -923,7 +923,6 @@ class KernelDatabricksClient(DatabricksClient):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
-        """Fetch results after the cursor has confirmed successful completion."""
         # Prefer the original owning async handle for the first
         # in-process result stream. The kernel attaches the real
         # ExecuteStatementAsync telemetry to that handle; attached
@@ -933,7 +932,7 @@ class KernelDatabricksClient(DatabricksClient):
         # derive a reader for re-fetch. This preserves the Thrift-parity
         # behavior where results remain re-callable until explicit close.
         #
-        # Concurrency: the owning handle is shared, and ``fetch_result()``
+        # Concurrency: the owning handle is shared, and ``await_result()``
         # below runs OUTSIDE the lock, so it must not run on the same
         # handle a concurrent ``get_query_state`` poll is already using
         # for ``status()``. Mirror that method's guard here — if a status
@@ -971,8 +970,7 @@ class KernelDatabricksClient(DatabricksClient):
                     if owner is not None
                     else self._kernel_session.attach_async_statement(command_id.guid)
                 )
-            # Cursor.get_async_execution_result has already confirmed success.
-            stream = handle.fetch_result()
+            stream = handle.await_result()
         except Exception as exc:
             if uses_owning_handle:
                 with self._async_handles_lock:
@@ -981,16 +979,16 @@ class KernelDatabricksClient(DatabricksClient):
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.
         #
-        # Unlike the ``fetch_result()`` failure above, we deliberately do
+        # Unlike the ``await_result()`` failure above, we deliberately do
         # NOT discard the ``_async_result_stream_started`` marker here.
-        # By this point ``fetch_result()`` has already succeeded, so the
+        # By this point ``await_result()`` has already succeeded, so the
         # owning handle's result stream has been started (and may be
-        # partially consumed); re-fetching that same handle on a retry is
+        # partially consumed); re-awaiting that same handle on a retry is
         # not safe. Leaving the marker set routes any retry through the
         # reader fallback, which re-materialises a fresh stream.
         # The trade-off is that such a retry loses the async-statement
         # telemetry — an accepted, narrow gap limited to the case where
-        # result-set construction fails after a successful fetch.
+        # result-set construction fails after a successful await.
         try:
             return self._make_result_set(stream, cursor, command_id)
         except Exception as exc:
