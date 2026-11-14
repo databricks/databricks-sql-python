@@ -71,6 +71,41 @@ unsafe_logger.addHandler(logging.NullHandler())
 # Disable propagation so that handlers for `databricks.sql` don't pick up these messages
 unsafe_logger.propagate = False
 
+
+def _unsafe_logger_has_receiver() -> bool:
+    """Whether unsafe_logger.debug() would reach anything other than a NullHandler.
+
+    Mirrors Logger.handle and Logger.callHandlers so that every handler, filter
+    or lastResort that would see a record still gets it. Building the two records
+    per request otherwise costs more than encoding the request.
+    """
+    if type(unsafe_logger) is not logging.Logger:
+        return True
+    if not unsafe_logger.isEnabledFor(logging.DEBUG):
+        return False
+    # Logger filters and custom record factories see records nobody handles.
+    if unsafe_logger.filters or logging.getLogRecordFactory() is not logging.LogRecord:
+        return True
+    found = False
+    current: Optional[logging.Logger] = unsafe_logger
+    while current:
+        for handler in current.handlers:
+            found = True
+            if (
+                logging.DEBUG >= handler.level
+                and type(handler) is not logging.NullHandler
+            ):
+                return True
+        current = current.parent if current.propagate else None
+    if found:
+        return False
+    if logging.lastResort:
+        return logging.DEBUG >= logging.lastResort.level
+    return bool(
+        logging.raiseExceptions and not unsafe_logger.manager.emittedNoHandlerWarning
+    )
+
+
 THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
 DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
 DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
@@ -451,7 +486,8 @@ class ThriftDatabricksClient(DatabricksClient):
                 logger.debug("Sending request: {}(<REDACTED>)".format(this_method_name))
                 # Lazy %s args: unsafe_logger is DEBUG-level with a NullHandler by
                 # default, so eager formatting would stringify every payload.
-                unsafe_logger.debug("Sending request: %s", request)
+                if _unsafe_logger_has_receiver():
+                    unsafe_logger.debug("Sending request: %s", request)
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
@@ -465,7 +501,8 @@ class ThriftDatabricksClient(DatabricksClient):
                 logger.debug(
                     "Received response: {}(<REDACTED>)".format(type(response).__name__)
                 )
-                unsafe_logger.debug("Received response: %s", response)
+                if _unsafe_logger_has_receiver():
+                    unsafe_logger.debug("Received response: %s", response)
                 return response
 
             except urllib3.exceptions.HTTPError as err:
