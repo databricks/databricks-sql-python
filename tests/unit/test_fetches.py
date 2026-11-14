@@ -1,6 +1,6 @@
 import unittest
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 try:
     import pyarrow as pa
@@ -9,7 +9,7 @@ except ImportError:
 
 import databricks.sql.client as client
 from databricks.sql.backend.types import ExecuteResponse
-from databricks.sql.utils import ArrowQueue
+from databricks.sql.utils import ArrowQueue, ColumnQueue, ColumnTable
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
 
@@ -389,6 +389,118 @@ class FetchTests(unittest.TestCase):
 
         self.assertIsInstance(result, pa.Table)
         self.assertEqual(result.num_rows, 0)
+
+
+class FetchRowsPerRequestTests(unittest.TestCase):
+    """maxRows sent by ThriftResultSet._fill_results_buffer for inline results."""
+
+    @staticmethod
+    def _make_result_set(n_rows, arraysize, columnar=False):
+        """A result set over ids 0..n_rows-1 from a fake server that returns exactly
+        maxRows rows per FetchResults. Returns the result set and the maxRows sent."""
+        calls = []
+        next_row = 0
+
+        def fetch_results(**kwargs):
+            nonlocal next_row
+            calls.append(kwargs["max_rows"])
+            values = list(range(next_row, min(n_rows, next_row + kwargs["max_rows"])))
+            next_row += len(values)
+            if columnar:
+                queue = ColumnQueue(ColumnTable([values], ["col0"]))
+            else:
+                queue = ArrowQueue(pa.table({"col0": values}), len(values))
+            return queue, next_row < n_rows, 0
+
+        backend = Mock(spec=ThriftDatabricksClient)
+        backend.fetch_results = fetch_results
+        rs = ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=None,
+                status=None,
+                has_been_closed_server_side=False,
+                description=[("col0", "integer", None, None, None, None, None)],
+                lz4_compressed=True,
+                is_staging_operation=False,
+            ),
+            thrift_client=backend,
+            arraysize=arraysize,
+        )
+        return rs, calls
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_fetchone_and_iteration_keep_arraysize(self):
+        rs, calls = self._make_result_set(25, arraysize=10)
+
+        rows = list(rs)
+
+        self.assertEqual([r[0] for r in rows], list(range(25)))
+        self.assertEqual(calls, [10, 10, 10])
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_fetchmany_up_to_arraysize_keeps_arraysize(self):
+        rs, calls = self._make_result_set(25, arraysize=10)
+
+        ids = [r[0] for _ in range(4) for r in rs.fetchmany(7)]
+
+        self.assertEqual(ids, list(range(25)))
+        self.assertEqual(calls, [10, 10, 10])
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_fetchall_requests_up_to_the_cap(self):
+        rs, calls = self._make_result_set(25, arraysize=10)
+
+        table = rs.fetchall_arrow()
+
+        self.assertEqual(table.column(0).to_pylist(), list(range(25)))
+        self.assertEqual(calls, [10, 2_000_000])
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_large_fetchmany_requests_the_remaining_rows(self):
+        rs, calls = self._make_result_set(100, arraysize=10)
+
+        first = rs.fetchmany_arrow(35)
+        second = rs.fetchmany_arrow(35)
+
+        self.assertEqual(first.column(0).to_pylist(), list(range(35)))
+        self.assertEqual(second.column(0).to_pylist(), list(range(35, 70)))
+        self.assertEqual(calls, [10, 25, 35])
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_rows_per_request_are_capped(self):
+        with patch("databricks.sql.result_set._MAX_ROWS_PER_FETCH", 50):
+            rs, calls = self._make_result_set(200, arraysize=10)
+            table = rs.fetchmany_arrow(120)
+
+        self.assertEqual(table.column(0).to_pylist(), list(range(120)))
+        self.assertEqual(calls, [10, 50, 50, 10])
+
+    @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+    def test_arraysize_above_the_cap_is_kept(self):
+        with patch("databricks.sql.result_set._MAX_ROWS_PER_FETCH", 50):
+            rs, calls = self._make_result_set(200, arraysize=80)
+            table = rs.fetchall_arrow()
+
+        self.assertEqual(table.num_rows, 200)
+        self.assertEqual(calls, [80, 80, 80])
+
+    def test_columnar_fetchall_requests_up_to_the_cap(self):
+        rs, calls = self._make_result_set(25, arraysize=10, columnar=True)
+
+        rows = rs.fetchall()
+
+        self.assertEqual([r[0] for r in rows], list(range(25)))
+        self.assertEqual(calls, [10, 2_000_000])
+
+    def test_columnar_fetchone_and_fetchmany(self):
+        rs, calls = self._make_result_set(40, arraysize=10, columnar=True)
+
+        ids = [rs.fetchone()[0]] + [r[0] for r in rs.fetchmany(30)]
+        ids += [r[0] for r in rs.fetchmany(5)]
+
+        self.assertEqual(ids, list(range(36)))
+        self.assertEqual(calls, [10, 21, 10])
 
 
 if __name__ == "__main__":
