@@ -322,6 +322,12 @@ class TestUtilityFunctions:
             ("https://test.databricks.com", "https://test.databricks.com:443", True),
             ("https://test1.databricks.com", "https://test2.databricks.com", False),
             ("https://login.microsoftonline.com", "https://test.databricks.com", False),
+            # Bare hostname (no scheme) — regression: urlparse("host").netloc == ""
+            # caused these to incorrectly return False
+            ("test.databricks.com", "https://test.databricks.com", True),
+            ("https://test.databricks.com", "test.databricks.com", True),
+            ("test.databricks.com", "test.databricks.com", True),
+            ("other.example.com", "test.databricks.com", False),
         ],
     )
     def test_is_same_host(self, url1, url2, expected):
