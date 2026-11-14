@@ -998,13 +998,15 @@ def transform_paramstyle(
 
 
 def create_arrow_table_from_arrow_file(
-    file_bytes: bytes, description
+    file_bytes: Union[bytes, "pyarrow.Buffer"], description
 ) -> "pyarrow.Table":
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
 
-def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
+def convert_arrow_based_file_to_arrow_table(
+    file_bytes: Union[bytes, "pyarrow.Buffer"],
+):
     try:
         return pyarrow.ipc.open_stream(file_bytes).read_all()
     except Exception as e:

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import logging
+import mmap
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Union
 
 import lz4.frame
 import time
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
@@ -30,12 +37,12 @@ class DownloadedFile:
     Class for the result file and metadata.
 
     Attributes:
-        file_bytes (bytes): Downloaded file in bytes.
+        file_bytes (bytes | pyarrow.Buffer): Downloaded (decompressed) Arrow IPC stream.
         start_row_offset (int): The offset of the starting row in relation to the full result.
         row_count (int): Number of rows the file represents in the result.
     """
 
-    file_bytes: bytes
+    file_bytes: Union[bytes, "pyarrow.Buffer"]
     start_row_offset: int
     row_count: int
 
@@ -119,7 +126,9 @@ class ResultSetDownloadHandler:
         )
 
         decompressed_data = (
-            ResultSetDownloadHandler._decompress_data(compressed_data)
+            ResultSetDownloadHandler._decompress_data(
+                compressed_data, self.link.bytesNum
+            )
             if self.settings.is_lz4_compressed
             else compressed_data
         )
@@ -186,12 +195,28 @@ class ResultSetDownloadHandler:
             raise Error("CloudFetch link has expired")
 
     @staticmethod
-    def _decompress_data(compressed_data: bytes) -> bytes:
+    def _decompress_data(
+        compressed_data: bytes, expected_size: Optional[int] = None
+    ) -> Union[bytes, "pyarrow.Buffer"]:
         """
         Decompress lz4 frame compressed data.
 
         Decompresses data that has been lz4 compressed, either via the whole frame or by series of chunks.
+        When pyarrow is available and ``expected_size`` (the link's ``bytesNum``) is the decompressed
+        size, the result is a pyarrow Buffer backed by its own memory map.
         """
+        # SEA reports the compressed size in bytesNum; only a larger value can be the output size.
+        if (
+            _ARROW_LZ4_AVAILABLE
+            and expected_size is not None
+            and expected_size > len(compressed_data)
+        ):
+            mapped = ResultSetDownloadHandler._decompress_to_mmap(
+                compressed_data, expected_size
+            )
+            if mapped is not None:
+                return mapped
+
         uncompressed_data, bytes_read = lz4.frame.decompress(
             compressed_data, return_bytes_read=True
         )
@@ -208,3 +233,46 @@ class ResultSetDownloadHandler:
                 uncompressed_data += data
                 start += num_bytes
         return uncompressed_data
+
+    @staticmethod
+    def _decompress_to_mmap(
+        compressed_data: bytes, expected_size: int
+    ) -> Optional["pyarrow.Buffer"]:
+        """Decompress into a private anonymous memory map; return None to fall back to python-lz4.
+
+        The buffer lives as long as the Arrow table built on it. Allocated by python-lz4
+        in the download threads, such buffers fragmented the threads' malloc arenas (up to
+        ~40% extra peak RSS on large results); a dedicated mapping is returned to the OS
+        when the table is released.
+        """
+        try:
+            out = _anonymous_mmap(expected_size)
+            stream = pyarrow.CompressedInputStream(
+                pyarrow.BufferReader(compressed_data), "lz4"
+            )
+            size = stream.readinto(out)
+            if stream.read(1):
+                # expected_size was smaller than the decompressed stream
+                return None
+            return pyarrow.py_buffer(out).slice(0, size)
+        except (OSError, ValueError, pyarrow.ArrowException) as e:
+            # Let python-lz4 decode it, or raise its usual error for corrupt data
+            logger.debug("Arrow lz4 decompression failed, falling back: %s", e)
+            return None
+
+
+def _arrow_lz4_available() -> bool:
+    try:
+        return pyarrow is not None and pyarrow.Codec.is_available("lz4")
+    except Exception:
+        return False
+
+
+_ARROW_LZ4_AVAILABLE = _arrow_lz4_available()
+
+
+def _anonymous_mmap(size: int) -> mmap.mmap:
+    # Python defaults anonymous maps to MAP_SHARED (shmem, shared with forked children).
+    if hasattr(mmap, "MAP_PRIVATE"):
+        return mmap.mmap(-1, size, flags=mmap.MAP_PRIVATE)
+    return mmap.mmap(-1, size)
