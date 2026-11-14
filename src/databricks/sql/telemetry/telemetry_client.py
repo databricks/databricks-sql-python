@@ -1,9 +1,11 @@
+import atexit
+import os
 import threading
 import time
 import logging
 import json
-from queue import Queue, Full
-from concurrent.futures import ThreadPoolExecutor
+import weakref
+from queue import Queue, Full, SimpleQueue
 from concurrent.futures import Future
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
@@ -462,6 +464,107 @@ class TelemetryClient(BaseTelemetryClient):
             pass
 
 
+class _DaemonThreadPoolExecutor:
+    """Minimal ThreadPoolExecutor stand-in whose workers are daemon threads.
+
+    ThreadPoolExecutor workers are joined at interpreter exit, so a telemetry
+    request that is slow or retrying a 429 used to hold the process open for
+    tens of seconds. Exit instead waits a bounded time for pending sends (see
+    TelemetryClientFactory._wait_for_pending_sends).
+    """
+
+    # Every executor that may still run work, including ones already shut down.
+    _instances: weakref.WeakSet = weakref.WeakSet()
+
+    def __init__(self, max_workers: int, thread_name_prefix: str):
+        self._max_workers = max_workers
+        self._thread_name_prefix = thread_name_prefix
+        self._work_queue: SimpleQueue = SimpleQueue()
+        self._threads: List[threading.Thread] = []
+        self._unfinished = 0  # queued + running
+        self._lock = threading.Lock()
+        self._idle = threading.Condition(self._lock)
+        self._shutdown = False
+        _DaemonThreadPoolExecutor._instances.add(self)
+
+    def submit(self, fn, *args, **kwargs) -> Future:
+        with self._lock:
+            if self._shutdown:
+                raise RuntimeError("cannot schedule new futures after shutdown")
+            # All workers are busy: add one (before queueing, so a failed start
+            # leaves nothing counted that no worker will run).
+            num_threads = len(self._threads)
+            if self._unfinished >= num_threads and num_threads < self._max_workers:
+                thread = threading.Thread(
+                    target=self._worker,
+                    name=f"{self._thread_name_prefix}_{num_threads}",
+                    daemon=True,
+                )
+                thread.start()
+                self._threads.append(thread)
+            future: Future = Future()
+            self._work_queue.put((future, fn, args, kwargs))
+            self._unfinished += 1
+            return future
+
+    @staticmethod
+    def _run(future: Future, fn, args, kwargs):
+        if not future.set_running_or_notify_cancel():
+            return
+        try:
+            result = fn(*args, **kwargs)
+        except BaseException as exc:
+            future.set_exception(exc)
+        else:
+            future.set_result(result)
+
+    def _worker(self):
+        while True:
+            item = self._work_queue.get()
+            if item is None:
+                self._work_queue.put(None)  # wake the next worker
+                return
+            self._run(*item)
+            # Drop references (e.g. to the TelemetryClient) before blocking again.
+            del item
+            with self._lock:
+                self._unfinished -= 1
+                if self._unfinished == 0:
+                    self._idle.notify_all()
+
+    def shutdown(self, wait: bool = True):
+        with self._lock:
+            if not self._shutdown:
+                self._shutdown = True
+                self._work_queue.put(None)
+            threads = list(self._threads)
+        if wait:
+            for thread in threads:
+                thread.join()
+
+    def wait_until_idle(self, timeout: float) -> bool:
+        """Wait up to ``timeout`` seconds for submitted work to finish."""
+        with self._lock:
+            return self._idle.wait_for(lambda: self._unfinished == 0, timeout)
+
+    def _reset_after_fork(self):
+        # Workers don't survive fork, and the parent still sends the work it queued.
+        self._work_queue = SimpleQueue()
+        self._threads = []
+        self._unfinished = 0
+        self._lock = threading.Lock()
+        self._idle = threading.Condition(self._lock)
+
+    @classmethod
+    def _reset_all_after_fork(cls):
+        for executor in list(cls._instances):
+            executor._reset_after_fork()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_DaemonThreadPoolExecutor._reset_all_after_fork)
+
+
 class _TelemetryClientHolder:
     """
     Holds a telemetry client with reference counting.
@@ -495,12 +598,16 @@ class TelemetryClientFactory:
     _clients: Dict[str, _TelemetryClientHolder] = (
         {}
     )  # Map of host_url -> TelemetryClientHolder
-    _executor: Optional[ThreadPoolExecutor] = None
+    _executor: Optional[_DaemonThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.RLock()  # Thread safety for factory operations
     # used RLock instead of Lock to avoid deadlocks when garbage collection is triggered
     _original_excepthook = None
     _excepthook_installed = False
+    _exit_hook_installed = False
+
+    # Upper bound on how long interpreter exit waits for in-flight telemetry sends.
+    EXIT_FLUSH_TIMEOUT_SECONDS = 3.0
 
     # Shared flush thread for all clients
     _flush_thread = None
@@ -531,10 +638,11 @@ class TelemetryClientFactory:
 
         if not cls._initialized:
             cls._clients = {}
-            cls._executor = ThreadPoolExecutor(
-                max_workers=10
-            )  # Thread pool for async operations
+            cls._executor = _DaemonThreadPoolExecutor(
+                max_workers=10, thread_name_prefix="telemetry-sender"
+            )
             cls._install_exception_hook()
+            cls._install_exit_hook()
             cls._start_flush_thread()
             cls._initialized = True
             logger.debug(
@@ -576,6 +684,20 @@ class TelemetryClientFactory:
             sys.excepthook = cls._handle_unhandled_exception
             cls._excepthook_installed = True
             logger.debug("Global exception handler installed for telemetry")
+
+    @classmethod
+    def _install_exit_hook(cls):
+        if not cls._exit_hook_installed:
+            atexit.register(cls._wait_for_pending_sends)
+            cls._exit_hook_installed = True
+
+    @classmethod
+    def _wait_for_pending_sends(cls):
+        """At interpreter exit, give in-flight sends a bounded time to finish."""
+        deadline = time.monotonic() + cls.EXIT_FLUSH_TIMEOUT_SECONDS
+        for executor in list(_DaemonThreadPoolExecutor._instances):
+            if not executor.wait_until_idle(max(0.0, deadline - time.monotonic())):
+                logger.debug("Dropping telemetry still in flight at interpreter exit")
 
     @classmethod
     def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
