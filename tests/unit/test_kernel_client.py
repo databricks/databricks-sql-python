@@ -1066,6 +1066,15 @@ def test_staging_operation_raises_not_supported(operation):
         ("INSERT INTO t VALUES (1)", False),
         ("", False),
         ("-- just a comment", False),  # comment only, no statement
+        # Only the leading token counts, however long it is.
+        ("PUT", True),
+        ("remove\t'/v'", True),
+        ("GET/* c */ '/v' TO '/f'", False),
+        ("PUTX '/f'", False),
+        ("REMOVED '/v'", False),
+        ("REMOVEX", False),
+        ("GETTING_STARTED", False),
+        ("  -- c\n" + "x" * 10_000, False),
     ],
 )
 def test_is_staging_statement(operation, is_staging):
@@ -1283,6 +1292,22 @@ def test_close_command_tolerant_when_handle_missing():
     c = _make_client()
     fake_command_id = CommandId.from_sea_statement_id("not-tracked")
     c.close_command(fake_command_id)  # must not raise
+
+
+def test_close_command_closes_a_statement_tracked_without_its_handle():
+    c = _make_client()
+    c._async_handles_lock = MagicMock()
+    untracked = CommandId.from_sea_statement_id("sync")
+    c.close_command(untracked)
+    # Sync results were never tracked, so closing them takes no lock.
+    c._async_handles_lock.__enter__.assert_not_called()
+
+    stmt = MagicMock()
+    cid = CommandId.from_sea_statement_id("async")
+    c._async_statements[cid.guid] = stmt
+    c.close_command(cid)
+    stmt.close.assert_called_once()
+    assert cid.guid not in c._async_statements
 
 
 def _attach_returns(c, *, status=None, status_error=None, await_result=None):

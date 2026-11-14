@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Any, Deque, List, Optional, Tuple, TYPE_CHECKING, cast
+from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
 
 import pyarrow
 
@@ -119,36 +119,76 @@ def _max_rows_without_pandas(types: List[pyarrow.DataType]) -> int:
     return min(_MAX_ROWS_WITHOUT_PANDAS, _MAX_COST_WITHOUT_PANDAS // total)
 
 
+class _ResultSchema:
+    """What a result set derives from its Arrow schema."""
+
+    __slots__ = (
+        "schema",
+        "description",
+        "row_factory",
+        "max_rows_without_pandas",
+        "float_columns",
+    )
+
+    def __init__(self, schema: pyarrow.Schema):
+        self.schema = schema
+        self.description = tuple(description_from_arrow_schema(schema))
+        self.row_factory = Row(*[c[0] for c in self.description])
+        types = schema.types
+        self.max_rows_without_pandas = _max_rows_without_pandas(types)
+        self.float_columns = tuple(
+            i for i, t in enumerate(types) if t.id in _FLOAT_TYPE_IDS
+        )
+
+
+class _SchemaCache:
+    """Keeps the last ``_ResultSchema`` of a connection, since repeated
+    statements return equal schemas."""
+
+    __slots__ = ("_last",)
+
+    def __init__(self) -> None:
+        self._last: Optional[_ResultSchema] = None
+
+    def get(self, schema: pyarrow.Schema) -> _ResultSchema:
+        last = self._last
+        if last is not None and schema.equals(last.schema, check_metadata=True):
+            return last
+        last = self._last = _ResultSchema(schema)
+        return last
+
+
 def _rows_without_pandas(
-    table: pyarrow.Table, description: List[Tuple]
+    batches: List[pyarrow.RecordBatch], result_schema: _ResultSchema
 ) -> Optional[List[Row]]:
-    """The rows of ``table`` built from ``to_pylist()``, or None if the table
-    must go through pandas (too costly, or a column whose values could
-    differ)."""
-    num_rows = table.num_rows
-    # No weight is below 1, so this rules out larger results without
-    # looking at every column type.
-    if num_rows * table.num_columns > _MAX_COST_WITHOUT_PANDAS:
-        return None
-    if num_rows > _max_rows_without_pandas(table.schema.types):
-        return None
-    columns = []
-    for column in table.itercolumns():
-        try:
-            values = column.to_pylist()
-        except Exception:
-            # E.g. a date past 9999-12-31: pandas then raises its own error,
-            # as it does without this fast path.
-            logger.debug(
-                "to_pylist() failed for a %s column; using pandas",
-                column.type,
-                exc_info=True,
-            )
+    """The rows of ``batches`` built from ``to_pylist()``, or None if they
+    must go through a Table and pandas (too costly, a column whose values
+    could differ, or a batch whose schema does not match)."""
+    num_rows = 0
+    for batch in batches:
+        if not batch.schema.equals(result_schema.schema):
             return None
-        if column.type.id in _FLOAT_TYPE_IDS and any(v != v for v in values):
+        num_rows += batch.num_rows
+    if num_rows > result_schema.max_rows_without_pandas:
+        return None
+    columns: List[List[Any]] = [[] for _ in result_schema.description]
+    for batch in batches:
+        for values, column in zip(columns, batch.columns):
+            try:
+                values.extend(column.to_pylist())
+            except Exception:
+                # E.g. a date past 9999-12-31: pandas then raises its own
+                # error, as it does without this fast path.
+                logger.debug(
+                    "to_pylist() failed for a %s column; using pandas",
+                    column.type,
+                    exc_info=True,
+                )
+                return None
+    for i in result_schema.float_columns:
+        if any(v != v for v in columns[i]):
             return None
-        columns.append(values)
-    row_factory = Row(*[c[0] for c in description])
+    row_factory = result_schema.row_factory
     return [row_factory(*values) for values in zip(*columns)]
 
 
@@ -170,11 +210,16 @@ class KernelResultSet(ResultSet):
         command_id: CommandId,
         arraysize: int,
         buffer_size_bytes: int,
+        schema_cache: Optional[_SchemaCache] = None,
     ):
         try:
             schema = kernel_handle.arrow_schema()
         except Exception as exc:
             raise wrap_kernel_exception("KernelResultSet.arrow_schema", exc) from exc
+        if schema_cache is None:
+            self._result_schema = _ResultSchema(schema)
+        else:
+            self._result_schema = schema_cache.get(schema)
         super().__init__(
             connection=connection,
             backend=backend,
@@ -185,7 +230,7 @@ class KernelResultSet(ResultSet):
             has_been_closed_server_side=False,
             has_more_rows=True,
             results_queue=None,
-            description=description_from_arrow_schema(schema),
+            description=list(self._result_schema.description),
             is_staging_operation=False,
             lz4_compressed=False,
             arrow_schema_bytes=None,
@@ -237,8 +282,14 @@ class KernelResultSet(ResultSet):
     def _buffered_rows(self) -> int:
         return self._buffered_count
 
+    def _to_table(self, batches: List[pyarrow.RecordBatch]) -> pyarrow.Table:
+        return pyarrow.Table.from_batches(batches, schema=self._schema)
+
     def _take_buffered(self, n: int) -> pyarrow.Table:
         """Slice up to ``n`` rows out of the buffer; advances state."""
+        return self._to_table(self._take_buffered_batches(n))
+
+    def _take_buffered_batches(self, n: int) -> List[pyarrow.RecordBatch]:
         slices: List[pyarrow.RecordBatch] = []
         remaining = n
         while remaining > 0 and self._buffer:
@@ -254,13 +305,14 @@ class KernelResultSet(ResultSet):
         taken = n - remaining
         self._buffered_count -= taken
         self._next_row_index += taken
-        if not slices:
-            return pyarrow.Table.from_batches([], schema=self._schema)
-        return pyarrow.Table.from_batches(slices, schema=self._schema)
+        return slices
 
     def _drain(self) -> pyarrow.Table:
         """Consume everything left in the buffer + kernel stream
         and return as a single Table."""
+        return self._to_table(self._drain_batches())
+
+    def _drain_batches(self) -> List[pyarrow.RecordBatch]:
         chunks: List[pyarrow.RecordBatch] = []
         if self._buffer and self._buffer_offset > 0:
             head = self._buffer.popleft()
@@ -286,9 +338,7 @@ class KernelResultSet(ResultSet):
         rows = sum(c.num_rows for c in chunks)
         self._buffered_count = 0
         self._next_row_index += rows
-        if not chunks:
-            return pyarrow.Table.from_batches([], schema=self._schema)
-        return pyarrow.Table.from_batches(chunks, schema=self._schema)
+        return chunks
 
     # ----- Arrow fetches -----
 
@@ -305,19 +355,20 @@ class KernelResultSet(ResultSet):
 
     # ----- Row fetches -----
 
-    def _convert_arrow_table(self, table):
+    def _rows(self, batches: List[pyarrow.RecordBatch]) -> List[Row]:
+        # Small results skip building a Table, which releases and re-takes
+        # the GIL, as well as pandas.
         if self.connection.disable_pandas is not True:
-            rows = _rows_without_pandas(table, self.description)
+            rows = _rows_without_pandas(batches, self._result_schema)
             if rows is not None:
                 return rows
-        return super()._convert_arrow_table(table)
+        return self._convert_arrow_table(self._to_table(batches))
 
     def fetchone(self) -> Optional[Row]:
         self._ensure_buffered(1)
         if self._buffered_rows() == 0:
             return None
-        table = self._take_buffered(1)
-        rows = self._convert_arrow_table(table)
+        rows = self._rows(self._take_buffered_batches(1))
         return rows[0] if rows else None
 
     def fetchmany(self, size: int) -> List[Row]:
@@ -326,11 +377,10 @@ class KernelResultSet(ResultSet):
         if size == 0:
             return []
         self._ensure_buffered(size)
-        table = self._take_buffered(size)
-        return self._convert_arrow_table(table)
+        return self._rows(self._take_buffered_batches(size))
 
     def fetchall(self) -> List[Row]:
-        return self._convert_arrow_table(self._drain())
+        return self._rows(self._drain_batches())
 
     def close(self) -> None:
         """Close the underlying kernel handle and notify the backend.

@@ -45,7 +45,7 @@ from databricks.sql.backend.kernel._errors import (
     wrap_kernel_exception as _wrap_kernel_exception,
 )
 from databricks.sql.backend.kernel.auth_bridge import kernel_auth_kwargs
-from databricks.sql.backend.kernel.result_set import KernelResultSet
+from databricks.sql.backend.kernel.result_set import KernelResultSet, _SchemaCache
 from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
 from databricks.sql.backend.types import (
     BackendType,
@@ -90,10 +90,9 @@ _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 _STAGING_VERBS = ("PUT", "GET", "REMOVE")
 
 
-def _strip_leading_sql_comments(sql: str) -> str:
-    """Strip leading whitespace and SQL comments (``-- …`` line and
-    ``/* … */`` block, possibly several) from ``sql``, returning the
-    remainder.
+def _sql_start(sql: str) -> int:
+    """Index of the first character of ``sql`` after leading whitespace and
+    SQL comments (``-- …`` line and ``/* … */`` block, possibly several).
 
     Needed so staging detection sees the real leading verb: a
     comment-prefixed staging op (``-- upload\\nPUT …`` or
@@ -117,7 +116,7 @@ def _strip_leading_sql_comments(sql: str) -> str:
             i = n if close == -1 else close + 2
         else:
             break
-    return sql[i:]
+    return i
 
 
 def _is_not_found(exc: BaseException) -> bool:
@@ -164,9 +163,11 @@ def _is_staging_statement(operation: str) -> bool:
     only — so a normal query that merely *contains* the word (e.g.
     ``SELECT 'GET' AS x``) isn't misflagged.
     """
-    stripped = _strip_leading_sql_comments(operation)
-    # First whitespace-delimited token, uppercased.
-    verb = stripped.split(None, 1)[0].upper() if stripped.strip() else ""
+    start = _sql_start(operation)
+    # First whitespace-delimited token, uppercased. The verbs have at most 6
+    # characters, so the first 7 decide it without copying the statement.
+    head = operation[start : start + 7]
+    verb = head.split(None, 1)[0].upper() if head.strip() else ""
     return verb in _STAGING_VERBS
 
 
@@ -436,6 +437,7 @@ class KernelDatabricksClient(DatabricksClient):
         # Guarded by its own lock — cancel can race execute teardown.
         self._sync_cancellers: Dict[int, Any] = {}
         self._sync_cancellers_lock = threading.RLock()
+        self._schema_cache = _SchemaCache()
 
     # ── Session lifecycle ──────────────────────────────────────────
 
@@ -822,6 +824,11 @@ class KernelDatabricksClient(DatabricksClient):
         return True
 
     def close_command(self, command_id: CommandId) -> None:
+        guid = command_id.guid
+        if guid not in self._async_handles and guid not in self._async_statements:
+            # Sync and metadata results are never tracked, so there is nothing
+            # to close or clean up.
+            return
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)
@@ -1056,6 +1063,7 @@ class KernelDatabricksClient(DatabricksClient):
             command_id=command_id,
             arraysize=cursor.arraysize,
             buffer_size_bytes=cursor.buffer_size_bytes,
+            schema_cache=self._schema_cache,
         )
 
     def _synthetic_command_id(self) -> CommandId:
