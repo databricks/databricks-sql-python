@@ -380,7 +380,7 @@ def _convert(table):
     with patch.object(
         ResultSet, "_convert_arrow_table", autospec=True, side_effect=pandas_path
     ) as spy:
-        rows = rs._convert_arrow_table(table)
+        rows = rs._rows(table.to_batches())
     return rows, pandas_path(rs, table), spy.called
 
 
@@ -475,7 +475,7 @@ def test_out_of_range_values_convert_as_on_the_pandas_path(column, expected):
     table = pa.table({"c": column})
     rs = _make_rs(_FakeKernelHandle(table.schema, []))
     for convert in (
-        rs._convert_arrow_table,
+        lambda t: rs._rows(t.to_batches()),
         lambda t: ResultSet._convert_arrow_table(rs, t),
     ):
         if isinstance(expected, list):
@@ -490,7 +490,7 @@ def test_conversion_errors_are_logged_before_falling_back(caplog):
     rs = _make_rs(_FakeKernelHandle(table.schema, []))
     with caplog.at_level(logging.DEBUG, logger=kernel_result_set.__name__):
         with pytest.raises(ValueError):
-            rs._convert_arrow_table(table)
+            rs._rows(table.to_batches())
     assert "to_pylist() failed for a date32[day] column" in caplog.text
 
 
@@ -646,14 +646,8 @@ def test_the_cost_budget_is_computed_once_per_schema_not_per_fetch():
                 ),
                 schema_cache=cache,
             )
-            assert [
-                r[0] for r in [rs.fetchone()] + rs.fetchmany(2) + rs.fetchall()
-            ] == [
-                1,
-                2,
-                3,
-                4,
-            ]
+            rows = [rs.fetchone()] + rs.fetchmany(2) + rs.fetchall()
+            assert [row[0] for row in rows] == [1, 2, 3, 4]
         assert budget.call_count == 1
         _make_rs(
             _FakeKernelHandle(pa.schema([("m", pa.int64())]), []), schema_cache=cache

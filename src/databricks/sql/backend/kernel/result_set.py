@@ -362,14 +362,7 @@ class KernelResultSet(ResultSet):
             rows = _rows_without_pandas(batches, self._result_schema)
             if rows is not None:
                 return rows
-        return super()._convert_arrow_table(self._to_table(batches))
-
-    def _convert_arrow_table(self, table):
-        if self.connection.disable_pandas is not True:
-            rows = _rows_without_pandas(table.to_batches(), self._result_schema)
-            if rows is not None:
-                return rows
-        return super()._convert_arrow_table(table)
+        return self._convert_arrow_table(self._to_table(batches))
 
     def fetchone(self) -> Optional[Row]:
         self._ensure_buffered(1)
