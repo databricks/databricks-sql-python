@@ -180,6 +180,51 @@ def test_patching_a_moved_name_reaches_where_it_is_used():
     http_client.assert_called_once_with(context)
 
 
+def test_patched_token_source_reaches_the_azure_sp_provider():
+    from unittest.mock import MagicMock, patch
+
+    from databricks.sql.auth.authenticators import (
+        AzureServicePrincipalCredentialProvider,
+    )
+
+    provider = AzureServicePrincipalCredentialProvider(
+        hostname="adb-1.azuredatabricks.net",
+        azure_client_id="client",
+        azure_client_secret="secret",
+        http_client=MagicMock(),
+        azure_tenant_id="tenant",
+    )
+    with patch(
+        "databricks.sql.auth.authenticators.ClientCredentialsTokenSource"
+    ) as source:
+        assert provider.get_token_source(resource="r") is source.return_value
+    assert source.call_args.kwargs["extra_params"] == {"resource": "r"}
+
+
+def test_patched_push_clients_reach_the_circuit_breaker_branch():
+    from unittest.mock import MagicMock, patch
+
+    from databricks.sql.telemetry.telemetry_client import TelemetryClient
+
+    module = "databricks.sql.telemetry.telemetry_client"
+    context = MagicMock(telemetry_circuit_breaker_enabled=True)
+    with patch(f"{module}.UnifiedHttpClient") as http_client, patch(
+        f"{module}.TelemetryPushClient"
+    ) as push, patch(f"{module}.CircuitBreakerTelemetryPushClient") as breaker:
+        client = TelemetryClient(
+            telemetry_enabled=True,
+            session_id_hex="01ef",
+            auth_provider=None,
+            host_url="example.cloud.databricks.com",
+            executor=MagicMock(),
+            batch_size=10,
+            client_context=context,
+        )
+    push.assert_called_once_with(http_client.return_value)
+    breaker.assert_called_once_with(push.return_value, "example.cloud.databricks.com")
+    assert client._telemetry_push_client is breaker.return_value
+
+
 def test_token_federation_check_does_not_import_it():
     script = """
         import sys
