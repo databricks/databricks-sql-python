@@ -171,7 +171,7 @@ to change without notice.
 | `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ✅   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). Shared cursor code performs the rendering before dispatch, so both backends honor it identically. |
 | `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
 | `fetch_autocommit_from_server`| `bool`                            |   ✅   |   ✅   | `False`       | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value.                           |
-| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ❌   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. **Thrift-only** — the kernel has no Volume API yet.          |
+| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ✅   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. Kernel also checks resolved symlink targets; see below. |
 
 ## Telemetry
 
@@ -208,13 +208,12 @@ are forwarded when supported by the installed kernel binding.
    `enable_query_result_lz4_compression`.
 5. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
-6. `staging_allowed_local_path` (Volume `PUT`/`GET`).
-7. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
+6. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
-8. `force_enable_telemetry`.
-9. `_port` and `_connection_uri`.
-10. `_pool_connections` and `_proxy_auth_method` do not configure the
+7. `force_enable_telemetry`.
+8. `_port` and `_connection_uri`.
+9. `_pool_connections` and `_proxy_auth_method` do not configure the
     kernel-owned network stack.
 
 ### Supported on Kernel, missing / ignored on Thrift
@@ -246,3 +245,17 @@ are forwarded when supported by the installed kernel binding.
 > subject to change. Generated against connector version `4.5.0`; the source of
 > truth is `Connection.__init__` (`src/databricks/sql/client.py`) and the
 > per-backend clients under `src/databricks/sql/backend/`.
+
+### Volume file paths
+
+With `use_kernel=True`, SQL `PUT`, `GET` and `REMOVE` complete their file
+operations before `execute()` or `get_async_execution_result()` returns.
+`PUT` and `GET` require paths within
+`staging_allowed_local_path`. Both the requested path and its resolved target
+must lie within a configured root. Symlinks within those roots are permitted;
+symlinks leading outside are rejected. This is stricter than the Thrift
+backend, which checks the requested path only.
+
+`execute(input_stream=stream)` retains its existing behavior: the stream is
+read only when the server requests stream input. `REMOVE` requires no local
+root. A completed transfer returns no instruction rows.

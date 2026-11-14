@@ -1284,6 +1284,9 @@ class Cursor:
         """
 
         assert self.active_result_set is not None
+        complete = getattr(self.active_result_set, "complete_staging_operation", None)
+        if complete is not None:
+            return complete(staging_allowed_local_path, input_stream)
         row = self.active_result_set.fetchone()
         assert row is not None
 
