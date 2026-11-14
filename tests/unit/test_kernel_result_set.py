@@ -626,11 +626,13 @@ def test_small_results_are_converted_from_batches_without_a_table():
     to_table.assert_called_once()
 
 
-def test_a_batch_whose_schema_differs_still_fails_as_before():
+@pytest.mark.parametrize("handle_type", ["_FakeKernelHandle", "_FakeRowsHandle"])
+def test_a_batch_whose_schema_differs_still_fails_as_before(handle_type):
     schema = pa.schema([("n", pa.int64())])
     other = pa.RecordBatch.from_arrays([pa.array(["x"])], names=["n"])
+    handle = globals()[handle_type](schema, [other])
     with pytest.raises(pa.ArrowInvalid):
-        _make_rs(_FakeKernelHandle(schema, [other])).fetchall()
+        _make_rs(handle).fetchall()
 
 
 def test_the_cost_budget_is_computed_once_per_schema_not_per_fetch():
@@ -698,6 +700,9 @@ class _FakeRowsHandle(_FakeKernelHandle):
         if self._batches or not self._convertible:
             return None
         if sum(b.num_rows for b in self._pending) > max_rows:
+            return None
+        # The kernel declines batches whose column types differ.
+        if any(b.schema.types != self._schema.types for b in self._pending):
             return None
         columns = [[] for _ in self._schema]
         for batch in self._pending:
@@ -1015,6 +1020,20 @@ class TestKernelRowsMatchThePandasPath:
         key = kernel.SchemaKey(schema)
         assert key == kernel.SchemaKey(_reimported(schema))
         assert key != kernel.SchemaKey(pa.schema([pa.field("n", pa.int64())]))
+        # Keys tell apart everything Schema.equals(check_metadata=True) does.
+        for other in (
+            schema.field(0).with_nullable(False),
+            schema.field(0).with_name("m"),
+            schema.field(0).with_type(pa.int32()),
+        ):
+            assert not schema.equals(pa.schema([other]), check_metadata=True)
+            assert key != kernel.SchemaKey(pa.schema([other]))
+        # The conversion declines a batch whose column types differ.
+        batches = [
+            pa.record_batch([pa.array([1])], names=["n"]),
+            pa.record_batch([pa.array(["x"])], names=["n"]),
+        ]
+        assert self._rows_from_arrow()(batches) is None
         cache = kernel_result_set._SchemaCache()
         cache.get(schema, key)
         assert cache.get_by_key(kernel.SchemaKey(_reimported(schema))) is not None
