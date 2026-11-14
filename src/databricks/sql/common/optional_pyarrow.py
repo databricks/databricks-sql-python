@@ -25,7 +25,8 @@ class _LazyPyarrow(types.ModuleType):
 
     The first use rebinds ``pyarrow`` to the real module in every registered
     namespace still holding the stand-in, so reads on the hot path afterwards
-    are plain module attribute lookups.
+    are plain module attribute lookups. The stand-in keeps no copies: a read
+    through it always gets the live module's attribute, patches included.
     """
 
     def __getattr__(self, name: str) -> Any:
@@ -43,9 +44,7 @@ class _LazyPyarrow(types.ModuleType):
         for namespace in _NAMESPACES:
             if namespace.get("pyarrow") is self:
                 namespace["pyarrow"] = module
-        value = getattr(module, name)
-        setattr(self, name, value)
-        return value
+        return getattr(module, name)
 
 
 _LAZY_PYARROW = _LazyPyarrow("pyarrow")

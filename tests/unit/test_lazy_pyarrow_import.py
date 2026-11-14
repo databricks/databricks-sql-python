@@ -151,6 +151,17 @@ def test_rebinding_leaves_a_replaced_global_alone(monkeypatch):
     assert replaced["pyarrow"] == "patched"
 
 
+def test_stand_in_reads_the_live_module(monkeypatch):
+    # No copies on the stand-in, so patching pyarrow applies through it too.
+    import pyarrow
+
+    stand_in = optional_pyarrow_module._LazyPyarrow("pyarrow")
+    assert stand_in.concat_tables is pyarrow.concat_tables
+    patched = object()
+    monkeypatch.setattr(pyarrow, "concat_tables", patched)
+    assert stand_in.concat_tables is patched
+
+
 def test_optional_pyarrow_is_none_when_not_installed(monkeypatch):
     monkeypatch.setitem(sys.modules, "pyarrow", None)
     monkeypatch.setattr(
