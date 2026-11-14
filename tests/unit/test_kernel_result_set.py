@@ -5,7 +5,9 @@ network and no Rust extension dependency."""
 from __future__ import annotations
 
 import datetime
+import inspect
 import logging
+import math
 from collections import deque
 from decimal import Decimal
 from typing import Deque
@@ -22,6 +24,7 @@ pa = pytest.importorskip("pyarrow")
 from databricks.sql.backend.kernel import result_set as kernel_result_set
 from databricks.sql.backend.kernel.result_set import KernelResultSet
 from databricks.sql.backend.types import CommandId, CommandState
+from databricks.sql.exc import OperationalError
 from databricks.sql.result_set import ResultSet
 
 
@@ -623,11 +626,13 @@ def test_small_results_are_converted_from_batches_without_a_table():
     to_table.assert_called_once()
 
 
-def test_a_batch_whose_schema_differs_still_fails_as_before():
+@pytest.mark.parametrize("handle_type", ["_FakeKernelHandle", "_FakeRowsHandle"])
+def test_a_batch_whose_schema_differs_still_fails_as_before(handle_type):
     schema = pa.schema([("n", pa.int64())])
     other = pa.RecordBatch.from_arrays([pa.array(["x"])], names=["n"])
+    handle = globals()[handle_type](schema, [other])
     with pytest.raises(pa.ArrowInvalid):
-        _make_rs(_FakeKernelHandle(schema, [other])).fetchall()
+        _make_rs(handle).fetchall()
 
 
 def test_the_cost_budget_is_computed_once_per_schema_not_per_fetch():
@@ -653,3 +658,385 @@ def test_the_cost_budget_is_computed_once_per_schema_not_per_fetch():
             _FakeKernelHandle(pa.schema([("m", pa.int64())]), []), schema_cache=cache
         )
         assert budget.call_count == 2
+
+
+# ----- rows built by the kernel (schema_key / fetch_all_rows) -----
+
+
+class _FakeSchemaKey:
+    def __init__(self, schema: pa.Schema):
+        self.schema = schema
+
+    def __eq__(self, other):
+        return isinstance(other, _FakeSchemaKey) and self.schema.equals(
+            other.schema, check_metadata=True
+        )
+
+
+class _FakeRowsHandle(_FakeKernelHandle):
+    """A handle from a kernel that has ``schema_key`` and ``fetch_all_rows``,
+    which returns the rows as ``to_pylist()`` values when every remaining
+    row fits in ``max_rows``, and otherwise keeps the batches it pulled for
+    ``fetch_next_batch``, as the kernel does."""
+
+    def __init__(self, schema, batches, convertible=True):
+        super().__init__(schema, batches)
+        self._pending: Deque[pa.RecordBatch] = deque()
+        self._convertible = convertible
+        self.schema_calls = 0
+        self.rows_calls = []
+
+    def arrow_schema(self):
+        self.schema_calls += 1
+        return super().arrow_schema()
+
+    def schema_key(self):
+        return _FakeSchemaKey(self._schema)
+
+    def fetch_all_rows(self, max_rows, nan_ok=False):
+        self.rows_calls.append((max_rows, nan_ok))
+        while sum(b.num_rows for b in self._pending) <= max_rows and self._batches:
+            self._pending.append(self._batches.popleft())
+        if self._batches or not self._convertible:
+            return None
+        if sum(b.num_rows for b in self._pending) > max_rows:
+            return None
+        # The kernel declines batches whose column types differ.
+        if any(b.schema.types != self._schema.types for b in self._pending):
+            return None
+        columns = [[] for _ in self._schema]
+        for batch in self._pending:
+            for values, column in zip(columns, batch.columns):
+                values.extend(column.to_pylist())
+        if not nan_ok and any(
+            isinstance(v, float) and v != v for values in columns for v in values
+        ):
+            return None
+        self._pending.clear()
+        return list(zip(*columns))
+
+    def fetch_next_batch(self):
+        if self._pending:
+            return self._pending.popleft()
+        return super().fetch_next_batch()
+
+
+_ROWS_SCHEMA = pa.schema(
+    [
+        pa.field("n", pa.int64(), metadata={b"databricks.type_name": b"BIGINT"}),
+        pa.field("d", pa.decimal128(10, 2)),
+        pa.field("t", pa.timestamp("us")),
+        pa.field("s", pa.string()),
+    ]
+)
+
+
+def _rows_batch(lo, hi, schema=_ROWS_SCHEMA):
+    return pa.RecordBatch.from_arrays(
+        [
+            pa.array(range(lo, hi), schema.field(0).type),
+            pa.array(
+                [Decimal(i).scaleb(-2) for i in range(lo, hi)], schema.field(1).type
+            ),
+            pa.array([i * 3_600_000_000 for i in range(lo, hi)], schema.field(2).type),
+            pa.array([None if i % 2 else str(i) for i in range(lo, hi)]),
+        ],
+        schema=schema,
+    )
+
+
+def _expected_rows(*batches):
+    table = pa.Table.from_batches(batches)
+    rs = _make_rs(_FakeKernelHandle(table.schema, []))
+    return ResultSet._convert_arrow_table(rs, table)
+
+
+def test_kernel_rows_skip_pyarrow_for_schema_and_values():
+    cache = kernel_result_set._SchemaCache()
+    first = _FakeRowsHandle(_reimported(_ROWS_SCHEMA), [_rows_batch(0, 3)])
+    second = _FakeRowsHandle(_reimported(_ROWS_SCHEMA), [_rows_batch(3, 5)])
+    with patch.object(_FakeRowsHandle, "fetch_next_batch") as next_batch:
+        rows = _make_rs(first, schema_cache=cache).fetchall()
+        rs = _make_rs(second, schema_cache=cache)
+        assert (
+            rs.description == _make_rs(_FakeKernelHandle(_ROWS_SCHEMA, [])).description
+        )
+        rows += rs.fetchall()
+    next_batch.assert_not_called()
+    # The second statement's schema came from the cache, by key.
+    assert (first.schema_calls, second.schema_calls) == (1, 0)
+    _assert_same_rows(rows, _expected_rows(_rows_batch(0, 3), _rows_batch(3, 5)))
+    assert rows[0].n == 0 and rs.rownumber == 2
+    assert rs.status == CommandState.SUCCEEDED and not rs.has_more_rows
+
+
+def test_kernel_rows_with_a_time_zone_stay_within_the_budget():
+    schema = pa.schema([("t", pa.timestamp("us", tz="America/Los_Angeles"))])
+    budget = kernel_result_set._max_rows_without_pandas(schema.types)
+
+    def batch(n):
+        return pa.RecordBatch.from_arrays(
+            [
+                pa.array(
+                    range(0, n * 3_600_000_000, 3_600_000_000), schema.field(0).type
+                )
+            ],
+            schema=schema,
+        )
+
+    handle = _FakeRowsHandle(schema, [batch(budget)])
+    _assert_same_rows(_make_rs(handle).fetchall(), _expected_rows(batch(budget)))
+    assert handle.rows_calls == [(budget, False)]
+
+
+def test_a_different_schema_key_is_derived_again():
+    cache = kernel_result_set._SchemaCache()
+    _make_rs(_FakeRowsHandle(_ROWS_SCHEMA, []), schema_cache=cache)
+    other = pa.schema([f.remove_metadata() for f in _ROWS_SCHEMA])
+    handle = _FakeRowsHandle(other, [])
+    rs = _make_rs(handle, schema_cache=cache)
+    assert handle.schema_calls == 1
+    assert rs.description == _make_rs(_FakeKernelHandle(other, [])).description
+
+
+def test_row_fetches_are_served_from_one_kernel_call():
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 2), _rows_batch(2, 5)])
+    rs = _make_rs(handle)
+    rows = [rs.fetchone()] + rs.fetchmany(2) + rs.fetchmany(0) + rs.fetchall()
+    assert rs.fetchone() is None and rs.fetchmany(3) == [] and rs.fetchall() == []
+    budget = kernel_result_set._max_rows_without_pandas(_ROWS_SCHEMA.types)
+    assert handle.rows_calls == [(budget, False)]
+    _assert_same_rows(rows, _expected_rows(_rows_batch(0, 2), _rows_batch(2, 5)))
+    assert rs.rownumber == 5
+    assert [tuple(r) for r in rs] == []
+
+
+@pytest.mark.parametrize("disable_pandas", [False, True])
+def test_kernel_keeps_nan_only_without_pandas(disable_pandas):
+    schema = pa.schema([("f", pa.float64())])
+    batch = pa.RecordBatch.from_arrays([pa.array([float("nan"), 1.0])], schema=schema)
+    handle = _FakeRowsHandle(schema, [batch])
+    rs = _make_rs(handle, disable_pandas=disable_pandas)
+    rows = rs.fetchall()
+    assert handle.rows_calls[0][1] is disable_pandas
+    if disable_pandas:
+        # as_py(), as without kernel rows.
+        assert isinstance(rows[0][0], float) and math.isnan(rows[0][0])
+        assert rows[1][0] == 1.0
+    else:
+        # The kernel declines NaN, so pandas decides it, as before.
+        _assert_same_rows(rows, ResultSet._convert_arrow_table(rs, pa.table(batch)))
+
+
+def test_results_the_kernel_declines_come_from_the_batches_it_pulled():
+    budget = kernel_result_set._max_rows_without_pandas(_ROWS_SCHEMA.types)
+    batches = [
+        _rows_batch(0, 2),
+        _rows_batch(2, budget),
+        _rows_batch(budget, budget + 1),
+    ]
+    expected = _expected_rows(*batches)
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, batches)
+    rs = _make_rs(handle)
+    rows = [rs.fetchone()]
+    # Declined after pulling every batch; they are now in the kernel's queue.
+    assert len(handle.rows_calls) == 1 and not handle._batches
+    rows += rs.fetchmany(3) + rs.fetchall()
+    assert len(handle.rows_calls) == 1
+    _assert_same_rows(rows, expected)
+    assert rs.rownumber == budget + 1
+    with _spy_to_table() as to_table:
+        handle = _FakeRowsHandle(_ROWS_SCHEMA, batches)
+        _assert_same_rows(_make_rs(handle).fetchall(), expected)
+    to_table.assert_called_once()
+
+
+def test_schemas_the_kernel_cannot_convert_never_ask_it_for_rows():
+    schema = pa.schema([("l", pa.list_(pa.int64()))])
+    batch = pa.RecordBatch.from_arrays([pa.array([[1], None])], schema=schema)
+    handle = _FakeRowsHandle(schema, [batch])
+    assert [r[0] for r in _make_rs(handle).fetchall()] == [[1], None]
+    assert handle.rows_calls == []
+
+
+def test_unconverted_rows_fall_back_to_the_batches():
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)], convertible=False)
+    rs = _make_rs(handle)
+    _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
+    assert len(handle.rows_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "fetch",
+    [
+        lambda rs: rs.fetchall_arrow(),
+        lambda rs: pa.concat_tables(
+            [rs.fetchmany_arrow(1), rs.fetchmany_arrow(0), rs.fetchmany_arrow(10)]
+        ),
+    ],
+    ids=["fetchall_arrow", "fetchmany_arrow"],
+)
+def test_arrow_fetches_after_a_row_fetch_return_the_remaining_rows(fetch):
+    rs = _make_rs(_FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 4)]))
+    assert rs.fetchone()[0] == 0
+    table = fetch(rs)
+    assert table.schema.equals(_ROWS_SCHEMA, check_metadata=True)
+    assert table.equals(pa.Table.from_batches([_rows_batch(1, 4)]))
+    assert rs.fetchall_arrow().num_rows == 0 and rs.rownumber == 4
+
+
+@pytest.mark.parametrize(
+    "name, disable_pandas",
+    [(name, False) for name in sorted(_columns_skipping_pandas())]
+    + [("f64_nan", True), ("f32_nan", True)],
+)
+def test_every_kernel_converted_type_round_trips_to_arrow(name, disable_pandas):
+    columns = {**_columns_skipping_pandas(), **_columns_needing_pandas()}
+    batch = pa.record_batch([pa.array(range(4)), columns[name]], names=["k", name])
+    with patch.object(kernel_result_set, "_MAX_COST_WITHOUT_PANDAS", 10**9):
+        handle = _FakeRowsHandle(batch.schema, [batch])
+        rs = _make_rs(handle, disable_pandas=disable_pandas)
+        assert rs.fetchone()[0] == 0
+        table = rs.fetchall_arrow()
+    assert handle.rows_calls
+    expected = pa.Table.from_batches([batch.slice(1)])
+    assert table.schema.equals(expected.schema, check_metadata=True)
+    # repr: NaN != NaN for Table.equals.
+    assert repr(table.to_pylist()) == repr(expected.to_pylist())
+    assert table.equals(expected) or disable_pandas
+
+
+class _KeyOnlyHandle(_FakeKernelHandle):
+    def schema_key(self):
+        return _FakeSchemaKey(self._schema)
+
+
+def test_a_failing_schema_key_falls_back_to_the_arrow_schema(caplog):
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)])
+    handle.schema_key = MagicMock(side_effect=RuntimeError("boom"))
+    with caplog.at_level(logging.DEBUG, logger=kernel_result_set.__name__):
+        rs = _make_rs(handle, schema_cache=kernel_result_set._SchemaCache())
+    assert "schema_key() failed" in caplog.text
+    assert rs.description == _make_rs(_FakeKernelHandle(_ROWS_SCHEMA, [])).description
+    _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
+    assert handle.rows_calls == []
+
+
+def test_handles_with_schema_keys_but_without_fetch_all_rows_use_the_batches():
+    rs = _make_rs(_KeyOnlyHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)]))
+    _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
+
+
+@pytest.mark.parametrize("taken", [1, 3], ids=["mid_batch", "batch_boundary"])
+def test_row_fetches_after_an_arrow_fetch_stay_on_the_arrow_path(taken):
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3), _rows_batch(3, 4)])
+    rs = _make_rs(handle)
+    assert rs.fetchmany_arrow(taken).num_rows == taken
+    rows = rs.fetchall()
+    assert handle.rows_calls == []
+    _assert_same_rows(rows, _expected_rows(_rows_batch(taken, 4)))
+
+
+def test_kernel_row_errors_are_mapped():
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 1)])
+    handle.fetch_all_rows = MagicMock(side_effect=RuntimeError("boom"))
+    with pytest.raises(OperationalError, match="fetch_all_rows"):
+        _make_rs(handle).fetchall()
+
+
+def test_a_fetch_after_a_kernel_row_error_returns_every_row_once():
+    batches = [_rows_batch(0, 2), _rows_batch(2, 4), _rows_batch(4, 5)]
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, batches)
+
+    def pull_two_then_fail(max_rows, nan_ok=False):
+        # As the kernel does when reading fails mid-way: the batches read so
+        # far stay queued for fetch_next_batch.
+        handle._pending.extend([handle._batches.popleft() for _ in range(2)])
+        raise RuntimeError("connection reset")
+
+    handle.fetch_all_rows = pull_two_then_fail
+    rs = _make_rs(handle)
+    with pytest.raises(OperationalError):
+        rs.fetchone()
+    rows = [rs.fetchone()] + rs.fetchall()
+    _assert_same_rows(rows, _expected_rows(*batches))
+    assert rs.rownumber == 5
+
+
+def test_close_drops_kernel_rows():
+    rs = _make_rs(_FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)]))
+    assert rs.fetchone()[0] == 0
+    rs.close()
+    assert rs.fetchall() == []
+
+
+@pytest.mark.realkernel
+class TestKernelRowsMatchThePandasPath:
+    """The real kernel's conversion (``_rows_from_arrow`` runs the one behind
+    ``fetch_all_rows``) returns the values of the pandas path for every type
+    that skips pandas. Skipped for kernels without it."""
+
+    @staticmethod
+    def _rows_from_arrow():
+        kernel = pytest.importorskip("databricks_sql_kernel")
+        if not hasattr(kernel.ExecutedStatement, "fetch_all_rows"):
+            pytest.skip("kernel has no fetch_all_rows")
+        rows_from_arrow = getattr(kernel, "_rows_from_arrow", None)
+        assert rows_from_arrow is not None, "kernel lost its conversion test hook"
+        return rows_from_arrow
+
+    @pytest.mark.parametrize("name", sorted(_columns_skipping_pandas()))
+    def test_values(self, name):
+        rows_from_arrow = self._rows_from_arrow()
+        column = _columns_skipping_pandas()[name]
+        table = pa.table({"k": pa.array(range(len(column))), name: column})
+        rs = _make_rs(_FakeKernelHandle(table.schema, []))
+        expected = ResultSet._convert_arrow_table(rs, table)
+        values = rows_from_arrow(table.to_batches())
+        _assert_same_rows([rs._result_schema.row_factory(*v) for v in values], expected)
+
+    @pytest.mark.parametrize("name", sorted(_columns_needing_pandas()))
+    def test_types_needing_pandas_are_declined(self, name):
+        rows_from_arrow = self._rows_from_arrow()
+        table = pa.table({name: _columns_needing_pandas()[name]})
+        assert rows_from_arrow(table.to_batches()) is None
+
+    def test_handles_take_the_arguments_this_module_passes(self):
+        self._rows_from_arrow()
+        import databricks_sql_kernel as kernel
+
+        for handle_type in (kernel.ExecutedStatement, kernel.ResultStream):
+            params = list(
+                inspect.signature(handle_type.fetch_all_rows).parameters.values()
+            )
+            assert [(p.name, p.kind) for p in params[1:]] == [
+                ("max_rows", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                ("nan_ok", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+            ]
+            assert callable(handle_type.schema_key)
+        schema = pa.schema(
+            [pa.field("n", pa.int64(), metadata={b"databricks.type_name": b"BIGINT"})]
+        )
+        key = kernel.SchemaKey(schema)
+        assert key == kernel.SchemaKey(_reimported(schema))
+        assert key != kernel.SchemaKey(pa.schema([pa.field("n", pa.int64())]))
+        # Keys tell apart everything Schema.equals(check_metadata=True) does.
+        for other in (
+            schema.field(0).with_nullable(False),
+            schema.field(0).with_name("m"),
+            schema.field(0).with_type(pa.int32()),
+        ):
+            assert not schema.equals(pa.schema([other]), check_metadata=True)
+            assert key != kernel.SchemaKey(pa.schema([other]))
+        # The conversion declines a batch whose column types differ.
+        batches = [
+            pa.record_batch([pa.array([1])], names=["n"]),
+            pa.record_batch([pa.array(["x"])], names=["n"]),
+        ]
+        assert self._rows_from_arrow()(batches) is None
+        cache = kernel_result_set._SchemaCache()
+        cache.get(schema, key)
+        assert cache.get_by_key(kernel.SchemaKey(_reimported(schema))) is not None
+        assert (
+            cache.get_by_key(kernel.SchemaKey(pa.schema([("m", pa.int64())]))) is None
+        )

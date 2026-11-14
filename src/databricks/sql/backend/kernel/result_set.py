@@ -9,14 +9,17 @@ The kernel surfaces two flavours of result-bearing handle:
   ``ExecutedAsyncStatement.await_result()``. No statement id; no
   cancel.
 
-Both implement the same three methods this class actually calls:
-``arrow_schema() / fetch_next_batch() / close()``. ``KernelResultSet``
-takes either via the ``kernel_handle`` parameter and treats them
-uniformly — the connector's ``ResultSet`` contract doesn't need to
-distinguish them.
+Both implement ``arrow_schema() / fetch_next_batch() / close()``.
+``KernelResultSet`` takes either via the ``kernel_handle`` parameter and
+treats them uniformly — the connector's ``ResultSet`` contract doesn't
+need to distinguish them. Newer kernels also have ``schema_key()`` and
+``fetch_all_rows()``: the schema key looks the cached description up
+without calling ``arrow_schema()``, and the first row fetch (unless an
+Arrow fetch came first) gets a small result's rows as Python values in
+one ``fetch_all_rows()`` call.
 
-Buffer shape mirrors the prior ADBC POC's ``AdbcResultSet``: a FIFO
-of pyarrow ``RecordBatch``es, fed one batch at a time from the
+Otherwise the buffer mirrors the prior ADBC POC's ``AdbcResultSet``: a
+FIFO of pyarrow ``RecordBatch``es, fed one batch at a time from the
 kernel as the connector calls ``fetch*``. ``fetchmany(n)`` slices
 within a batch when ``n`` is smaller than the kernel's natural
 batch size; ``fetchall`` drains the whole stream.
@@ -124,14 +127,17 @@ class _ResultSchema:
 
     __slots__ = (
         "schema",
+        "key",
         "description",
         "row_factory",
         "max_rows_without_pandas",
         "float_columns",
     )
 
-    def __init__(self, schema: pyarrow.Schema):
+    def __init__(self, schema: pyarrow.Schema, key: Any = None):
         self.schema = schema
+        # The kernel's SchemaKey for ``schema``, if the kernel has them.
+        self.key = key
         self.description = tuple(description_from_arrow_schema(schema))
         self.row_factory = Row(*[c[0] for c in self.description])
         types = schema.types
@@ -139,6 +145,20 @@ class _ResultSchema:
         self.float_columns = tuple(
             i for i, t in enumerate(types) if t.id in _FLOAT_TYPE_IDS
         )
+
+
+def _schema_key(kernel_handle: Any) -> Any:
+    """The handle's ``SchemaKey``, or None for kernels without them (or if
+    getting it fails: it only saves work)."""
+    try:
+        schema_key = kernel_handle.schema_key
+    except AttributeError:
+        return None
+    try:
+        return schema_key()
+    except Exception:
+        logger.debug("schema_key() failed; using arrow_schema()", exc_info=True)
+        return None
 
 
 class _SchemaCache:
@@ -150,11 +170,22 @@ class _SchemaCache:
     def __init__(self) -> None:
         self._last: Optional[_ResultSchema] = None
 
-    def get(self, schema: pyarrow.Schema) -> _ResultSchema:
+    def get_by_key(self, key: Any) -> Optional[_ResultSchema]:
+        """The last ``_ResultSchema`` if its kernel schema key equals
+        ``key``, which costs far less than building and comparing a
+        ``pyarrow.Schema``."""
+        last = self._last
+        if last is not None and last.key is not None and last.key == key:
+            return last
+        return None
+
+    def get(self, schema: pyarrow.Schema, key: Any = None) -> _ResultSchema:
         last = self._last
         if last is not None and schema.equals(last.schema, check_metadata=True):
+            if key is not None:
+                last.key = key
             return last
-        last = self._last = _ResultSchema(schema)
+        last = self._last = _ResultSchema(schema, key)
         return last
 
 
@@ -199,7 +230,9 @@ class KernelResultSet(ResultSet):
     ``arrow_schema() -> pyarrow.Schema``, ``fetch_next_batch() ->
     Optional[pyarrow.RecordBatch]``, and ``close() -> None``.
     Both ``databricks_sql_kernel.ExecutedStatement`` and
-    ``databricks_sql_kernel.ResultStream`` satisfy that contract.
+    ``databricks_sql_kernel.ResultStream`` satisfy that contract. Handles
+    that also have ``schema_key()`` and ``fetch_all_rows()`` let small
+    results skip pyarrow.
     """
 
     def __init__(
@@ -213,13 +246,19 @@ class KernelResultSet(ResultSet):
         schema_cache: Optional[_SchemaCache] = None,
     ):
         try:
-            schema = kernel_handle.arrow_schema()
+            key = _schema_key(kernel_handle)
+            result_schema = None
+            if key is not None and schema_cache is not None:
+                result_schema = schema_cache.get_by_key(key)
+            if result_schema is None:
+                schema = kernel_handle.arrow_schema()
+                if schema_cache is None:
+                    result_schema = _ResultSchema(schema, key)
+                else:
+                    result_schema = schema_cache.get(schema, key)
         except Exception as exc:
             raise wrap_kernel_exception("KernelResultSet.arrow_schema", exc) from exc
-        if schema_cache is None:
-            self._result_schema = _ResultSchema(schema)
-        else:
-            self._result_schema = schema_cache.get(schema)
+        self._result_schema = result_schema
         super().__init__(
             connection=connection,
             backend=backend,
@@ -236,7 +275,18 @@ class KernelResultSet(ResultSet):
             arrow_schema_bytes=None,
         )
         self._kernel_handle = kernel_handle
-        self._schema: pyarrow.Schema = schema
+        # Equal to the handle's schema, metadata included.
+        self._schema: pyarrow.Schema = result_schema.schema
+        # Kernels with schema keys can also return small results as rows of
+        # Python values (``fetch_all_rows``), skipping pyarrow. Tried once,
+        # on the first row fetch unless an Arrow fetch came first, for types
+        # the pandas-free path converts.
+        self._try_kernel_rows = (
+            key is not None and result_schema.max_rows_without_pandas >= 0
+        )
+        # Rows of values from ``fetch_all_rows`` and the next one to return.
+        self._kernel_rows: Optional[List[tuple]] = None
+        self._kernel_rows_pos = 0
         # FIFO of record batches plus a per-head row offset, so
         # partial fetches (fetchmany(n) for n < batch_size) don't
         # re-fetch from the kernel.
@@ -340,9 +390,69 @@ class KernelResultSet(ResultSet):
         self._next_row_index += rows
         return chunks
 
+    # ----- rows converted by the kernel -----
+
+    def _have_kernel_rows(self) -> bool:
+        """Whether the rest of the result is in ``_kernel_rows``. The first
+        call asks the kernel for every remaining row as Python values, which
+        it returns for results within the pandas-free cost budget; otherwise
+        the batches it pulled stay in the kernel for the Arrow path."""
+        if self._kernel_rows is not None:
+            return True
+        if not self._try_kernel_rows or self._buffer or self._exhausted:
+            return False
+        self._try_kernel_rows = False
+        fetch_all_rows = getattr(self._kernel_handle, "fetch_all_rows", None)
+        if fetch_all_rows is None:
+            return False
+        try:
+            rows = fetch_all_rows(
+                self._result_schema.max_rows_without_pandas,
+                self.connection.disable_pandas is True,
+            )
+        except Exception as exc:
+            raise wrap_kernel_exception("fetch_all_rows", exc) from exc
+        if rows is None:
+            return False
+        self._kernel_rows = rows
+        self._exhausted = True
+        self.has_more_rows = False
+        self.status = CommandState.SUCCEEDED
+        return True
+
+    def _take_kernel_rows(self, n: Optional[int]) -> List[tuple]:
+        """Up to ``n`` (all if None) of the remaining kernel rows."""
+        rows = cast(List[tuple], self._kernel_rows)
+        start = self._kernel_rows_pos
+        end = len(rows) if n is None else min(len(rows), start + n)
+        self._kernel_rows_pos = end
+        self._next_row_index += end - start
+        return rows if start == 0 and end == len(rows) else rows[start:end]
+
+    def _kernel_rows_to_arrow(self, n: Optional[int]) -> pyarrow.Table:
+        # Only for Arrow fetches after a row fetch: the values convert back to
+        # the same Arrow values for every type the kernel converts.
+        rows = self._take_kernel_rows(n)
+        if not rows:
+            return pyarrow.Table.from_batches([], schema=self._schema)
+        return pyarrow.Table.from_arrays(
+            [
+                pyarrow.array(column, type=field.type)
+                for column, field in zip(zip(*rows), self._schema)
+            ],
+            schema=self._schema,
+        )
+
+    def _make_rows(self, values: List[tuple]) -> List[Row]:
+        row_factory = self._result_schema.row_factory
+        return [row_factory(*v) for v in values]
+
     # ----- Arrow fetches -----
 
     def fetchall_arrow(self) -> pyarrow.Table:
+        if self._kernel_rows is not None:
+            return self._kernel_rows_to_arrow(None)
+        self._try_kernel_rows = False
         return self._drain()
 
     def fetchmany_arrow(self, size: int) -> pyarrow.Table:
@@ -350,6 +460,9 @@ class KernelResultSet(ResultSet):
             raise ValueError(f"fetchmany_arrow size must be >= 0, got {size}")
         if size == 0:
             return pyarrow.Table.from_batches([], schema=self._schema)
+        if self._kernel_rows is not None:
+            return self._kernel_rows_to_arrow(size)
+        self._try_kernel_rows = False
         self._ensure_buffered(size)
         return self._take_buffered(size)
 
@@ -365,6 +478,9 @@ class KernelResultSet(ResultSet):
         return self._convert_arrow_table(self._to_table(batches))
 
     def fetchone(self) -> Optional[Row]:
+        if self._have_kernel_rows():
+            rows = self._make_rows(self._take_kernel_rows(1))
+            return rows[0] if rows else None
         self._ensure_buffered(1)
         if self._buffered_rows() == 0:
             return None
@@ -376,10 +492,14 @@ class KernelResultSet(ResultSet):
             raise ValueError(f"fetchmany size must be >= 0, got {size}")
         if size == 0:
             return []
+        if self._have_kernel_rows():
+            return self._make_rows(self._take_kernel_rows(size))
         self._ensure_buffered(size)
         return self._rows(self._take_buffered_batches(size))
 
     def fetchall(self) -> List[Row]:
+        if self._have_kernel_rows():
+            return self._make_rows(self._take_kernel_rows(None))
         return self._rows(self._drain_batches())
 
     def close(self) -> None:
@@ -396,6 +516,8 @@ class KernelResultSet(ResultSet):
         """
         if self._kernel_handle is None:
             return
+        self._kernel_rows = None
+        self._try_kernel_rows = False
         if not self.connection.open:
             self._kernel_handle = None
             self._buffer.clear()
