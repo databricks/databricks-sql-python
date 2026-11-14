@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime
 import inspect
 import logging
+import math
 from collections import deque
 from decimal import Decimal
 from typing import Deque
@@ -810,9 +811,16 @@ def test_kernel_keeps_nan_only_without_pandas(disable_pandas):
     schema = pa.schema([("f", pa.float64())])
     batch = pa.RecordBatch.from_arrays([pa.array([float("nan"), 1.0])], schema=schema)
     handle = _FakeRowsHandle(schema, [batch])
-    rows = _make_rs(handle, disable_pandas=disable_pandas).fetchall()
+    rs = _make_rs(handle, disable_pandas=disable_pandas)
+    rows = rs.fetchall()
     assert handle.rows_calls[0][1] is disable_pandas
-    assert len(rows) == 2 and rows[1][0] == 1.0
+    if disable_pandas:
+        # as_py(), as without kernel rows.
+        assert isinstance(rows[0][0], float) and math.isnan(rows[0][0])
+        assert rows[1][0] == 1.0
+    else:
+        # The kernel declines NaN, so pandas decides it, as before.
+        _assert_same_rows(rows, ResultSet._convert_arrow_table(rs, pa.table(batch)))
 
 
 def test_results_the_kernel_declines_come_from_the_batches_it_pulled():
@@ -898,6 +906,17 @@ class _KeyOnlyHandle(_FakeKernelHandle):
         return _FakeSchemaKey(self._schema)
 
 
+def test_a_failing_schema_key_falls_back_to_the_arrow_schema(caplog):
+    handle = _FakeRowsHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)])
+    handle.schema_key = MagicMock(side_effect=RuntimeError("boom"))
+    with caplog.at_level(logging.DEBUG, logger=kernel_result_set.__name__):
+        rs = _make_rs(handle, schema_cache=kernel_result_set._SchemaCache())
+    assert "schema_key() failed" in caplog.text
+    assert rs.description == _make_rs(_FakeKernelHandle(_ROWS_SCHEMA, [])).description
+    _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
+    assert handle.rows_calls == []
+
+
 def test_handles_with_schema_keys_but_without_fetch_all_rows_use_the_batches():
     rs = _make_rs(_KeyOnlyHandle(_ROWS_SCHEMA, [_rows_batch(0, 3)]))
     _assert_same_rows(rs.fetchall(), _expected_rows(_rows_batch(0, 3)))
@@ -935,9 +954,10 @@ class TestKernelRowsMatchThePandasPath:
     @staticmethod
     def _rows_from_arrow():
         kernel = pytest.importorskip("databricks_sql_kernel")
-        rows_from_arrow = getattr(kernel, "_rows_from_arrow", None)
-        if rows_from_arrow is None:
+        if not hasattr(kernel.ExecutedStatement, "fetch_all_rows"):
             pytest.skip("kernel has no fetch_all_rows")
+        rows_from_arrow = getattr(kernel, "_rows_from_arrow", None)
+        assert rows_from_arrow is not None, "kernel lost its conversion test hook"
         return rows_from_arrow
 
     @pytest.mark.parametrize("name", sorted(_columns_skipping_pandas()))

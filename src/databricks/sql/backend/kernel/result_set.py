@@ -145,12 +145,17 @@ class _ResultSchema:
 
 
 def _schema_key(kernel_handle: Any) -> Any:
-    """The handle's ``SchemaKey``, or None for kernels without them."""
+    """The handle's ``SchemaKey``, or None for kernels without them (or if
+    getting it fails: it only saves work)."""
     try:
         schema_key = kernel_handle.schema_key
     except AttributeError:
         return None
-    return schema_key()
+    try:
+        return schema_key()
+    except Exception:
+        logger.debug("schema_key() failed; using arrow_schema()", exc_info=True)
+        return None
 
 
 class _SchemaCache:
