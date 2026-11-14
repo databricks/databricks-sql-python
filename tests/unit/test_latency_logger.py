@@ -1,5 +1,5 @@
+import itertools
 import logging
-import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -43,6 +43,14 @@ def telemetry_client():
 
 
 @pytest.fixture
+def monotonic():
+    # Each call advances one second, so every timed call measures exactly 1000 ms.
+    with patch("databricks.sql.telemetry.latency_logger.time") as fake_time:
+        fake_time.monotonic.side_effect = itertools.count(0.0, 1.0)
+        yield fake_time.monotonic
+
+
+@pytest.fixture
 def no_debug():
     logger = logging.getLogger(LOGGER)
     level = logger.level
@@ -51,51 +59,59 @@ def no_debug():
     logger.setLevel(level)
 
 
-def test_disabled_telemetry_without_debug_only_calls_the_method(
-    telemetry_client, no_debug, caplog
+def test_disabled_telemetry_without_debug_does_not_time_the_call(
+    telemetry_client, monotonic, no_debug, caplog
 ):
     cursor = Cursor(telemetry_enabled=False)
     with caplog.at_level(logging.INFO, logger=LOGGER):
         assert cursor.execute(42) == 42
         with pytest.raises(ValueError, match="boom"):
             cursor.fail()
+    monotonic.assert_not_called()
     telemetry_client.export_latency_log.assert_not_called()
     assert not caplog.records
 
 
-def test_debug_logging_records_latency_without_telemetry(telemetry_client, caplog):
+def test_debug_logging_records_latency_without_telemetry(
+    telemetry_client, monotonic, caplog
+):
     cursor = Cursor(telemetry_enabled=False)
     with caplog.at_level(logging.DEBUG, logger=LOGGER):
         assert cursor.execute(1) == 1
-    assert len(caplog.records) == 1
-    assert re.fullmatch(r"execute completed in \d+ms", caplog.records[0].getMessage())
+    assert monotonic.call_count == 2
+    assert [r.getMessage() for r in caplog.records] == ["execute completed in 1000ms"]
     telemetry_client.export_latency_log.assert_not_called()
 
 
 @pytest.mark.parametrize("debug", [False, True])
 def test_enabled_telemetry_exports_latency_even_on_error(
-    telemetry_client, no_debug, debug, caplog
+    telemetry_client, monotonic, no_debug, debug, caplog
 ):
     cursor = Cursor(telemetry_enabled=True)
     with caplog.at_level(logging.DEBUG if debug else logging.INFO, logger=LOGGER):
         assert cursor.execute("ok") == "ok"
         with pytest.raises(ValueError, match="boom"):
             cursor.fail()
+    assert monotonic.call_count == 4
     assert telemetry_client.export_latency_log.call_count == 2
     kwargs = telemetry_client.export_latency_log.call_args.kwargs
+    assert kwargs["latency_ms"] == 1000
     assert kwargs["session_id"] == "session-hex"
     assert kwargs["sql_statement_id"] == "statement-id"
     assert kwargs["sql_execution_event"].statement_type == StatementType.QUERY
     assert len(caplog.records) == (2 if debug else 0)
 
 
-def test_object_without_connection_is_not_exported(telemetry_client, no_debug):
+def test_object_without_connection_is_not_exported(
+    telemetry_client, monotonic, no_debug
+):
     class Handler:
         @log_latency(StatementType.QUERY)
         def run(self):
             return "done"
 
     assert Handler().run() == "done"
+    monotonic.assert_not_called()
     telemetry_client.export_latency_log.assert_not_called()
 
 
