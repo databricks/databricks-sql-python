@@ -313,7 +313,7 @@ class KernelResultSet(ResultSet):
             self.status = CommandState.CLOSED
             return
         backend = cast("KernelDatabricksClient", self.backend)
-        if self.is_staging_operation:
+        if self.is_staging_operation and self.status != CommandState.SUCCEEDED:
             # Cancellation must precede waiting for a transfer's native lock.
             try:
                 backend.cancel_command(self.command_id)
