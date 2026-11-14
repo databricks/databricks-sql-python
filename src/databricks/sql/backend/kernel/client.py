@@ -518,7 +518,9 @@ class KernelDatabricksClient(DatabricksClient):
             return
         with self._sync_cancellers_lock:
             cancellers = list(self._sync_cancellers.values()) + [
-                entry[1] for entry in self._volume_handles.values() if entry[1] is not None
+                entry[1]
+                for entry in self._volume_handles.values()
+                if entry[1] is not None
             ]
             self._sync_cancellers.clear()
             self._volume_handles.clear()
