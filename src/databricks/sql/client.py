@@ -763,7 +763,13 @@ class Connection:
         self._close()
 
     def _close(self, close_cursors=True) -> None:
-        if close_cursors:
+        # Thrift CloseSession also releases the session's operations, so close the
+        # session first: the cursors then close client-side only, without one
+        # CloseOperation round trip each.
+        close_session_first = (
+            close_cursors and self.session.session_id.backend_type == BackendType.THRIFT
+        )
+        if close_cursors and not close_session_first:
             for cursor in self._cursors:
                 cursor.close()
 
@@ -771,6 +777,10 @@ class Connection:
             self.session.close()
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
+
+        if close_session_first:
+            for cursor in self._cursors:
+                cursor.close()
 
         TelemetryClientFactory.close(host_url=self.session.host)
 
