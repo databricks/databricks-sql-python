@@ -4,12 +4,13 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
-import pandas
 
-try:
+from databricks.sql.common.optional_pyarrow import optional_pyarrow
+
+if TYPE_CHECKING:
     import pyarrow
-except ImportError:
-    pyarrow = None
+else:
+    pyarrow = optional_pyarrow(globals())
 
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
@@ -102,6 +103,10 @@ class ResultSet(ABC):
             return [
                 ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
             ]
+
+        # Imported on first use: pandas takes ~165 ms to import, and connect()
+        # used to pay that under the import lock for every thread connecting.
+        import pandas
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types

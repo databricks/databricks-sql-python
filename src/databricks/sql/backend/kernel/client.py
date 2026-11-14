@@ -45,8 +45,6 @@ from databricks.sql.backend.kernel._errors import (
     wrap_kernel_exception as _wrap_kernel_exception,
 )
 from databricks.sql.backend.kernel.auth_bridge import kernel_auth_kwargs
-from databricks.sql.backend.kernel.result_set import KernelResultSet
-from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
 from databricks.sql.backend.types import (
     BackendType,
     CommandId,
@@ -664,6 +662,10 @@ class KernelDatabricksClient(DatabricksClient):
                     # connector, which the kernel accepts directly.
                     stmt.set_query_tags(query_tags)
                 if parameters:
+                    from databricks.sql.backend.kernel.type_mapping import (
+                        bind_tspark_params,
+                    )
+
                     bind_tspark_params(stmt, parameters)
                 if async_op:
                     async_exec = stmt.submit()
@@ -1048,6 +1050,9 @@ class KernelDatabricksClient(DatabricksClient):
         ``cursor.query_id`` / ``get_query_state`` would stay pinned to a
         prior query after a metadata call (the metadata methods mint a
         synthetic command id but previously never published it)."""
+        # Imported on first result, not at connect: it imports pyarrow.
+        from databricks.sql.backend.kernel.result_set import KernelResultSet
+
         cursor.active_command_id = command_id
         return KernelResultSet(
             connection=cursor.connection,

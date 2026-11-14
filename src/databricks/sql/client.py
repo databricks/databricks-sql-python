@@ -12,12 +12,13 @@ from typing import (
     BinaryIO,
     TYPE_CHECKING,
 )
-import pandas
 
-try:
+from databricks.sql.common.optional_pyarrow import optional_pyarrow
+
+if TYPE_CHECKING:
     import pyarrow
-except ImportError:
-    pyarrow = None
+else:
+    pyarrow = optional_pyarrow(globals())
 import json
 import os
 import decimal
