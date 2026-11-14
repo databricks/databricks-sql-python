@@ -20,12 +20,16 @@ from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
+    ThriftCloudFetchQueue,
     concat_table_chunks,
 )
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
+
+# Upper bound on a Thrift CloudFetch FetchResults request, in multiples of buffer_size_bytes.
+_CLOUDFETCH_MAX_BUFFERS_PER_FETCH = 4
 
 
 class ResultSet(ABC):
@@ -59,7 +63,9 @@ class ResultSet(ABC):
             :param connection: The parent connection that was used to execute this command
             :param backend: The specialised backend client to be invoked in the fetch phase
             :param arraysize: The max number of rows to fetch at a time (PEP-249)
-            :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+            :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch.
+                Thrift CloudFetch fetches may request up to 4x this (see
+                ThriftResultSet._fetch_max_bytes).
             :param command_id: The command ID
             :param status: The command status
             :param has_been_closed_server_side: Whether the command has been closed on the server
@@ -216,7 +222,8 @@ class ThriftResultSet(ResultSet):
             :param connection: The parent connection
             :param execute_response: Response from the execute command
             :param thrift_client: The ThriftDatabricksClient instance for direct access
-            :param buffer_size_bytes: Buffer size for fetching results
+            :param buffer_size_bytes: Buffer size for fetching results. CloudFetch
+                fetches request between 1x and 4x this (see _fetch_max_bytes).
             :param arraysize: Default number of rows to fetch
             :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
             :param t_row_set: The TRowSet containing result data (if available)
@@ -229,6 +236,8 @@ class ThriftResultSet(ResultSet):
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
         self.has_more_rows = has_more_rows
+        self._max_download_threads = max_download_threads
+        self._max_link_bytes = 0
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -251,6 +260,7 @@ class ThriftResultSet(ResultSet):
             )
             if t_row_set.resultLinks:
                 self.num_chunks += len(t_row_set.resultLinks)
+                self._note_link_sizes(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -274,11 +284,32 @@ class ThriftResultSet(ResultSet):
         if not self.results:
             self._fill_results_buffer()
 
+    def _note_link_sizes(self, links) -> None:
+        for link in links:
+            # The reader doesn't enforce required fields; a missing size only
+            # disables the sizing heuristic.
+            size = link.bytesNum or 0
+            if size > self._max_link_bytes:
+                self._max_link_bytes = size
+
+    def _fetch_max_bytes(self) -> int:
+        # The server packs CloudFetch links into a FetchResults reply up to maxBytes of
+        # file data, so buffer_size_bytes alone yields only a few links per round trip.
+        # Ask for about one link per download thread: every link in the batch then starts
+        # downloading immediately, so none sits waiting while it ages towards expiry.
+        # The cap bounds the batch (and buffered downloads) for a large
+        # max_download_threads, an oversized link, or a deliberately small buffer.
+        wanted = self._max_download_threads * self._max_link_bytes
+        return min(
+            max(self.buffer_size_bytes, wanted),
+            _CLOUDFETCH_MAX_BUFFERS_PER_FETCH * self.buffer_size_bytes,
+        )
+
     def _fill_results_buffer(self):
         results, has_more_rows, result_links_count = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
-            max_bytes=self.buffer_size_bytes,
+            max_bytes=self._fetch_max_bytes(),
             expected_row_start_offset=self._next_row_index,
             lz4_compressed=self.lz4_compressed,
             arrow_schema_bytes=self._arrow_schema_bytes,
@@ -289,6 +320,8 @@ class ThriftResultSet(ResultSet):
         self.results = results
         self.has_more_rows = has_more_rows
         self.num_chunks += result_links_count
+        if isinstance(results, ThriftCloudFetchQueue):
+            self._note_link_sizes(results.result_links)
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
