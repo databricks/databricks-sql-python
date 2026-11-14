@@ -702,6 +702,74 @@ class TestPySQLCoreSuite(
                 ("TABLE_CAT", "string", None, None, None, None, None)
             ]
 
+    @pytest.mark.parametrize(
+        "extra_params, expect_rows",
+        [({}, False), ({"escape_catalog_name": False}, True)],
+        ids=["default", "wildcard-opt-out"],
+    )
+    def test_catalog_name_underscore_is_literal_by_default(
+        self, extra_params, expect_rows
+    ):
+        # No catalog is named "syste_"; only the opt-out lets `_` match "system".
+        with self.cursor(extra_params) as cursor:
+            cursor.schemas(catalog_name="syste_", schema_name="information_schema")
+            rows = cursor.fetchall()
+        assert bool(rows) == expect_rows
+        assert all(row[1] == "system" for row in rows)
+
+    def test_escaped_catalog_name_matches_exact_catalog(self):
+        with self.cursor({}) as cursor:
+            cursor.catalogs()
+            names = [row[0] for row in cursor.fetchall()]
+        # hive_metastore is covered separately below (legacy catalog with no
+        # information_schema); it is not excluded because escaping breaks it.
+        candidates = [
+            n
+            for n in names
+            if "_" in n and not n.startswith("__") and n != "hive_metastore"
+        ]
+        if not candidates:
+            pytest.skip("no catalog with `_` in its name is visible")
+        name = candidates[0]
+
+        with self.cursor({"escape_catalog_name": False}) as cursor:
+            cursor.schemas(catalog_name=name)
+            unescaped = sorted(tuple(r) for r in cursor.fetchall() if r[1] == name)
+        if not unescaped:
+            pytest.skip(f"no schemas visible in catalog {name}")
+        with self.cursor({}) as cursor:
+            cursor.schemas(catalog_name=name)
+            escaped = sorted(tuple(r) for r in cursor.fetchall())
+        assert escaped == unescaped
+
+    def test_hive_metastore_metadata_unchanged_by_escaping(self):
+        # hive_metastore is the most common catalog name with `_`, so escaping must
+        # not change its results; spark_catalog (its alias) must not lose rows.
+        with self.connection({}) as escaped, self.connection(
+            {"escape_catalog_name": False}
+        ) as raw:
+
+            def rows(conn, call, **filters):
+                with conn.cursor() as cursor:
+                    getattr(cursor, call)(**filters)
+                    return {tuple(r) for r in cursor.fetchall()}
+
+            hms = {"catalog_name": "hive_metastore", "schema_name": "default"}
+            expected = rows(raw, "schemas", **hms)
+            if not expected:
+                pytest.skip("hive_metastore.default is not visible")
+            assert rows(escaped, "schemas", **hms) == expected
+
+            tables = rows(raw, "tables", **hms)
+            if tables:
+                one = dict(hms, table_name=min(t[2] for t in tables))
+                assert rows(escaped, "tables", **one) == rows(raw, "tables", **one)
+
+            spark = {"catalog_name": "spark_catalog", "schema_name": "default"}
+            spark_rows = rows(escaped, "schemas", **spark)
+            assert spark_rows, "escaped spark_catalog should resolve to hive_metastore"
+            assert rows(raw, "schemas", **spark) <= spark_rows
+
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
     @pytest.mark.parametrize(
         "extra_params",

@@ -167,7 +167,7 @@ to change without notice.
 | `schema`                      | `str`                             |   ✅   |   ✅   | `None`        | Initial schema for the session (DBR 9.0+).                                                                                 |
 | `query_tags`                  | `Dict[str, Optional[str]]`        |   ✅   |   ✅   | `None`        | Connection-level key/value tags serialized into the reserved `QUERY_TAGS` session configuration on both backends. Cursor-level `query_tags` are applied per statement separately. |
 | `enable_metric_view_metadata` | `bool`                            |   ✅   |   ✅   | `False`       | Sets `spark.sql.thriftserver.metadata.metricview.enabled` via session config so metric-view metadata surfaces.            |
-| `escape_catalog_name`         | `bool`                            |   ✅   |   ✅   | `False`       | Escape unescaped `_` in metadata catalog names, preserving existing `\_` escapes and `%` wildcards. Applies to `schemas()`, `tables()`, and `columns()` on Thrift and `tables()` on Kernel; Kernel schemas/columns already use exact catalog identifiers. |
+| `escape_catalog_name`         | `bool`                            |   ✅   |   ✅   | `True`        | Escape unescaped `_` in metadata catalog names so `_` matches only itself (the JDBC/ODBC catalog is an exact name), preserving existing `\_` escapes and `%` wildcards. Applies to `schemas()`, `tables()`, and `columns()` on Thrift and `tables()` on Kernel; Kernel schemas/columns and SEA already use exact catalog identifiers. Set `False` to treat `_` as a single-character wildcard (the previous default). |
 | `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ✅   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). Shared cursor code performs the rendering before dispatch, so both backends honor it identically. |
 | `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
 | `fetch_autocommit_from_server`| `bool`                            |   ✅   |   ✅   | `False`       | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value.                           |
@@ -238,6 +238,11 @@ are forwarded when supported by the installed kernel binding.
   keeps 20 and the kernel keeps 100.
 - **Custom headers**: Kernel drops `Authorization` and
   `x-databricks-org-id`; it forwards other `http_headers`.
+- **Metadata catalog names**: by default `_` in `catalog_name` matches only
+  itself on both backends. With `escape_catalog_name=False`, Thrift
+  `schemas()`/`tables()`/`columns()` and Kernel `tables()` treat `_` as a
+  single-character wildcard, while Kernel `schemas()`/`columns()` still match
+  the exact name.
 - **Telemetry**: Kernel owns its telemetry lifecycle. It does not honor
   `force_enable_telemetry`, and an omitted `enable_telemetry` or circuit-breaker
   setting uses the kernel's default.

@@ -321,11 +321,14 @@ class Connection:
                 This allows
                 1. cursor.tables() to return METRIC_VIEW table type
                 2. cursor.columns() to return "measure" column type
-            :param escape_catalog_name: `bool`, optional (default is False)
+            :param escape_catalog_name: `bool`, optional (default is True)
                 Escape unescaped underscores in catalog names for schemas(), tables(),
-                and columns() metadata requests. Existing escapes and % wildcards are
-                preserved. Kernel schemas() and columns() already use exact catalog
-                identifiers, so their catalog names are passed through unchanged.
+                and columns() metadata requests, so `_` matches only itself, as in
+                JDBC/ODBC where the catalog is an exact name. Existing escapes and %
+                wildcards are preserved. Kernel schemas() and columns() and all SEA
+                metadata calls already use exact catalog identifiers, so they ignore
+                this option. Set to False to treat `_` as a single-character wildcard
+                on Thrift and in kernel tables().
             :param fetch_autocommit_from_server: `bool`, optional (default is False)
                 When True, the connection.autocommit property queries the server for current state
                 using SET AUTOCOMMIT instead of returning cached value.
@@ -1789,7 +1792,8 @@ class Cursor:
         """
         Get schemas corresponding to the catalog_name and schema_name.
 
-        Names can contain % wildcards.
+        Names can contain % wildcards. `_` in catalog_name matches only itself;
+        on Thrift, ``escape_catalog_name=False`` makes it a single-character wildcard.
         :returns self
         """
         self._check_not_closed()
@@ -1815,7 +1819,9 @@ class Cursor:
         """
         Get tables corresponding to the catalog_name, schema_name and table_name.
 
-        Names can contain % wildcards.
+        Names can contain % wildcards. `_` in catalog_name matches only itself;
+        on Thrift and kernel, ``escape_catalog_name=False`` makes it a
+        single-character wildcard.
         :returns self
         """
         self._check_not_closed()
@@ -1844,7 +1850,8 @@ class Cursor:
         """
         Get columns corresponding to the catalog_name, schema_name, table_name and column_name.
 
-        Names can contain % wildcards.
+        Names can contain % wildcards. `_` in catalog_name matches only itself;
+        on Thrift, ``escape_catalog_name=False`` makes it a single-character wildcard.
 
         ``catalog_name=None`` is accepted on all backends and matches
         columns across every catalog (the kernel issues ``SHOW COLUMNS``

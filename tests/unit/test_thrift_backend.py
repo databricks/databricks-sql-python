@@ -42,9 +42,15 @@ def retry_policy_factory():
 
 
 @pytest.mark.parametrize(
-    "options",
-    [{}, {"escape_catalog_name": False}, {"escape_catalog_name": True}],
-    ids=["default", "disabled", "enabled"],
+    "options, expect_escaped",
+    [
+        # Escaping is on by default: `_` in a catalog name matches only itself.
+        ({}, True),
+        ({"escape_catalog_name": None}, True),
+        ({"escape_catalog_name": False}, False),
+        ({"escape_catalog_name": True}, True),
+    ],
+    ids=["default", "none-uses-default", "disabled", "enabled"],
 )
 @pytest.mark.parametrize(
     "method, rpc_name, filters",
@@ -96,7 +102,7 @@ def retry_policy_factory():
     ],
 )
 def test_metadata_catalog_escaping(
-    options, method, rpc_name, filters, catalog_name, escaped
+    options, expect_escaped, method, rpc_name, filters, catalog_name, escaped
 ):
     with (
         patch(
@@ -129,10 +135,7 @@ def test_metadata_catalog_escaping(
             )
 
         request = rpc.call_args.args[0]
-        expected = (
-            escaped if options.get("escape_catalog_name", False) else catalog_name
-        )
-        assert request.catalogName == expected
+        assert request.catalogName == (escaped if expect_escaped else catalog_name)
         for arg, value in filters.items():
             thrift_field = {
                 "schema_name": "schemaName",
@@ -1952,7 +1955,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         req = tcli_service_instance.GetSchemas.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
         self.assertEqual(req.getDirectResults, get_direct_results)
-        self.assertEqual(req.catalogName, "catalog_pattern")
+        # The backend escapes catalog-name underscores by default.
+        self.assertEqual(req.catalogName, r"catalog\_pattern")
         self.assertEqual(req.schemaName, "schema_pattern")
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(
@@ -1997,7 +2001,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         req = tcli_service_instance.GetTables.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
         self.assertEqual(req.getDirectResults, get_direct_results)
-        self.assertEqual(req.catalogName, "catalog_pattern")
+        # The backend escapes catalog-name underscores by default.
+        self.assertEqual(req.catalogName, r"catalog\_pattern")
         self.assertEqual(req.schemaName, "schema_pattern")
         self.assertEqual(req.tableName, "table_pattern")
         self.assertEqual(req.tableTypes, ["type1", "type2"])
@@ -2044,7 +2049,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         req = tcli_service_instance.GetColumns.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
         self.assertEqual(req.getDirectResults, get_direct_results)
-        self.assertEqual(req.catalogName, "catalog_pattern")
+        # The backend escapes catalog-name underscores by default.
+        self.assertEqual(req.catalogName, r"catalog\_pattern")
         self.assertEqual(req.schemaName, "schema_pattern")
         self.assertEqual(req.tableName, "table_pattern")
         self.assertEqual(req.columnName, "column_pattern")
