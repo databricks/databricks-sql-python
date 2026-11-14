@@ -179,7 +179,8 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            # Use the connection's cached telemetry_enabled flag. When it is off
+            # Use the connection's cached telemetry_enabled flag (set in
+            # Connection.__init__), read once before the call. When it is off
             # and DEBUG logging is disabled (always the case on kernel
             # connections, which export telemetry from the kernel), skip timing.
             connection = getattr(self, "connection", None)
