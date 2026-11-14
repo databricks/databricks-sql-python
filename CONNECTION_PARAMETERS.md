@@ -149,7 +149,7 @@ to change without notice.
 
 | Option                                | Type   | Thrift | Kernel | Default Value | Note                                                                                                          |
 | ------------------------------------- | ------ | :----: | :----: | ------------- | ------------------------------------------------------------------------------------------------------------- |
-| `use_cloud_fetch`                     | `bool` |   ✅   |   ❌   | `True`        | Download large result sets in parallel from cloud storage. The kernel manages result transport internally.    |
+| `use_cloud_fetch`                     | `bool` |   ✅   |   ✅   | `True`        | Set `False` at connection creation to fetch complete results without cloud-storage downloads. On the kernel path, changing this attribute after connecting does not change result delivery. |
 | `max_download_threads`                | `int`  |   ✅   |   ❌   | `10`          | Worker threads for cloud-fetch downloads. Not forwarded to the kernel.                                        |
 | `enable_query_result_lz4_compression` | `bool` |   ✅   |   ❌   | `True`        | LZ4-compress result payloads. Not forwarded; the kernel handles compression internally.                       |
 | `_disable_pandas`                     | `bool` |   ✅   |   ✅   | `False`       | Skip the pandas-based Arrow→row deserialization and materialize rows directly with PyArrow. This is a **Python-side** result-conversion toggle, not a wire option: the kernel returns results as Arrow (`RecordBatch`es) and the connector runs the *same* `_convert_arrow_table` for both backends, so the flag is honored on the kernel path too. Affects only row fetches (`fetchone`/`fetchmany`/`fetchall`); the `fetch*_arrow` methods return the Arrow table unchanged regardless of this flag. |
@@ -177,15 +177,17 @@ to change without notice.
 
 Thrift telemetry is owned by the Python driver and normally gated by the
 `enableTelemetryForPythonDriver` server feature flag. Kernel telemetry is owned
-by the Rust kernel: explicit `enable_telemetry`, `telemetry_batch_size`, and
-`_telemetry_circuit_breaker_enabled` values are forwarded when supported by the
-installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
+by the Rust kernel: explicit `enable_telemetry`, `telemetry_batch_size`,
+`telemetry_flush_interval_ms`, and `_telemetry_circuit_breaker_enabled` values
+are forwarded when supported by the installed kernel binding.
+`force_enable_telemetry` remains Python-driver-only.
 
 | Option                             | Type   | Thrift | Kernel | Default Value | Note                                                     |
 | ---------------------------------- | ------ | :----: | :----: | ------------- | -------------------------------------------------------- |
 | `enable_telemetry`                 | `bool` |   ✅   |   ✅   | `True` (Thrift); kernel-defined when unset | Thrift is also gated by the server flag. An explicit Kernel value is forwarded without that Python-side gate. |
 | `force_enable_telemetry`           | `bool` |   ✅   |   ❌   | `False`       | Bypass the server-side feature flag on Thrift. Not forwarded to Kernel. |
 | `telemetry_batch_size`             | `int`  |   ✅   |   ✅   | `100`         | Events buffered before a flush.                          |
+| `telemetry_flush_interval_ms`      | `int` (ms) | ❌ | ✅   | kernel-defined when unset | Kernel-only periodic flush interval; must be a positive `int`, else `connect()` raises `ValueError`. Thrift always flushes every 300s. |
 | `_telemetry_circuit_breaker_enabled`| `bool`|   ✅   |   ✅   | effective `False` (Thrift); kernel-defined when unset | The `ClientContext` signature defaults to `True`, but `connect()` passes `None` when this option is omitted and `bool(None)` makes the effective Thrift default `False`. An explicit value is forwarded to Kernel. |
 
 > **Telemetry _events_ differ by backend.** Because the kernel owns result
@@ -202,7 +204,7 @@ installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
 2. `experimental_oauth_persistence` (custom OAuth token store).
 3. TLS-client-cert *authentication* (`_use_cert_as_auth`) — note the TLS
    *transport* options (`_tls_*`) themselves **are** honored on both backends.
-4. Result-transport tuning: `use_cloud_fetch`, `max_download_threads`,
+4. Result-transport tuning: `max_download_threads`,
    `enable_query_result_lz4_compression`.
 5. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
@@ -222,6 +224,7 @@ installed kernel binding. `force_enable_telemetry` remains Python-driver-only.
    `token_url`.
 2. Custom `oauth_scopes`.
 3. Kernel U2M encrypted token storage (`oauth_token_cache_enabled`).
+4. Telemetry flush interval (`telemetry_flush_interval_ms`).
 
 ### Behavioral divergences to watch
 

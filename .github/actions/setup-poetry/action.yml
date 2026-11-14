@@ -17,6 +17,10 @@ inputs:
     description: Extra suffix for the cache key to avoid collisions across job variants
     required: false
     default: ""
+  cache-read-only:
+    description: Restore the virtualenv cache without saving changes after the job
+    required: false
+    default: "false"
   configure-cargo:
     description: |
       Forwarded to setup-jfrog. Set to "true" for jobs that also need
@@ -57,13 +61,24 @@ runs:
 
     - name: Load cached venv
       id: cached-poetry-dependencies
+      if: inputs.cache-read-only != 'true'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ${{ inputs.cache-path }}
         key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ inputs.cache-suffix }}${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
 
+    - name: Restore cached venv without saving
+      id: restored-poetry-dependencies
+      if: inputs.cache-read-only == 'true'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ inputs.cache-path }}
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ inputs.cache-suffix }}${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+
     - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      if: >-
+        steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        && steps.restored-poetry-dependencies.outputs.cache-hit != 'true'
       shell: bash
       run: poetry install --no-interaction --no-root
 
