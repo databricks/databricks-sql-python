@@ -36,8 +36,8 @@ jobs:
     #  - comment path: trusted commenters only
     #    (OWNER/MEMBER/COLLABORATOR/CONTRIBUTOR, or a bot — reviewer-bot/Copilot),
     #    never the engineer-bot's own comments, and never a reviewer-bot reconcile
-    #    loopback. CONTRIBUTOR is included because a maintainer with PRIVATE org
-    #    membership is reported as `author_association: CONTRIBUTOR` in the webhook
+    #    loopback or resolved reply. CONTRIBUTOR includes maintainers with private
+    #    org membership, reported as `author_association: CONTRIBUTOR` in the webhook
     #    payload (even though REST shows MEMBER) — without it, such a maintainer's
     #    review comments SILENTLY fail this gate and the bot never engages. Low
     #    risk: this path already requires a non-fork, OPEN, `engineer-bot`-labeled
@@ -52,6 +52,7 @@ jobs:
           && contains(github.event.pull_request.labels.*.name, 'engineer-bot')
           && !startsWith(github.event.comment.user.login, 'peco-engineer-bot')
           && !contains(github.event.comment.body, '<!-- pr-review-bot:v1 reconcile -->')
+          && !contains(github.event.comment.body, '<!-- pr-review-bot:v1 resolved -->')
           && (
             contains(fromJson('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.comment.author_association)
             || (
@@ -139,6 +140,17 @@ jobs:
           # Bump it there to move all four bots in lockstep; override here only
           # to run this workflow against a different engine commit.
 
+      # Use the default branch's config so prompt fixes reach existing PRs.
+      - name: Load bot config from the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          trusted="$RUNNER_TEMP/trusted-bot"
+          mkdir "$trusted"
+          git fetch --no-tags origin "refs/heads/$DEFAULT_BRANCH"
+          git archive FETCH_HEAD .bot | tar -x -C "$trusted"
+
       # Run the follow-up. Inlines the engine's bot-run env contract for
       # engineer:followup, plus the authenticated push remote bot-run would set
       # up (followup pushes fixup commits via a plain `git push`, which doesn't
@@ -165,13 +177,10 @@ jobs:
           # followups should ever repair/run E2E repros, add them back here AND
           # update that prompt.
           RUNNER_TEMP: ${{ runner.temp }}
-          # The agent's working tree AND the .bot/ lookup root. run.py resolves
-          # the config at <REPO_ROOT>/.bot/config.yaml. The engine has NO path
-          # default — it fails with a clear error if this is unset — so it MUST be
-          # set (we check out at the workspace root, not the driver-repo layout's
-          # `internal-repo/`). (`TEST_REPO_ROOT` is the deprecated alias.)
+          # Working tree; --bot loads trusted config from the default branch.
           REPO_ROOT: ${{ github.workspace }}
         run: |
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           python -m databricks_bot_engine.engineer_bot.run --phase followup \
-            --system-prompt "$GITHUB_WORKSPACE/.bot/prompts/engineer-followup/system.md"
+            --bot "$RUNNER_TEMP/trusted-bot/.bot" \
+            --system-prompt "$RUNNER_TEMP/trusted-bot/.bot/prompts/engineer-followup/system.md"

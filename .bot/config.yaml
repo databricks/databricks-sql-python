@@ -20,7 +20,8 @@ denied_subpaths:
   - .bot
 
 # Filled from the tracking ISSUE the maintainer labelled. (pr_body_template has no
-# engine default, so it stays required here.)
+# engine default, so it stays required here.) Omit files_changed: follow-up
+# pushes cannot refresh that inventory, so it would go stale.
 pr_body_template: |-
   ## Summary
 
@@ -30,9 +31,6 @@ pr_body_template: |-
 
   ## Root cause & plan
   {plan}
-
-  ## Files changed
-  {files_changed}
 
   ## Test plan
   {test_plan}
