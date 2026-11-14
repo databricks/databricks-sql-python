@@ -251,7 +251,8 @@ class Connection:
                 CloudFetch download window. With use_kernel=True, bounds downloading
                 and queued chunks ahead of consumption, excluding consumer buffers;
                 it is not a byte limit. Must be a positive integer on the kernel
-                backend and is fixed when connecting. Values above 256 are clamped.
+                backend and is fixed when connecting. On the kernel backend, values above
+                256 are clamped.
                 An explicit cloudfetch_max_chunks_in_memory in session_configuration
                 takes precedence, case-insensitively. Invalid raw overrides warn and
                 retain the kernel default of 16.
