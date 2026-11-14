@@ -6,11 +6,14 @@ including nullable integers, floats, booleans, strings, decimal, dates,
 timestamps, binary, and nested types.
 """
 
+import copy
 import datetime
+import pickle
 import unittest
 from decimal import Decimal
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+import numpy
 import pandas
 import pytest
 
@@ -19,7 +22,9 @@ try:
 except ImportError:
     pa = None
 
+from databricks.sql import result_set
 from databricks.sql.result_set import ThriftResultSet
+from databricks.sql.types import Row
 
 
 def _make_result_set(description, disable_pandas=False):
@@ -456,6 +461,186 @@ class TestConvertArrowTablePandasCompat(unittest.TestCase):
         self.assertEqual(rows[0].name, "a")
         self.assertEqual(rows[1].id, 2)
         self.assertEqual(rows[1].name, "b")
+
+
+@pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+class TestConvertArrowTableInSlices(unittest.TestCase):
+    """Tables larger than _ROWS_PER_CONVERSION are converted in slices."""
+
+    def _table(self):
+        tz = datetime.timezone.utc
+        return pa.table(
+            [
+                pa.chunked_array([[1, None, 3], [4, 5, 6, None]], pa.int32()),
+                pa.array([1.5, None, float("inf"), 4.0, 5.0, 6.0, -7.0]),
+                pa.array(["a", None, "c", "d", "e", "f", "g"]),
+                pa.array(
+                    [Decimal(i).scaleb(-2) if i != 4 else None for i in range(7)],
+                    pa.decimal128(5, 2),
+                ),
+                pa.array([datetime.date(2024, 1, i + 1) for i in range(7)]),
+                pa.array(
+                    [datetime.datetime(2024, 3, 10, i, tzinfo=tz) for i in range(7)],
+                    pa.timestamp("us", tz="America/Los_Angeles"),
+                ),
+                pa.array([True, False, None, True, False, None, True]),
+                # pyarrow picks the element dtype of every list from the whole
+                # column, so the NULL in the last row affects the first row too.
+                pa.array([[i, i] for i in range(6)] + [[None]], pa.list_(pa.int64())),
+                pa.array(
+                    [{"x": i if i != 2 else None} for i in range(7)],
+                    pa.struct([("x", pa.int64())]),
+                ),
+                # Older pandas returns durations from a single-block DataFrame
+                # as ints, so slices must keep the whole table's block layout.
+                pa.array(
+                    [datetime.timedelta(seconds=i) for i in range(7)],
+                    pa.duration("us"),
+                ),
+            ],
+            names=["a", "b", "a", "d", "e", "f", "g", "h", "i", "j"],
+        )
+
+    def _convert(self, table, rows_per_conversion):
+        description = [
+            (name, "string", None, None, None, None, None)
+            for name in table.column_names
+        ]
+        with patch.object(result_set, "_ROWS_PER_CONVERSION", rows_per_conversion):
+            return _make_result_set(description)._convert_arrow_table(table)
+
+    def _to_numpy_row_counts(self, table, rows_per_conversion):
+        counts = []
+        to_numpy = pandas.DataFrame.to_numpy
+
+        def spy(df, *args, **kwargs):
+            counts.append(len(df))
+            return to_numpy(df, *args, **kwargs)
+
+        with patch.object(pandas.DataFrame, "to_numpy", spy):
+            rows = self._convert(table, rows_per_conversion)
+        self.assertEqual(len(rows), table.num_rows)
+        return counts
+
+    def test_sliced_conversion_matches_whole_table(self):
+        table = self._table()
+        whole = self._convert(table, table.num_rows)
+        for rows_per_conversion in (1, 2, 3, 6):
+            rows = self._convert(table, rows_per_conversion)
+            self.assertEqual(len(rows), len(whole))
+            for row, expected in zip(rows, whole):
+                self.assertEqual(row.__fields__, expected.__fields__)
+                for value, expected_value in zip(row, expected):
+                    self.assertIs(type(value), type(expected_value))
+                    if isinstance(expected_value, numpy.ndarray):
+                        self.assertEqual(value.dtype, expected_value.dtype)
+                        numpy.testing.assert_array_equal(value, expected_value)
+                    else:
+                        self.assertEqual(value, expected_value)
+
+    def test_slices_are_bounded(self):
+        table = self._table()
+        # Nested columns in one call over all rows, the rest in slices.
+        self.assertEqual(self._to_numpy_row_counts(table, 3), [7, 3, 3, 1])
+        self.assertEqual(
+            self._to_numpy_row_counts(table.select([0, 1, 2]), 3), [3, 3, 1]
+        )
+
+    def test_small_or_nested_only_tables_are_converted_whole(self):
+        table = self._table()
+        self.assertEqual(self._to_numpy_row_counts(table, 7), [7])
+        self.assertEqual(self._to_numpy_row_counts(table.select([7, 8]), 3), [7])
+
+    def test_columns_with_gc_tracked_values_are_converted_whole(self):
+        # Decimal (3.13+), Timedelta and DateOffset values are tracked by the GC.
+        interval = pa.array(
+            [pa.MonthDayNano([i, 0, 0]) for i in range(7)],
+            pa.month_day_nano_interval(),
+        )
+        mixed = self._table().select([0, 3, 9]).append_column("k", interval)
+        self.assertEqual(self._to_numpy_row_counts(mixed, 3), [7, 3, 3, 1])
+        # A lone whole-converted duration column must still give Timedelta values.
+        for table in (mixed, self._table().select([0, 9])):
+            whole = self._convert(table, table.num_rows)
+            for row, expected in zip(self._convert(table, 3), whole):
+                for value, expected_value in zip(row, expected):
+                    self.assertIs(type(value), type(expected_value))
+                    self.assertEqual(value, expected_value)
+
+    def test_rows_behave_like_rows_built_by_the_row_factory(self):
+        names = ["a", "b", "a", "c"]
+        table = pa.table(
+            [
+                pa.array([1, None, 3, 4, 5], pa.int64()),
+                pa.array(["x", "y", None, "z", "w"]),
+                pa.array([1.5, 2.5, None, 4.5, 5.5]),
+                pa.array([Decimal("1.10"), None, Decimal("3.30"), None, None]),
+            ],
+            names=names,
+        )
+        description = [(n, "string", None, None, None, None, None) for n in names]
+        for disable_pandas in (False, True):
+            for rows_per_conversion in (2, 100):
+                rs = _make_result_set(description, disable_pandas=disable_pandas)
+                with patch.object(
+                    result_set, "_ROWS_PER_CONVERSION", rows_per_conversion
+                ):
+                    rows = rs._convert_arrow_table(table)
+                self.assertEqual(len(rows), table.num_rows)
+                self.assertTrue(all(r.__fields__ is rows[0].__fields__ for r in rows))
+                for row in rows:
+                    self._assert_same_as_factory_row(names, row)
+
+    def test_more_values_than_column_names_raises_like_row(self):
+        table = pa.table({"a": [1], "b": [2]})
+        rs = _make_result_set([("a", "bigint", None, None, None, None, None)])
+        with self.assertRaises(ValueError) as raised:
+            rs._convert_arrow_table(table)
+        with self.assertRaises(ValueError) as expected:
+            Row("a")(1, 2)
+        self.assertEqual(str(raised.exception), str(expected.exception))
+
+    def _assert_same_as_factory_row(self, names, row):
+        expected = Row(*names)(*tuple(row))
+        self.assertIs(type(row), Row)
+        self.assertIsInstance(row, tuple)
+        self.assertIs(type(row.__fields__), type(expected.__fields__))
+        self.assertEqual(row.__fields__, expected.__fields__)
+        self.assertEqual(vars(row).keys(), vars(expected).keys())
+        self.assertEqual(row, expected)
+        self.assertEqual(hash(row), hash(expected))
+        self.assertEqual(repr(row), repr(expected))
+        self.assertEqual(row.asDict(), expected.asDict())
+        self.assertEqual(row.asDict(recursive=True), expected.asDict(recursive=True))
+        for i, name in enumerate(names):
+            self.assertIs(row[i], expected[i])
+            self.assertIs(row[name], expected[name])
+            self.assertIs(getattr(row, name), getattr(expected, name))
+            self.assertIn(name, row)
+        self.assertEqual(row[1:], expected[1:])
+        self.assertIs(type(row[1:]), type(expected[1:]))
+        self.assertNotIn("missing", row)
+        with self.assertRaises(AttributeError):
+            row.missing
+        with self.assertRaises(RuntimeError):
+            row.a = 1
+        self.assertEqual(pickle.dumps(row), pickle.dumps(expected))
+        for clone in (
+            pickle.loads(pickle.dumps(row)),
+            copy.copy(row),
+            copy.deepcopy(row),
+        ):
+            self.assertIs(type(clone), Row)
+            self.assertEqual(clone, expected)
+            self.assertEqual(repr(clone), repr(expected))
+
+    def test_duration_next_to_nested_column(self):
+        table = self._table().select([9, 7])
+        whole = self._convert(table, table.num_rows)
+        rows = self._convert(table, 3)
+        for row, expected in zip(rows, whole):
+            self.assertIs(type(row[0]), type(expected[0]))
+            self.assertEqual(row[0], expected[0])
 
 
 if __name__ == "__main__":

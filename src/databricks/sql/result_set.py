@@ -25,6 +25,51 @@ from databricks.sql.utils import (
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 from databricks.sql.telemetry.models.event import StatementType
 
+# Rows per to_pandas() call when converting an Arrow table to rows.
+_ROWS_PER_CONVERSION = 100_000
+
+
+def _converts_in_slices(arrow_type) -> bool:
+    """Whether columns of this type are converted to rows one slice at a time.
+
+    Not nested types: to_pandas() picks their element dtype from the whole column.
+    Not types whose Python values the cyclic GC tracks (Decimal on Python 3.13+,
+    Timedelta, DateOffset): creating those in slices, between batches of rows,
+    makes the GC run more full collections than creating them all first.
+    """
+    types = pyarrow.types
+    if (
+        types.is_decimal(arrow_type)
+        or types.is_duration(arrow_type)
+        or types.is_interval(arrow_type)
+    ):
+        return False
+    return (
+        types.is_primitive(arrow_type)
+        or types.is_null(arrow_type)
+        or types.is_string(arrow_type)
+        or types.is_large_string(arrow_type)
+        or types.is_binary(arrow_type)
+        or types.is_large_binary(arrow_type)
+        or types.is_fixed_size_binary(arrow_type)
+    )
+
+
+def _make_rows(ResultRow: Row, values) -> List[Row]:
+    """The rows ``[ResultRow(*v) for v in values]``, built with one Python call per
+    row (``Row.__setattr__``) instead of three. ``values`` is a 2-D object array."""
+    if values.shape[1] > len(ResultRow):
+        return [ResultRow(*v) for v in values]  # raises Row's usual error
+    new_row = tuple.__new__
+    rows: List[Row] = []
+    append = rows.append
+    for v in values:
+        row = new_row(Row, v)
+        row.__fields__ = ResultRow
+        append(row)
+    return rows
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,16 +166,43 @@ class ResultSet(ABC):
             pyarrow.string(): pandas.StringDtype(),
         }
 
+        def to_object_array(t):
+            df = t.to_pandas(
+                types_mapper=dtype_mapping.get,
+                date_as_object=True,
+                timestamp_as_object=True,
+            )
+            return df.to_numpy(na_value=None, dtype="object")
+
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
 
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
+        # Convert in slices so that only one slice's DataFrame and object array are
+        # alive next to the rows. Some columns are converted whole, as before (see
+        # _converts_in_slices).
+        in_slices = [_converts_in_slices(f.type) for f in table.schema]
+        if table.num_rows <= _ROWS_PER_CONVERSION or not any(in_slices):
+            return _make_rows(ResultRow, to_object_array(table_renamed))
+
+        whole = [i for i, ok in enumerate(in_slices) if not ok]
+        # Null (object) placeholder columns keep each DataFrame multi-block like the
+        # whole table's: pandas' to_numpy converts some dtypes (e.g. durations)
+        # differently for a single-block DataFrame.
+        placeholder = pyarrow.nulls(table.num_rows)
+        whole_values = None
+        if whole:
+            whole_table = table_renamed.select(whole).append_column("_", placeholder)
+            whole_values = to_object_array(whole_table)[:, : len(whole)]
+        sliced_table = table_renamed
+        for i in whole:
+            sliced_table = sliced_table.set_column(i, str(i), placeholder)
+        rows = []
+        for offset in range(0, table.num_rows, _ROWS_PER_CONVERSION):
+            res = to_object_array(sliced_table.slice(offset, _ROWS_PER_CONVERSION))
+            if whole_values is not None:
+                res[:, whole] = whole_values[offset : offset + len(res)]
+            rows.extend(_make_rows(ResultRow, res))
+        return rows
 
     @property
     def rownumber(self):
