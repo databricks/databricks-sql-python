@@ -9,11 +9,9 @@ The kernel surfaces two flavours of result-bearing handle:
   ``ExecutedAsyncStatement.await_result()``. No statement id; no
   cancel.
 
-Both implement the same three methods this class actually calls:
-``arrow_schema() / fetch_next_batch() / close()``. ``KernelResultSet``
-takes either via the ``kernel_handle`` parameter and treats them
-uniformly — the connector's ``ResultSet`` contract doesn't need to
-distinguish them.
+Both expose ``arrow_schema()``, ``fetch_next_batch()``, ``close()``,
+``is_volume_operation`` and ``complete_volume_operation()``.
+``KernelResultSet`` accepts either handle without distinguishing them.
 
 Buffer shape mirrors the prior ADBC POC's ``AdbcResultSet``: a FIFO
 of pyarrow ``RecordBatch``es, fed one batch at a time from the
@@ -56,7 +54,8 @@ class KernelResultSet(ResultSet):
 
     The ``kernel_handle`` is duck-typed: it must implement
     ``arrow_schema() -> pyarrow.Schema``, ``fetch_next_batch() ->
-    Optional[pyarrow.RecordBatch]``, and ``close() -> None``.
+    Optional[pyarrow.RecordBatch]``, ``close() -> None``, the boolean
+    ``is_volume_operation`` property and ``complete_volume_operation()``.
     Both ``databricks_sql_kernel.ExecutedStatement`` and
     ``databricks_sql_kernel.ResultStream`` satisfy that contract.
     """
