@@ -1370,13 +1370,18 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
-@pytest.mark.parametrize("count", [7, 0, None])
-def test_get_execution_result_uses_retained_owning_handle_first(count):
+@pytest.mark.parametrize(
+    "count,volume_completed",
+    [(7, None), (0, None), (None, None), (None, False), (None, True)],
+)
+def test_get_execution_result_uses_retained_owning_handle_first(count, volume_completed):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
     c._kernel_session = MagicMock()
     fake_stream = MagicMock()
+    fake_stream.is_volume_operation = volume_completed is not None
+    fake_stream.complete_volume_operation.return_value = "completed"
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
     del handle.num_modified_rows
@@ -1401,6 +1406,28 @@ def test_get_execution_result_uses_retained_owning_handle_first(count):
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
+    assert rs.is_staging_operation is (volume_completed is not None)
+
+    if volume_completed is not None:
+        assert not c._volume_handles
+        if volume_completed:
+            rs.complete_staging_operation(["/allowed"])
+            fake_stream.complete_volume_operation.assert_called_once_with(
+                ["/allowed"], input_bytes=None
+            )
+            assert rs.fetchall() == []
+            assert c._async_handles[cid.guid] is handle
+
+        cancelled_at_stream_close = []
+        fake_stream.close.side_effect = lambda: cancelled_at_stream_close.append(
+            handle.cancel.called
+        )
+        rs.close()
+        assert cancelled_at_stream_close == [not volume_completed]
+        assert handle.cancel.call_count == int(not volume_completed)
+        fake_stream.close.assert_called_once_with()
+        handle.close.assert_called_once_with()
+        assert cid.guid not in c._async_handles
 
 
 def test_get_execution_result_attaches_by_id_when_no_retained_handle():
