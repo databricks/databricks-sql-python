@@ -1,20 +1,5 @@
-# Engineer Bot — learning (retrospective) extraction — DAILY CRON.
-#
-# Over an adaptive look-back window the engine gathers merged PRs (diff + review
-# comments) AND recent engineer-bot author-run console logs ITSELF via the GitHub
-# API — no in-workflow context gathering, no per-PR trigger — and if the model
-# finds durable, reusable learnings, opens ONE ROLLING PR on a stable branch
-# (`ai/learning-pr`), appending a dated section per day until a human merges it.
-# Human-gated by design: it NEVER commits the canonical log directly.
-#
-# Own job (NOT `uses: databricks/databricks-bot-engine/...`): an external repo
-# can't resolve the internal engine's reusable workflows ("not found"). It shares
-# the SAME prelude the other bots use — ./.github/actions/bot-prelude (tokens +
-# Node + pinned engine install) — so the engine pin stays single-sourced in
-# bot-prelude's `engine-ref` default (no second SHA to drift).
-#
-# Opt-in is purely via the `retrospective:` block in .bot/config.yaml + this
-# workflow; absent that block the engine phase is a clean no-op.
+# Daily journal extraction and lesson distillation in a rolling PR.
+# The legacy log is frozen; learning PRs require human review.
 name: Engineer Bot — Learning
 
 on:
