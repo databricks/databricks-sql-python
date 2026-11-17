@@ -568,6 +568,7 @@ class TestKernelTransportOptionsThreading:
             try:
                 _, kwargs = mock_kernel_client.call_args
                 assert kwargs["max_connections"] is None
+                assert kwargs["max_download_threads"] == 16
             finally:
                 conn.close()
 

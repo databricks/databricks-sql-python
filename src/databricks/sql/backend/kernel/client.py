@@ -347,7 +347,7 @@ class KernelDatabricksClient(DatabricksClient):
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
         self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
-        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self._max_download_threads = kwargs.get("max_download_threads", 16)
         if (
             isinstance(self._max_download_threads, bool)
             or not isinstance(self._max_download_threads, int)

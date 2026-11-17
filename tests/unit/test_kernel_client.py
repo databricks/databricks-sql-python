@@ -401,7 +401,7 @@ def test_open_session_honors_cloudfetch_option(
     original = dict(configuration) if configuration is not None else None
     client.open_session(configuration, catalog=None, schema=None)
     assert captured["session_conf"] == {
-        "cloudfetch_max_chunks_in_memory": "10",
+        "cloudfetch_max_chunks_in_memory": "16",
         **expected,
     }
     assert configuration == original
@@ -1634,6 +1634,7 @@ def test_get_query_state_returns_state_when_no_failure():
     [
         (1, None),
         (4, None),
+        (10, None),
         (1000, None),
         (10**100, None),
         (4, "cloudfetch_max_chunks_in_memory"),
