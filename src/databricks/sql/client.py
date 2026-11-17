@@ -247,7 +247,7 @@ class Connection:
             user_agent_entry: `str`, optional
                 A custom tag to append to the User-Agent header. This is typically used by partners to identify their applications.. If not specified, it will use the default user agent PyDatabricksSqlConnector
 
-            max_download_threads: `int`, optional (default 10)
+            max_download_threads: `int`, optional (default 16 with use_kernel=True, otherwise 10)
                 CloudFetch download window. With use_kernel=True, bounds downloading
                 and queued chunks ahead of consumption, excluding consumer buffers;
                 it is not a byte limit. Must be a positive integer on the kernel
