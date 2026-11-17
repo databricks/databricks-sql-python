@@ -5,6 +5,9 @@ Preserves the entries from PR #1018 at
 New daily entries belong in `journal/`; bots receive distilled rules from
 `lessons.md`. This archive is never updated or injected into bot prompts.
 
+Lesson counts measure archived occurrences, not distinct PRs. A
+`log:YYYY-MM-DD` source points to that dated section below, including its author-run IDs.
+
 ## Entries
 
 ### 2026-08-13: learnings since 2026-08-04T18:01:30Z
