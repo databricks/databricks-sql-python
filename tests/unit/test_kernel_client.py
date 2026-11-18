@@ -407,6 +407,45 @@ def test_open_session_honors_cloudfetch_option(
     assert configuration == original
 
 
+@pytest.mark.parametrize("enabled", [None, True, False])
+def test_open_session_preserves_http2_option(monkeypatch, enabled):
+    captured = {}
+
+    def fake_session(**kwargs):
+        captured.update(kwargs)
+        session = MagicMock()
+        session.session_id = "sess-id"
+        return session
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        **({"enable_http2": enabled} if enabled is not None else {}),
+    )
+    client.open_session(session_configuration=None, catalog=None, schema=None)
+    if enabled is None:
+        assert "enable_http2" not in captured
+    else:
+        assert captured["enable_http2"] is enabled
+
+
+@pytest.mark.parametrize("value", ["false", 0, 1])
+def test_http2_option_rejects_non_boolean(value):
+    with pytest.raises(ValueError, match="enable_http2 must be a bool"):
+        kernel_client._kernel_http2_kwargs(value)
+
+
+def test_http2_option_rejects_unsupported_kernel(monkeypatch):
+    monkeypatch.setattr(kernel_client._kernel, "Session", lambda *, host: None)
+    assert kernel_client._kernel_http2_kwargs(None) == {}
+    for enabled in [True, False]:
+        with pytest.raises(kernel_client.NotSupportedError, match="HTTP/2"):
+            kernel_client._kernel_http2_kwargs(enabled)
+
+
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
 def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     captured = {}

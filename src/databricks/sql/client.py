@@ -193,6 +193,12 @@ class Connection:
                 decision. This is an intentional divergence from the
                 Thrift/SEA paths, where an explicit ``True`` can still
                 be suppressed by the feature flag.
+            :param enable_http2: `bool`, optional (kernel default is True)
+                Kernel backend only. Negotiate HTTP/2 for HTTPS requests, with
+                HTTP/1.1 fallback when the peer does not support HTTP/2. Set
+                ``False`` to force HTTP/1.1 for authentication, SQL requests,
+                result downloads, and telemetry. Requires a kernel wheel with
+                HTTP/2 configuration support.
             :param enable_geospatial_support: `bool`, optional (default is False)
                 Kernel backend only. Controls the public representation of
                 ``GEOMETRY`` and ``GEOGRAPHY`` result values. ``True`` returns

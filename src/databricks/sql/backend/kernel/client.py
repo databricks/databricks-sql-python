@@ -218,6 +218,18 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     return support.accepts_kwargs or name in support.parameters
 
 
+def _kernel_http2_kwargs(value: Optional[bool]) -> Dict[str, bool]:
+    if value is None:
+        return {}
+    if not isinstance(value, bool):
+        raise ValueError("enable_http2 must be a bool")
+    if not _kernel_session_accepts_kwarg("enable_http2"):
+        raise NotSupportedError(
+            "enable_http2 requires a databricks-sql-kernel wheel with HTTP/2 configuration support."
+        )
+    return {"enable_http2": value}
+
+
 def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
     """Build the explicit native geospatial-support kwarg.
 
@@ -346,6 +358,7 @@ class KernelDatabricksClient(DatabricksClient):
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
+        self._enable_http2 = kwargs.get("enable_http2")
         self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._max_download_threads = kwargs.get("max_download_threads", 16)
         if (
@@ -485,6 +498,7 @@ class KernelDatabricksClient(DatabricksClient):
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
             telemetry_kwargs = _kernel_telemetry_kwargs(self._telemetry_options)
+            http2_kwargs = _kernel_http2_kwargs(self._enable_http2)
             geospatial_kwargs = _kernel_geospatial_kwargs(
                 self._enable_geospatial_support
             )
@@ -538,6 +552,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **geospatial_kwargs,
                 **max_connections_kwargs,
                 **http_headers_kwargs,
+                **http2_kwargs,
             )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
