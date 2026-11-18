@@ -1,6 +1,6 @@
 # Lessons
 
-<!-- distilled-through: none -->
+<!-- distilled-through: 2026-11-18 -->
 
 ## Backend contracts and configuration
 - L-0001 (1×, log:2026-08-13): When changing cursor.description type_code strings, update every downstream conversion branch that matches them.
@@ -24,7 +24,8 @@
 - L-0019 (1×, #951): TLS certfile may contain both certificate and key; reject keyfile without certfile. Validate each identity file separately for readable, non-empty contents before load_cert_chain.
 - L-0020 (1×, #974): Before replacing permissive wire parsing with typed parsing, verify real server representations and test case, quoting and numeric/bool variants.
 - L-0021 (1×, #985): SQL LIKE escape handling depends on preceding backslash-run parity; a one-character negative lookbehind cannot establish JDBC equivalence.
-- L-0022 (1×, #1026): Reject bool explicitly when validating integer options before native conversion, so True/False cannot silently become 1/0.
+- L-0022 (2×, #1066 #1026): Validate integer options at the Python boundary: reject bool explicitly plus non-int and out-of-range values, test True alongside 0, negative, None, str and float, and clamp large values before native conversion.
+- L-0048 (1×, #1066): Inject connector-derived session_conf defaults only when the user has not set the key under any letter case; copy rather than mutate the mapping, and test both override casings plus non-mutation.
 
 ## Results and lifecycle
 - L-0023 (2×, #1019): Verify server metadata and forwarded configuration behavior with live tests and an opposite-setting positive control; fabricated metadata or forwarding-only unit tests cannot establish server behavior.
