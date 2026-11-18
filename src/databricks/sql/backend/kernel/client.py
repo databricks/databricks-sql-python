@@ -354,7 +354,7 @@ class KernelDatabricksClient(DatabricksClient):
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
-        self._enable_http2 = kwargs.get("enable_http2")
+        self._http2_kwargs = _kernel_http2_kwargs(kwargs.get("enable_http2"))
         self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._max_download_threads = kwargs.get("max_download_threads", 16)
         if (
@@ -494,7 +494,6 @@ class KernelDatabricksClient(DatabricksClient):
             # kernel's ``retry_*`` kwargs. Empty when at defaults.
             retry_kwargs = _kernel_retry_kwargs(self._retry_options)
             telemetry_kwargs = _kernel_telemetry_kwargs(self._telemetry_options)
-            http2_kwargs = _kernel_http2_kwargs(self._enable_http2)
             geospatial_kwargs = _kernel_geospatial_kwargs(
                 self._enable_geospatial_support
             )
@@ -548,7 +547,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **geospatial_kwargs,
                 **max_connections_kwargs,
                 **http_headers_kwargs,
-                **http2_kwargs,
+                **self._http2_kwargs,
             )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
