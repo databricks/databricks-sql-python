@@ -438,14 +438,6 @@ def test_http2_option_rejects_non_boolean(value):
         kernel_client._kernel_http2_kwargs(value)
 
 
-def test_http2_option_rejects_unsupported_kernel(monkeypatch):
-    monkeypatch.setattr(kernel_client._kernel, "Session", lambda *, host: None)
-    assert kernel_client._kernel_http2_kwargs(None) == {}
-    for enabled in [True, False]:
-        with pytest.raises(kernel_client.NotSupportedError, match="HTTP/2"):
-            kernel_client._kernel_http2_kwargs(enabled)
-
-
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
 def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     captured = {}

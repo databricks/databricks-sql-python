@@ -223,10 +223,6 @@ def _kernel_http2_kwargs(value: Optional[bool]) -> Dict[str, bool]:
         return {}
     if not isinstance(value, bool):
         raise ValueError("enable_http2 must be a bool")
-    if not _kernel_session_accepts_kwarg("enable_http2"):
-        raise NotSupportedError(
-            "enable_http2 requires a databricks-sql-kernel wheel with HTTP/2 configuration support."
-        )
     return {"enable_http2": value}
 
 

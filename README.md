@@ -39,7 +39,6 @@ Install using `pip install databricks-sql-connector[pyarrow]`
 The kernel negotiates HTTP/2 for HTTPS requests, with HTTP/1.1 fallback when the
 peer does not support HTTP/2. Pass `enable_http2=False` with `use_kernel=True` to
 force HTTP/1.1 for authentication, SQL requests, result downloads, and telemetry.
-This setting requires a kernel wheel with HTTP/2 configuration support.
 
 Install using `pip install databricks-sql-connector[kernel]`
 
