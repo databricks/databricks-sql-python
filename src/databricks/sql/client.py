@@ -197,8 +197,9 @@ class Connection:
                 Kernel backend only. Negotiate HTTP/2 for HTTPS requests, with
                 HTTP/1.1 fallback when the peer does not support HTTP/2. Set
                 ``False`` to force HTTP/1.1 for authentication, SQL requests,
-                result downloads, and telemetry. Configured proxies force
-                HTTP/1.1 for the entire kernel client.
+                result downloads, and telemetry. Nonempty HTTP_PROXY, HTTPS_PROXY,
+                ALL_PROXY or lowercase equivalents force HTTP/1.1 for the
+                entire kernel client.
             :param enable_geospatial_support: `bool`, optional (default is False)
                 Kernel backend only. Controls the public representation of
                 ``GEOMETRY`` and ``GEOGRAPHY`` result values. ``True`` returns
