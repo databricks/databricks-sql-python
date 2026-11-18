@@ -4,6 +4,7 @@
 - Honor `max_download_threads` on kernel connections, with a default download window of 16 and explicit chunk-setting overrides. Invalid values raise `ValueError` when connecting with `use_kernel=True`.
 - Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
 - Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
+- Fix: iterating a cursor (`for row in cursor`) and calling `fetchone()` in a loop are now about as fast as `fetchall()`. They previously converted each row through pandas on its own, costing around 1 ms per row, which made SQLAlchemy result iteration very slow. Rows are now converted `arraysize` at a time and served from an internal buffer.
 - Speed up Thrift response handling: read replies in 1 MiB chunks and decode them with Thrift's C-accelerated protocol, and stop stringifying every request/response for the default no-op debug logger. Wide result schemas, metadata calls with many rows, and inline Arrow results benefit most.
 - Report `cursor.rowcount` after asynchronous DML completes on both the Thrift and kernel backends, preserving zero counts and fetched result rows.
 
