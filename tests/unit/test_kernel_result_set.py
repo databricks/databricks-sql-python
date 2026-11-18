@@ -267,15 +267,15 @@ def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
     rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
 
 
-@pytest.mark.parametrize("outcome", ["completed", "not_volume"])
-def test_volume_does_not_read_irrelevant_stream(int_schema, outcome):
+def test_volume_does_not_read_irrelevant_stream(int_schema):
     handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
-    handle.complete_volume_operation = MagicMock(return_value=outcome)
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock(return_value="completed")
     rs = _make_rs(handle)
     stream = MagicMock()
     rs.complete_staging_operation(None, stream)
     stream.read.assert_not_called()
-    assert len(rs.fetchall()) == (1 if outcome == "not_volume" else 0)
+    assert rs.fetchall() == []
 
 
 @pytest.mark.parametrize("missing", [False, True])

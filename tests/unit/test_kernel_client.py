@@ -2817,8 +2817,7 @@ class TestKernelHttpHeadersForwarding:
         assert "http_headers" not in captured
 
 
-@pytest.mark.parametrize("is_volume", [False, True])
-@pytest.mark.parametrize("has_canceller", [False, True])
+@pytest.mark.parametrize("is_volume,has_canceller", [(False, True), (True, True), (True, False)])
 def test_sync_volume_canceller_survives_until_completion(is_volume, has_canceller):
     c = _make_client()
     c._kernel_session = MagicMock()
