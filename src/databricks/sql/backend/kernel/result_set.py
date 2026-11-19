@@ -35,7 +35,7 @@ from typing import Any, BinaryIO, Deque, List, Optional, TYPE_CHECKING, Union, c
 
 import pyarrow
 
-from databricks.sql.backend.kernel._errors import wrap_kernel_exception
+from databricks.sql.backend.kernel._errors import _kernel, wrap_kernel_exception
 from databricks.sql.backend.kernel.type_mapping import description_from_arrow_schema
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.result_set import ResultSet
@@ -110,14 +110,9 @@ class KernelResultSet(ResultSet):
         paths = (
             [allowed_paths] if isinstance(allowed_paths, str) else (allowed_paths or [])
         )
-        consume_instructions = self.is_staging_operation
         try:
             outcome = self._complete_volume_operation(paths)
-            if outcome == "not_volume":
-                consume_instructions = False
-                return
-            consume_instructions = True
-            if outcome == "needs_input_stream":
+            if outcome == _kernel.VolumeCompletion.NeedsInputStream:
                 try:
                     if input_stream is None:
                         raise ProgrammingError(
@@ -128,23 +123,22 @@ class KernelResultSet(ResultSet):
                     self.close()
                     raise
                 outcome = self._complete_volume_operation(paths, data)
-            if outcome != "completed":
+            if outcome != _kernel.VolumeCompletion.Completed:
                 raise ProgrammingError("Volume operation did not complete")
             self.status = CommandState.SUCCEEDED
         finally:
-            if consume_instructions:
-                self._buffer.clear()
-                self._buffer_offset = 0
-                self._buffered_count = 0
-                self._exhausted = True
-                self.has_more_rows = False
+            self._buffer.clear()
+            self._buffer_offset = 0
+            self._buffered_count = 0
+            self._exhausted = True
+            self.has_more_rows = False
             cast("KernelDatabricksClient", self.backend).finish_volume_operation(
                 self.command_id
             )
 
     def _complete_volume_operation(
         self, paths: List[str], input_bytes: Optional[bytes] = None
-    ) -> str:
+    ) -> _kernel.VolumeCompletion:
         try:
             return self._kernel_handle.complete_volume_operation(
                 paths, input_bytes=input_bytes

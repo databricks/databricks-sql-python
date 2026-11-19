@@ -250,12 +250,7 @@ are forwarded when supported by the installed kernel binding.
 
 With `use_kernel=True`, SQL `PUT`, `GET` and `REMOVE` complete their file
 operations before `execute()` or `get_async_execution_result()` returns.
-`PUT` and `GET` require paths within
-`staging_allowed_local_path`. Both the requested path and its resolved target
-must lie within a configured root. Symlinks within those roots are permitted;
-symlinks leading outside are rejected. This is stricter than the Thrift
-backend, which checks the requested path only.
-
-`execute(input_stream=stream)` retains its existing behavior: the stream is
-read only when the server requests stream input. `REMOVE` requires no local
-root. A completed transfer returns no instruction rows.
+`PUT` and `GET` require requested paths and resolved symlink targets within
+`staging_allowed_local_path`; `REMOVE` needs no local root.
+`execute(input_stream=stream)` reads the stream only when requested by the server.
+Completed transfers return no instruction rows.
