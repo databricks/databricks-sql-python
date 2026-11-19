@@ -113,8 +113,8 @@ def _uri_host_and_path(uri: str) -> Tuple[str, str]:
 
 
 def _kernel_host_and_path(
-    server_hostname: str, http_path: Optional[str], kwargs: dict
-) -> Tuple[str, Optional[str]]:
+    server_hostname: str, http_path: str, kwargs: dict
+) -> Tuple[str, str]:
     """Resolve the kernel ``(host, http_path)``. ``_connection_uri`` replaces both and wins over
     ``_port``; ``_port`` folds into the host as ``host:port`` (default 443 adds nothing).
     """
