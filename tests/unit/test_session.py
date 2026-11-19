@@ -1246,6 +1246,11 @@ _P = "/sql/1.0/warehouses/abc"
             {"_connection_uri": "https://h.io/sql/x"},
             ("https://h.io", "/sql/x"),
         ),  # URI-only
+        # Without _port or _connection_uri the host passes through as on main, even if
+        # it is not a valid host:port (no port is parsed on the default path).
+        ("h.io:0", _P, {}, ("h.io:0", _P)),
+        ("h.io:notaport", _P, {}, ("h.io:notaport", _P)),
+        ("h.io:", _P, {}, ("h.io:", _P)),
     ],
 )
 def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
@@ -1261,8 +1266,8 @@ def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
         ("h.io", {"_port": "abc"}, "Invalid _port"),
         ("h.io", {"_port": True}, "Invalid _port"),
         ("h.io", {"_port": 8443.5}, "Invalid _port"),
-        ("h.io:notaport", {}, "malformed"),
-        ("h.io:0", {}, "out of range"),
+        ("h.io:notaport", {"_port": 8443}, "malformed"),
+        ("h.io:0", {"_port": 8443}, "out of range"),
         # AC-P3: a supplied port must agree with a port embedded in server_hostname.
         ("h.io:7000", {"_port": 8443}, "Conflicting ports"),
         ("h.io:8443", {"_port": 443}, "Conflicting ports"),
@@ -1318,6 +1323,36 @@ def test_kernel_host_and_path_rejects(server, kwargs, message):
             "https://evil.io/sql/x",
             False,
         ),  # PAT is not guarded
+        # The auth bridge routes access_token with no M2M/JWT credentials to PAT,
+        # even when auth_type is databricks-oauth; azure-sp-m2m and M2M/JWT stay guarded.
+        (
+            "h.io",
+            {"auth_type": "databricks-oauth", "access_token": "dapi"},
+            "https://evil.io/sql/x",
+            False,
+        ),
+        (
+            "h.io",
+            {"auth_type": "azure-sp-m2m", "access_token": "dapi"},
+            "https://evil.io/sql/x",
+            True,
+        ),
+        (
+            "h.io",
+            {"oauth_jwt_key_file": "/k.pem", "access_token": "dapi"},
+            "https://evil.io/sql/x",
+            True,
+        ),
+        (
+            "h.io",
+            {
+                "oauth_client_id": "c",
+                "oauth_client_secret": "s",
+                "access_token": "dapi",
+            },
+            "https://evil.io/sql/x",
+            True,
+        ),
         (
             "",
             {"auth_type": "databricks-oauth"},

@@ -121,9 +121,9 @@ def _kernel_host_and_path(
     if kwargs.get("_connection_uri"):
         return _uri_host_and_path(kwargs["_connection_uri"])
     port = _port_or_none(kwargs.get("_port"))
-    prefix, name, embedded = _split_host(server_hostname)
     if port is None:
         return server_hostname, http_path
+    prefix, name, embedded = _split_host(server_hostname)
     if not server_hostname:
         raise ValueError(
             "server_hostname is required on use_kernel=True when _port is set "
@@ -153,7 +153,16 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
         or (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
         or kwargs.get("credentials_provider") is not None
     )
-    if not (kwargs.get("_connection_uri") and server_hostname and oauth):
+    # The kernel auth bridge routes an access_token with no JWT or client-secret
+    # M2M credentials to PAT, even for auth_type='databricks-oauth'; azure-sp-m2m
+    # is resolved before that branch and stays OAuth.
+    routed_to_pat = (
+        bool(kwargs.get("access_token"))
+        and kwargs.get("auth_type") != "azure-sp-m2m"
+        and not kwargs.get("oauth_jwt_key_file")
+        and not (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
+    )
+    if routed_to_pat or not (kwargs.get("_connection_uri") and server_hostname and oauth):
         return
     _, name, port = _split_host(server_hostname)
     uri = urlsplit(kernel_host)
