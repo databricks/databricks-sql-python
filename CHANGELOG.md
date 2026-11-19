@@ -3,7 +3,6 @@
 # Unreleased
 - Speed up `fetchone()`, `fetchmany()` and `fetchall()` by building each result `Row` with fewer Python calls. The rows are unchanged. Large results and many concurrent cursors in one process benefit most.
 - Support Volume `PUT`, `GET` and `REMOVE` on the kernel backend, including existing Python stream uploads. Local file paths and resolved symlink targets must stay within configured allowed roots.
-- Closing a kernel connection attempts to cancel its tracked synchronous executions before closing the session.
 
 # 4.10.0 (2026-11-24)
 - Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.

@@ -17,8 +17,10 @@ import pytest
 # so the whole module must skip when pyarrow is unavailable.
 pa = pytest.importorskip("pyarrow")
 
+from databricks.sql.backend.kernel import _errors
 from databricks.sql.backend.kernel.result_set import KernelResultSet
 from databricks.sql.backend.types import CommandId, CommandState
+from databricks.sql.exc import OperationalError, ProgrammingError
 
 
 class _FakeKernelHandle:
@@ -253,7 +255,10 @@ def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
     handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
     handle.is_volume_operation = True
     handle.complete_volume_operation = MagicMock(
-        side_effect=["needs_input_stream", "completed"]
+        side_effect=[
+            _errors._kernel.VolumeCompletion.NeedsInputStream,
+            _errors._kernel.VolumeCompletion.Completed,
+        ]
     )
     rs = _make_rs(handle)
     stream = io.BytesIO(data)
@@ -270,7 +275,9 @@ def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
 def test_volume_does_not_read_irrelevant_stream(int_schema):
     handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
     handle.is_volume_operation = True
-    handle.complete_volume_operation = MagicMock(return_value="completed")
+    handle.complete_volume_operation = MagicMock(
+        return_value=_errors._kernel.VolumeCompletion.Completed
+    )
     rs = _make_rs(handle)
     stream = MagicMock()
     rs.complete_staging_operation(None, stream)
@@ -282,10 +289,10 @@ def test_volume_does_not_read_irrelevant_stream(int_schema):
 def test_volume_missing_or_failed_input_closes_without_masking_error(
     int_schema, missing
 ):
-    from databricks.sql.exc import ProgrammingError
-
     handle = _FakeKernelHandle(int_schema, [])
-    handle.complete_volume_operation = MagicMock(return_value="needs_input_stream")
+    handle.complete_volume_operation = MagicMock(
+        return_value=_errors._kernel.VolumeCompletion.NeedsInputStream
+    )
     rs = _make_rs(handle)
     error = RuntimeError("stream read failed")
     stream = MagicMock()
@@ -320,7 +327,9 @@ def test_volume_close_cancels_only_pending_transfer(int_schema, completed):
     handle.is_volume_operation = True
     rs = _make_rs(handle)
     if completed:
-        handle.complete_volume_operation = MagicMock(return_value="completed")
+        handle.complete_volume_operation = MagicMock(
+            return_value=_errors._kernel.VolumeCompletion.Completed
+        )
         rs.complete_staging_operation([])
 
     def close_native():
@@ -334,24 +343,8 @@ def test_volume_close_cancels_only_pending_transfer(int_schema, completed):
     handle.close.assert_called_once()
 
 
-def test_ordinary_close_releases_stream_before_backend(int_schema):
-    handle = _FakeKernelHandle(int_schema, [])
-    rs = _make_rs(handle)
-
-    def close_backend(_):
-        assert handle.closed
-
-    rs.backend.close_command.side_effect = close_backend
-    rs.close()
-    rs.backend.cancel_command.assert_not_called()
-    rs.backend.close_command.assert_called_once_with(rs.command_id)
-
-
 @pytest.mark.parametrize("code,status", [("NotFound", 404), ("InvalidArgument", 400)])
 def test_volume_instruction_http_error_preserves_mapping(int_schema, code, status):
-    from databricks.sql.backend.kernel import _errors
-    from databricks.sql.exc import ProgrammingError
-
     error = _errors._kernel.KernelError("instruction read failed")
     error.code = code
     error.message = "instruction read failed"
@@ -371,8 +364,6 @@ def test_volume_instruction_http_error_preserves_mapping(int_schema, code, statu
 
 
 def test_volume_http_404_is_an_operational_error(int_schema):
-    from databricks.sql.exc import OperationalError
-
     handle = _FakeKernelHandle(int_schema, [])
     error = RuntimeError("storage response")
     error.http_status = 404

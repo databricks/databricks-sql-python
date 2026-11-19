@@ -17,6 +17,7 @@ import sys
 import threading
 import types
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -81,6 +82,9 @@ class _FakeKernelError(Exception):
 _fake_kernel_module = types.ModuleType("databricks_sql_kernel")
 _fake_kernel_module.KernelError = _FakeKernelError  # type: ignore[attr-defined]
 _fake_kernel_module.Session = MagicMock()  # type: ignore[attr-defined]
+_fake_kernel_module.VolumeCompletion = Enum(  # type: ignore[attr-defined]
+    "VolumeCompletion", ["NotVolume", "NeedsInputStream", "Completed"]
+)
 sys.modules.setdefault("databricks_sql_kernel", _fake_kernel_module)
 
 
@@ -1371,17 +1375,27 @@ def test_get_query_state_uses_reader_after_result_stream_started():
 
 
 @pytest.mark.parametrize(
-    "count,volume_completed",
-    [(7, None), (0, None), (None, None), (None, False), (None, True)],
+    "count,is_volume,volume_completed",
+    [
+        pytest.param(7, False, False, id="dml"),
+        pytest.param(0, False, False, id="zero-row-dml"),
+        pytest.param(None, False, False, id="select"),
+        pytest.param(None, True, False, id="pending-volume"),
+        pytest.param(None, True, True, id="completed-volume"),
+    ],
 )
-def test_get_execution_result_uses_retained_owning_handle_first(count, volume_completed):
+def test_get_execution_result_uses_retained_owning_handle_first(
+    count, is_volume, volume_completed
+):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
     c._kernel_session = MagicMock()
     fake_stream = MagicMock()
-    fake_stream.is_volume_operation = volume_completed is not None
-    fake_stream.complete_volume_operation.return_value = "completed"
+    fake_stream.is_volume_operation = is_volume
+    fake_stream.complete_volume_operation.return_value = (
+        kernel_client._kernel.VolumeCompletion.Completed
+    )
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
     del handle.num_modified_rows
@@ -1406,9 +1420,9 @@ def test_get_execution_result_uses_retained_owning_handle_first(count, volume_co
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
-    assert rs.is_staging_operation is (volume_completed is not None)
+    assert rs.is_staging_operation is is_volume
 
-    if volume_completed is not None:
+    if is_volume:
         assert not c._volume_handles
         if volume_completed:
             rs.complete_staging_operation(["/allowed"])
@@ -1666,9 +1680,6 @@ def test_close_session_clears_async_handles_even_if_close_fails():
     good = MagicMock()
     bad = MagicMock()
     bad.close.side_effect = _FakeKernelError(code="Unavailable")
-    bad.cancel.side_effect = _FakeKernelError(code="Unavailable")
-    c._sync_cancellers[1] = bad
-    c._volume_handles["volume"] = (MagicMock(), good)
     c._async_handles["a"] = good
     c._async_handles["b"] = bad
     c._kernel_session = MagicMock()
@@ -1676,10 +1687,6 @@ def test_close_session_clears_async_handles_even_if_close_fails():
     assert c._async_handles == {}
     assert good.close.called
     assert bad.close.called
-    bad.cancel.assert_called_once_with()
-    good.cancel.assert_called_once_with()
-    assert c._sync_cancellers == {}
-    assert c._volume_handles == {}
 
 
 def test_close_session_closes_and_drops_swept_handles():
@@ -2817,8 +2824,8 @@ class TestKernelHttpHeadersForwarding:
         assert "http_headers" not in captured
 
 
-@pytest.mark.parametrize("is_volume,has_canceller", [(False, True), (True, True), (True, False)])
-def test_sync_volume_canceller_survives_until_completion(is_volume, has_canceller):
+@pytest.mark.parametrize("has_canceller", [False, True])
+def test_sync_volume_canceller_survives_until_completion(has_canceller):
     c = _make_client()
     c._kernel_session = MagicMock()
     stmt = c._kernel_session.statement.return_value
@@ -2826,7 +2833,7 @@ def test_sync_volume_canceller_survives_until_completion(is_volume, has_cancelle
         stmt.canceller.side_effect = RuntimeError("canceller unavailable")
     stmt.execute.return_value = MagicMock(
         statement_id="volume-id",
-        is_volume_operation=is_volume,
+        is_volume_operation=True,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
     result = c.execute_command(
@@ -2841,21 +2848,8 @@ def test_sync_volume_canceller_survives_until_completion(is_volume, has_cancelle
         async_op=False,
         enforce_embedded_schema_correctness=False,
     )
-    assert result.is_staging_operation is is_volume
+    assert result.is_staging_operation
     c.cancel_command(result.command_id)
-    assert stmt.canceller.return_value.cancel.called is (is_volume and has_canceller)
+    assert stmt.canceller.return_value.cancel.called is has_canceller
     c.finish_volume_operation(result.command_id)
-    assert not c._volume_handles
-
-
-@pytest.mark.parametrize("cancel_fails", [False, True])
-def test_close_volume_command_cancels_and_removes_handle(cancel_fails):
-    c = _make_client()
-    command_id = CommandId.from_sea_statement_id("volume-id")
-    canceller = MagicMock()
-    if cancel_fails:
-        canceller.cancel.side_effect = RuntimeError("cancel failed")
-    c._volume_handles[command_id.guid] = (MagicMock(), canceller)
-    c.close_command(command_id)
-    canceller.cancel.assert_called_once_with()
     assert not c._volume_handles

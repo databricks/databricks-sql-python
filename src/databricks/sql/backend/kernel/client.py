@@ -527,20 +527,7 @@ class KernelDatabricksClient(DatabricksClient):
         if self._kernel_session is None:
             return
         with self._sync_cancellers_lock:
-            cancellers = list(self._sync_cancellers.values()) + [
-                entry[1]
-                for entry in self._volume_handles.values()
-                if entry[1] is not None
-            ]
-            self._sync_cancellers.clear()
             self._volume_handles.clear()
-        for canceller in cancellers:
-            try:
-                canceller.cancel()
-            except Exception:
-                logger.debug(
-                    "Statement cancellation during session close failed", exc_info=True
-                )
         # Close any tracked async handles first so they fire their
         # server-side CloseStatement before the session goes away.
         with self._async_handles_lock:
@@ -794,12 +781,7 @@ class KernelDatabricksClient(DatabricksClient):
 
     def close_command(self, command_id: CommandId) -> None:
         with self._sync_cancellers_lock:
-            volume = self._volume_handles.pop(command_id.guid, None)
-        if volume is not None and volume[1] is not None:
-            try:
-                volume[1].cancel()
-            except Exception:
-                logger.debug("Volume cancellation during close failed", exc_info=True)
+            self._volume_handles.pop(command_id.guid, None)
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)
