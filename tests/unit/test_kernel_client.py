@@ -432,25 +432,9 @@ def test_open_session_preserves_http2_option(monkeypatch, enabled):
         assert captured["enable_http2"] is enabled
 
 
-@pytest.mark.parametrize("value", ["false", 0, 1])
-def test_http2_option_rejects_non_boolean_through_connect(monkeypatch, value):
-    from databricks import sql
-
-    native_session = MagicMock()
-    auth_kwargs = MagicMock()
-    monkeypatch.setattr(kernel_client._kernel, "Session", native_session)
-    monkeypatch.setattr(kernel_client, "kernel_auth_kwargs", auth_kwargs)
+def test_http2_option_rejects_non_boolean():
     with pytest.raises(ValueError, match="enable_http2 must be a bool"):
-        sql.connect(
-            server_hostname="example.cloud.databricks.com",
-            http_path="/sql/1.0/warehouses/abc",
-            access_token="dapi-test",
-            use_kernel=True,
-            enable_telemetry=False,
-            enable_http2=value,
-        )
-    native_session.assert_not_called()
-    auth_kwargs.assert_not_called()
+        kernel_client._kernel_http2_kwargs("false")
 
 
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])

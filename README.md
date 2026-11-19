@@ -35,7 +35,6 @@ Install using `pip install databricks-sql-connector`
 Install using `pip install databricks-sql-connector[pyarrow]`
 
 ### Installing with the Rust kernel backend (`use_kernel=True`)
-
 Install using `pip install databricks-sql-connector[kernel]`
 
 This adds the optional [`databricks-sql-kernel`](https://pypi.org/project/databricks-sql-kernel/)
@@ -54,8 +53,9 @@ connection = sql.connect(
 
 Notes:
 - HTTPS uses HTTP/2 with HTTP/1.1 fallback. `enable_http2=False` or configured
-  proxy environment variables force HTTP/1.1 for all kernel traffic, including
-  bypassed destinations.
+  proxy environment variables force HTTP/1.1 for session requests, including
+  bypassed destinations. Telemetry may reuse an earlier session's HTTP client
+  for the same host.
 - Requires **Python >= 3.10** (the kernel wheel is published as
   `cp310-abi3`). On older interpreters the `[kernel]` extra installs
   nothing and `use_kernel=True` raises an `ImportError`.
