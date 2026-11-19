@@ -1,6 +1,7 @@
 import logging
 import re
 from functools import cached_property
+from urllib.parse import urlsplit
 from typing import Dict, Tuple, List, Optional, Any, Type, TYPE_CHECKING
 
 from databricks.sql.types import SSLOptions
@@ -45,6 +46,126 @@ def __getattr__(name: str) -> Any:
 
         return SeaDatabricksClient
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+_OAUTH_AUTH_TYPES = ("databricks-oauth", "azure-oauth", "azure-sp-m2m")
+_HOSTPORT_RE = re.compile(r"(\[[^\]]*\]|(?!\[)[^:]*)(?::([0-9]+))?")
+
+
+def _port_or_none(value: Any) -> Optional[int]:
+    """Validate ``_port``. ``None`` and ``0`` mean the default (Thrift: ``port or 443``)."""
+    if value is None:
+        return None
+    text = (
+        str(value).strip()
+        if isinstance(value, (int, str)) and not isinstance(value, bool)
+        else ""
+    )
+    if not re.fullmatch(r"[0-9]+", text) or not int(text) <= 65535:
+        raise ValueError(
+            f"Invalid _port {value!r}: expected an integer between 1 and 65535"
+        )
+    return int(text) or None
+
+
+def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
+    """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``; ``name`` keeps IPv6 brackets."""
+    prefix, sep, text = host.rstrip("/").rpartition("://")
+    prefix += sep
+    match = _HOSTPORT_RE.fullmatch(text)
+    if match is None:
+        if text.startswith("[") or text.count(":") == 1:
+            raise ValueError(
+                f"Invalid server_hostname {host!r}: malformed IPv6 literal or port"
+            )
+        return prefix, text, None  # an unbracketed IPv6 literal such as ::1 has no port
+    name, port_text = match.group(1), match.group(2)
+    if port_text is None:
+        return prefix, name, None
+    if not 1 <= int(port_text) <= 65535:
+        raise ValueError(
+            f"Invalid server_hostname {host!r}: port {port_text} is out of range"
+        )
+    return prefix, name, int(port_text)
+
+
+def _uri_host_and_path(uri: str) -> Tuple[str, str]:
+    """Split a ``_connection_uri`` into the kernel host (scheme and authority) and path (with query)."""
+    parts = urlsplit(uri)
+    try:
+        port = parts.port
+    except ValueError:
+        port = 0
+    if (
+        parts.scheme not in ("http", "https")
+        or not parts.hostname
+        or "@" in parts.netloc
+        or port == 0
+        or parts.path in ("", "/")
+    ):
+        raise ValueError(
+            f"Invalid _connection_uri {uri!r}: expected http(s)://host[:port]/path with a "
+            "warehouse path and no credentials"
+        )
+    return f"{parts.scheme}://{parts.netloc}", parts.path + (
+        f"?{parts.query}" if parts.query else ""
+    )
+
+
+def _kernel_host_and_path(
+    server_hostname: str, http_path: Optional[str], kwargs: dict
+) -> Tuple[str, Optional[str]]:
+    """Resolve the kernel ``(host, http_path)``. ``_connection_uri`` replaces both and wins over
+    ``_port``; ``_port`` folds into the host as ``host:port`` (default 443 adds nothing).
+    """
+    if kwargs.get("_connection_uri"):
+        return _uri_host_and_path(kwargs["_connection_uri"])
+    port = _port_or_none(kwargs.get("_port"))
+    prefix, name, embedded = _split_host(server_hostname)
+    if port is None:
+        return server_hostname, http_path
+    if not server_hostname:
+        raise ValueError(
+            "server_hostname is required on use_kernel=True when _port is set "
+            "(or pass _connection_uri, which carries its own host)"
+        )
+    if embedded is not None:
+        if embedded != port:
+            raise ValueError(
+                f"Conflicting ports: server_hostname {server_hostname!r} carries {embedded} but _port={port}"
+            )
+        return server_hostname, http_path
+    if port == 443:
+        return server_hostname, http_path
+    if ":" in name and not name.startswith("["):
+        name = f"[{name}]"
+    return f"{prefix}{name}:{port}", http_path
+
+
+def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) -> None:
+    """AC-P4: with OAuth, a ``_connection_uri`` origin must equal ``https://server_hostname``.
+    Thrift keeps OAuth on server_hostname; the kernel uses one host for API and token calls.
+    URI-only use (empty server_hostname) has no server origin to compare and is not checked.
+    """
+    oauth = (
+        kwargs.get("auth_type") in _OAUTH_AUTH_TYPES
+        or kwargs.get("oauth_jwt_key_file")
+        or (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
+        or kwargs.get("credentials_provider") is not None
+    )
+    if not (kwargs.get("_connection_uri") and server_hostname and oauth):
+        return
+    _, name, port = _split_host(server_hostname)
+    uri = urlsplit(kernel_host)
+    if (uri.scheme, uri.hostname or "", uri.port or 443) != (
+        "https",
+        name.strip("[]").lower(),
+        port or 443,
+    ):
+        raise ValueError(
+            f"OAuth requires the _connection_uri origin to match https://{server_hostname}; "
+            f"the kernel would send the credentials to {kernel_host}. Use a PAT or match the origin."
+        )
 
 
 class Session:
@@ -323,9 +444,23 @@ class Session:
                     "_telemetry_circuit_breaker_enabled"
                 ),
             }
+            kernel_host, kernel_http_path = _kernel_host_and_path(
+                server_hostname, http_path, kwargs
+            )
+            _check_oauth_origin(server_hostname, kernel_host, kwargs)
+            if kernel_http_path != http_path:
+                # A _connection_uri can point at another workspace: re-derive the
+                # SPOG org-id header from the resolved path (a caller header still wins).
+                base_headers = [
+                    h for h in all_headers if h not in self._spog_headers.items()
+                ]
+                self._spog_headers = self._extract_spog_headers(
+                    kernel_http_path, base_headers
+                )
+                all_headers = base_headers + list(self._spog_headers.items())
             return KernelDatabricksClient(
-                server_hostname=server_hostname,
-                http_path=http_path,
+                server_hostname=kernel_host,
+                http_path=kernel_http_path,
                 http_headers=all_headers,
                 auth_provider=auth_provider,
                 ssl_options=self.ssl_options,

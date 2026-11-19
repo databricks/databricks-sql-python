@@ -2,6 +2,11 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock, PropertyMock
 from contextlib import contextmanager
 import gc
+import importlib.metadata as ilm
+import socket
+import sys
+import threading
+import types
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
@@ -10,6 +15,9 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.agent import KNOWN_AGENTS
+from databricks.sql.session import _kernel_host_and_path, _check_oauth_origin
+
+import databricks.sql
 from databricks.sql.exc import (
     ReydenThriftUnsupportedError,
     DatabaseError,
@@ -1184,3 +1192,269 @@ class TestReydenThriftFallback:
                 assert kwargs["auth_options"].get("auth_type") is None
             finally:
                 conn.close()
+
+
+# ---- kernel _port / _connection_uri overrides (use_kernel=True) ----
+
+_P = "/sql/1.0/warehouses/abc"
+
+
+@pytest.mark.parametrize(
+    "server, hpath, kwargs, expected",
+    [
+        # AC-P1: _port folds into host:port; 443 adds nothing; IPv6 is bracketed.
+        ("h.io", _P, {}, ("h.io", _P)),
+        ("h.io", _P, {"_port": 8443}, ("h.io:8443", _P)),
+        ("h.io", _P, {"_port": "8443"}, ("h.io:8443", _P)),
+        ("h.io", _P, {"_port": 1}, ("h.io:1", _P)),
+        ("h.io", _P, {"_port": 65535}, ("h.io:65535", _P)),
+        ("h.io", _P, {"_port": 443}, ("h.io", _P)),
+        ("h.io", _P, {"_port": 0}, ("h.io", _P)),
+        ("::1", _P, {}, ("::1", _P)),
+        ("::1", _P, {"_port": 8443}, ("[::1]:8443", _P)),
+        ("[::1]", _P, {"_port": 8443}, ("[::1]:8443", _P)),
+        ("h.io:8443", _P, {}, ("h.io:8443", _P)),
+        ("h.io:8443", _P, {"_port": 8443}, ("h.io:8443", _P)),
+        # AC-P2: _connection_uri replaces host, port, path and query; it wins over _port.
+        (
+            "h.io",
+            _P,
+            {"_connection_uri": "https://d.io:8443/sql/1.0/warehouses/xyz"},
+            ("https://d.io:8443", "/sql/1.0/warehouses/xyz"),
+        ),
+        (
+            "h.io",
+            _P,
+            {"_connection_uri": "https://h.io/sql/x?o=123"},
+            ("https://h.io", "/sql/x?o=123"),
+        ),
+        (
+            "h.io",
+            _P,
+            {"_connection_uri": "http://h.io:8080/sql/x"},
+            ("http://h.io:8080", "/sql/x"),
+        ),
+        (
+            "h.io",
+            _P,
+            {"_connection_uri": "https://d.io:9999/p", "_port": 8443},
+            ("https://d.io:9999", "/p"),
+        ),
+        (
+            "",
+            "",
+            {"_connection_uri": "https://h.io/sql/x"},
+            ("https://h.io", "/sql/x"),
+        ),  # URI-only
+    ],
+)
+def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
+    assert _kernel_host_and_path(server, hpath, kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    "server, kwargs, message",
+    [
+        # AC-P3: ports outside 1..65535, or not integers.
+        ("h.io", {"_port": -1}, "Invalid _port"),
+        ("h.io", {"_port": 65536}, "Invalid _port"),
+        ("h.io", {"_port": "abc"}, "Invalid _port"),
+        ("h.io", {"_port": True}, "Invalid _port"),
+        ("h.io", {"_port": 8443.5}, "Invalid _port"),
+        ("h.io:notaport", {}, "malformed"),
+        ("h.io:0", {}, "out of range"),
+        # AC-P3: a supplied port must agree with a port embedded in server_hostname.
+        ("h.io:7000", {"_port": 8443}, "Conflicting ports"),
+        ("h.io:8443", {"_port": 443}, "Conflicting ports"),
+        ("[::1]:7000", {"_port": 8443}, "Conflicting ports"),
+        # R11: _port needs a server_hostname unless _connection_uri carries the host.
+        ("", {"_port": 8443}, "server_hostname is required"),
+        ("", {"_port": 443}, "server_hostname is required"),
+        # AC-P3: _connection_uri must be http(s) with a host and a warehouse path.
+        ("h", {"_connection_uri": "d.io/sql/x"}, "Invalid _connection_uri"),
+        ("h", {"_connection_uri": "ftp://h.io/sql/x"}, "Invalid _connection_uri"),
+        ("h", {"_connection_uri": "https://h.io:8443"}, "Invalid _connection_uri"),
+        ("h", {"_connection_uri": "https://h.io:8443/"}, "Invalid _connection_uri"),
+        (
+            "h",
+            {"_connection_uri": "https://h.io:notaport/sql/x"},
+            "Invalid _connection_uri",
+        ),
+        ("h", {"_connection_uri": "https://h.io:0/sql/x"}, "Invalid _connection_uri"),
+        ("h", {"_connection_uri": "https://u:p@h.io/sql/x"}, "Invalid _connection_uri"),
+        ("h", {"_connection_uri": "https:///sql/x"}, "Invalid _connection_uri"),
+    ],
+)
+def test_kernel_host_and_path_rejects(server, kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        _kernel_host_and_path(server, _P, kwargs)
+
+
+@pytest.mark.parametrize(
+    "server, kwargs, uri, should_raise",
+    [
+        # AC-P4: with OAuth, the _connection_uri origin must equal https://server_hostname.
+        (
+            "h.io",
+            {"oauth_client_id": "c", "oauth_client_secret": "s"},
+            "https://evil.io/sql/x",
+            True,
+        ),
+        ("h.io", {"auth_type": "azure-sp-m2m"}, "https://evil.io/sql/x", True),
+        ("h.io", {"oauth_jwt_key_file": "/k.pem"}, "https://evil.io/sql/x", True),
+        ("h.io", {"auth_type": "databricks-oauth"}, "http://h.io/sql/x", True),
+        ("h.io", {"auth_type": "databricks-oauth"}, "https://h.io:8443/sql/x", True),
+        ("h.io", {"auth_type": "databricks-oauth"}, "https://H.io/sql/x", False),
+        (
+            "h.io:8443",
+            {"auth_type": "databricks-oauth"},
+            "https://h.io:8443/sql/x",
+            False,
+        ),
+        ("[::1]", {"auth_type": "databricks-oauth"}, "https://[::1]/sql/x", False),
+        (
+            "h.io",
+            {"access_token": "dapi"},
+            "https://evil.io/sql/x",
+            False,
+        ),  # PAT is not guarded
+        (
+            "",
+            {"auth_type": "databricks-oauth"},
+            "https://h.io/sql/x",
+            False,
+        ),  # URI-only
+        (
+            "h.io",
+            {"auth_type": "databricks-oauth", "_port": 8443},
+            None,
+            False,
+        ),  # documented, not guarded
+    ],
+)
+def test_oauth_origin_guard(server, kwargs, uri, should_raise):
+    kwargs = dict(kwargs)
+    if uri is not None:
+        kwargs["_connection_uri"] = uri
+    kernel_host = _kernel_host_and_path(server, _P, kwargs)[0]
+    if should_raise:
+        with pytest.raises(ValueError, match="requires the _connection_uri origin"):
+            _check_oauth_origin(server, kernel_host, kwargs)
+    else:
+        _check_oauth_origin(server, kernel_host, kwargs)
+
+
+@pytest.fixture
+def fake_kernel():
+    """Fake the kernel wheel and client so connect() runs without a warehouse."""
+    pytest.importorskip(
+        "pyarrow", reason="kernel client module imports pyarrow at load"
+    )
+    fake = types.ModuleType("databricks_sql_kernel")
+    fake.KernelError = type("KernelError", (Exception,), {})
+    fake.Session = MagicMock()
+    with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+        "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+    ) as client, patch("databricks.sql.session.get_python_sql_connector_auth_provider"):
+        client.return_value.open_session.return_value = SessionId(
+            BackendType.SEA, "sess-id", None
+        )
+        yield client, fake
+
+
+def test_oauth_guard_refuses_before_kernel_client_is_built(fake_kernel):
+    client, fake = fake_kernel
+    with pytest.raises(ValueError, match="requires the _connection_uri origin"):
+        databricks.sql.connect(
+            server_hostname="h.io",
+            http_path=_P,
+            use_kernel=True,
+            enable_telemetry=False,
+            oauth_client_id="c",
+            oauth_client_secret="s",
+            _connection_uri="https://evil.io/sql/x",
+        )
+    client.assert_not_called()
+    fake.Session.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "hp, uri, expected_org",
+    [
+        ("/sql/1.0/warehouses/abc?o=111", "https://d.io/sql/x?o=222", "222"),
+        ("/sql/1.0/warehouses/abc?o=111", "https://d.io/sql/x", None),
+        ("/sql/1.0/warehouses/abc", "https://d.io/sql/x?o=222", "222"),
+        ("/sql/1.0/warehouses/abc?o=111", None, "111"),
+    ],
+)
+def test_spog_org_id_follows_resolved_path(fake_kernel, hp, uri, expected_org):
+    client, _ = fake_kernel
+    extra = {"_connection_uri": uri} if uri else {}
+    databricks.sql.connect(
+        server_hostname="h.io",
+        http_path=hp,
+        access_token="dapi",
+        use_kernel=True,
+        enable_telemetry=False,
+        **extra,
+    ).close()
+    assert (
+        dict(client.call_args.kwargs["http_headers"]).get("x-databricks-org-id")
+        == expected_org
+    )
+
+
+@pytest.mark.realkernel
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda p: {"server_hostname": "127.0.0.1", "http_path": _P, "_port": p},
+        lambda p: {
+            "server_hostname": "",
+            "http_path": "",
+            "_connection_uri": f"https://127.0.0.1:{p}{_P}",
+        },
+    ],
+    ids=["port", "uri-only"],
+)
+def test_kernel_dials_over_tls(build):
+    """Loopback dial on the real kernel wheel: a TCP listener on 127.0.0.1 must receive the
+    kernel's TLS handshake (first byte 0x16) at the requested port. Nothing completes the
+    handshake, so connect() is expected to fail; only the dial is asserted."""
+    try:
+        ilm.version("databricks-sql-kernel")
+    except ilm.PackageNotFoundError:
+        pytest.skip("databricks-sql-kernel wheel not installed")
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    listener.settimeout(60)
+    port = listener.getsockname()[1]
+    received = {}
+
+    def accept_one():
+        try:
+            sock, _ = listener.accept()
+            sock.settimeout(10)
+            received["first_byte"] = sock.recv(1)
+            sock.close()
+        except OSError as exc:
+            received["error"] = repr(exc)
+        finally:
+            listener.close()
+
+    thread = threading.Thread(target=accept_one, daemon=True)
+    thread.start()
+    try:
+        databricks.sql.connect(
+            use_kernel=True,
+            access_token="dapi-xyz",
+            enable_telemetry=False,
+            _retry_stop_after_attempts_count=1,
+            **build(port),
+        ).close()
+    except Exception:
+        pass  # expected: nothing behind the listener completes TLS
+    thread.join(timeout=70)
+    assert "error" not in received, received
+    assert received.get("first_byte") == b"\x16", received
