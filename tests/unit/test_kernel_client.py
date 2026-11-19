@@ -2533,12 +2533,47 @@ class TestKernelTlsKwargs:
             ),
         ],
     )
-    def test_revocation_forwarded_only_when_enabled(self, overrides, expected):
+    def test_revocation_forwarded_only_when_enabled(
+        self, monkeypatch, overrides, expected
+    ):
         # Opt-in: a default connection emits no revocation kwargs, so it still works
         # with kernel wheels that predate the setters.
+        monkeypatch.setattr(
+            kernel_client, "_kernel_session_accepts_kwarg", lambda _: True
+        )
         assert (
             kernel_client._kernel_tls_kwargs(self._ssl_options(**overrides)) == expected
         )
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"tls_check_certificate_revocation": True},
+            {"tls_accept_undetermined_revocation": True},
+        ],
+    )
+    def test_revocation_on_kernel_without_setters_raises_clear_error(
+        self, monkeypatch, overrides
+    ):
+        # An older kernel wheel would reject the kwarg with an opaque TypeError,
+        # so name the missing capability and the upgrade path instead.
+        monkeypatch.setattr(
+            kernel_client, "_kernel_session_accepts_kwarg", lambda _: False
+        )
+        with pytest.raises(
+            NotSupportedError, match="does not support certificate revocation"
+        ):
+            kernel_client._kernel_tls_kwargs(self._ssl_options(**overrides))
+
+    def test_default_tls_on_kernel_without_setters_emits_no_revocation_kwargs(
+        self, monkeypatch
+    ):
+        # The capability check runs only when revocation is requested, so the
+        # default path works unchanged on wheels without the setters.
+        monkeypatch.setattr(
+            kernel_client, "_kernel_session_accepts_kwarg", lambda _: False
+        )
+        assert kernel_client._kernel_tls_kwargs(self._ssl_options()) == {}
 
     def test_verify_off_maps_to_skip_verify_and_hostname(self):
         # tls_verify=False disables all chain validation, which subsumes

@@ -572,6 +572,46 @@ class TestKernelTransportOptionsThreading:
             finally:
                 conn.close()
 
+    def test_revocation_options_threaded_into_kernel_ssl_options(self):
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                _tls_check_certificate_revocation=True,
+                _tls_accept_undetermined_revocation=True,
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                ssl_options = kwargs["ssl_options"]
+                assert ssl_options.tls_check_certificate_revocation is True
+                assert ssl_options.tls_accept_undetermined_revocation is True
+            finally:
+                conn.close()
+
     def test_azure_sp_m2m_kwargs_threaded_into_kernel_auth_options(self):
         # The Azure SP credentials a user passes to connect() must reach the
         # kernel auth bridge via auth_options; without this threading the
@@ -1227,3 +1267,27 @@ class TestCertificateRevocationRequiresKernel:
             _tls_accept_undetermined_revocation=False,
         )
         mock_backend.assert_called_once()
+
+    @pytest.mark.parametrize("extra", [{}, {"use_sea": True}])
+    @pytest.mark.parametrize(
+        "option",
+        ["_tls_check_certificate_revocation", "_tls_accept_undetermined_revocation"],
+    )
+    @pytest.mark.parametrize("value", ["false", 1, None])
+    @patch("databricks.sql.session.Session._create_backend")
+    def test_non_bool_revocation_value_is_rejected_before_connecting(
+        self, mock_backend, value, option, extra
+    ):
+        # Truthiness would let "false" enable accept-undetermined, so only real
+        # bools pass. The check runs before any backend is created, on every path.
+        from databricks.sql.session import Session
+
+        with pytest.raises(ValueError, match=f"{option} must be a bool"):
+            Session(
+                "h.example.com",
+                "/sql/1.0/warehouses/abc",
+                None,
+                **{option: value},
+                **extra,
+            )
+        mock_backend.assert_not_called()

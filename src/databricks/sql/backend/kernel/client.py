@@ -1225,10 +1225,25 @@ def _kernel_tls_kwargs(ssl_options: Optional[SSLOptions]) -> Dict[str, Any]:
 
     # Certificate revocation is opt-in. Emit only when enabled, so connections
     # that don't ask for it keep working with kernel wheels that predate the setters.
-    if ssl_options.tls_check_certificate_revocation:
-        kwargs["tls_check_certificate_revocation"] = True
-    if ssl_options.tls_accept_undetermined_revocation:
-        kwargs["tls_accept_undetermined_revocation"] = True
+    for name, enabled in (
+        (
+            "tls_check_certificate_revocation",
+            ssl_options.tls_check_certificate_revocation,
+        ),
+        (
+            "tls_accept_undetermined_revocation",
+            ssl_options.tls_accept_undetermined_revocation,
+        ),
+    ):
+        if enabled is not True:
+            continue
+        if not _kernel_session_accepts_kwarg(name):
+            raise NotSupportedError(
+                f"{name} requires a newer databricks-sql-kernel wheel: the installed "
+                "databricks-sql-kernel does not support certificate revocation. Upgrade "
+                "databricks-sql-kernel or remove the certificate revocation options."
+            )
+        kwargs[name] = True
 
     # Inverted booleans. Emit only the insecure (skip) direction so the
     # default secure path stays implicit. ``tls_verify=False`` disables

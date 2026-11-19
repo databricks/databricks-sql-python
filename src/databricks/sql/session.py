@@ -109,6 +109,21 @@ class Session:
         if self._spog_headers:
             all_headers = all_headers + list(self._spog_headers.items())
 
+        # Revocation flags weaken enforcement when set, so they must be real
+        # bools: a truthy string such as "false" would otherwise be accepted.
+        check_revocation = kwargs.get("_tls_check_certificate_revocation", False)
+        accept_undetermined_revocation = kwargs.get(
+            "_tls_accept_undetermined_revocation", False
+        )
+        for option_name, option_value in (
+            ("_tls_check_certificate_revocation", check_revocation),
+            ("_tls_accept_undetermined_revocation", accept_undetermined_revocation),
+        ):
+            if not isinstance(option_value, bool):
+                raise ValueError(
+                    f"{option_name} must be a bool; got {type(option_value).__name__}"
+                )
+
         self.ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
             tls_verify=not kwargs.get(
@@ -119,12 +134,8 @@ class Session:
             tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
             tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
-            tls_check_certificate_revocation=kwargs.get(
-                "_tls_check_certificate_revocation", False
-            ),
-            tls_accept_undetermined_revocation=kwargs.get(
-                "_tls_accept_undetermined_revocation", False
-            ),
+            tls_check_certificate_revocation=check_revocation,
+            tls_accept_undetermined_revocation=accept_undetermined_revocation,
         )
 
         # Use the provided HTTP client (created in Connection)
@@ -146,10 +157,7 @@ class Session:
         # otherwise (OAuth M2M/U2M resolve purely from the raw kwargs
         # the bridge reads). The Thrift / SEA backends are unchanged.
         self.use_kernel = kwargs.get("use_kernel", False)
-        if not self.use_kernel and (
-            kwargs.get("_tls_check_certificate_revocation")
-            or kwargs.get("_tls_accept_undetermined_revocation")
-        ):
+        if not self.use_kernel and (check_revocation or accept_undetermined_revocation):
             raise ValueError(
                 "_tls_check_certificate_revocation and _tls_accept_undetermined_revocation "
                 "require use_kernel=True; the Thrift and SEA backends do not check certificate revocation."
