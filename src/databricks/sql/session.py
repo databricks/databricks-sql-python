@@ -82,7 +82,7 @@ def _redact(value: str) -> str:
 
 
 def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
-    """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``; ``name`` keeps IPv6 brackets."""
+    """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``; keeps IPv6 brackets."""
     prefix, sep, text = host.rstrip("/").rpartition("://")
     prefix += sep
     match = _HOSTPORT_RE.fullmatch(text)
@@ -103,8 +103,14 @@ def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
 
 
 def _uri_host_and_path(uri: str) -> Tuple[str, str]:
-    """Split a ``_connection_uri`` into the kernel host (scheme and authority) and path (with query)."""
-    parts = urlsplit(uri)
+    """Split a ``_connection_uri`` into the kernel host (scheme, authority) and path."""
+    try:
+        parts = urlsplit(uri)
+    except ValueError:
+        # urlsplit echoes the raw netloc, which can carry credentials; re-raise without it.
+        raise ValueError(
+            f"Invalid _connection_uri {_redact(uri)!r}: could not be parsed"
+        ) from None
     try:
         port = parts.port
     except ValueError:
@@ -145,7 +151,8 @@ def _kernel_host_and_path(
     if embedded is not None:
         if embedded != port:
             raise ValueError(
-                f"Conflicting ports: server_hostname {_redact(server_hostname)!r} carries {embedded} but _port={port}"
+                f"Conflicting ports: server_hostname {_redact(server_hostname)!r} "
+                f"carries {embedded} but _port={port}"
             )
         return server_hostname, http_path
     if port == 443:
@@ -187,8 +194,10 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
         port or 443,
     ):
         raise ValueError(
-            f"OAuth requires the _connection_uri origin to match https://{_redact(server_hostname)}; "
-            f"the kernel would send the credentials to {_redact(kernel_host)}. Use a PAT or match the origin."
+            f"OAuth requires the _connection_uri origin to match "
+            f"https://{_redact(server_hostname)}; "
+            f"the kernel would send the credentials to {_redact(kernel_host)}. "
+            "Use a PAT or match the origin."
         )
 
 

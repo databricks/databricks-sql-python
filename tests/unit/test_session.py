@@ -1390,6 +1390,8 @@ def test_oauth_origin_guard(server, kwargs, uri, should_raise):
     [
         ("https://user:secret@h.io/sql/x", "secret"),
         ("https://h.io:8443?token=secret", "secret"),
+        # A fullwidth solidus makes urlsplit's NFKC check raise with the raw netloc in its text.
+        ("https://user:secret@h.io／sql/x", "secret"),
     ],
 )
 def test_invalid_connection_uri_message_omits_credentials(uri, secret):
