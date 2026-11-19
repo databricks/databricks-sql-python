@@ -195,7 +195,9 @@ class Connection:
                 be suppressed by the feature flag.
 
                 Kernel overrides: _port sends the connection to that port
-                (the default 443 adds nothing). _connection_uri (https://host[:port]/path?query)
+                (the default 443 adds nothing; a falsy _port means the default). A port
+                embedded in server_hostname wins over a differing _port, with a warning.
+                _connection_uri (https://host[:port]/path?query)
                 sets host, port, path and query, as on Thrift, and wins over _port.
                 With OAuth, _connection_uri must have the same origin as
                 server_hostname. With OAuth and a non-default _port, the token

@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock, Mock, PropertyMock
 from contextlib import contextmanager
 import gc
 import importlib.metadata as ilm
+import logging
 import socket
 import sys
 import threading
@@ -1208,6 +1209,16 @@ _P = "/sql/1.0/warehouses/abc"
         ("h.io", _P, {"_port": 65535}, ("h.io:65535", _P)),
         ("h.io", _P, {"_port": 443}, ("h.io", _P)),
         ("h.io", _P, {"_port": 0}, ("h.io", _P)),
+        # Falsy _port means the default, as on Thrift (port or 443); no :443 is added.
+        ("h.io", _P, {"_port": None}, ("h.io", _P)),
+        ("h.io", _P, {"_port": ""}, ("h.io", _P)),
+        ("h.io", _P, {"_port": "  "}, ("h.io", _P)),
+        ("h.io", _P, {"_port": False}, ("h.io", _P)),
+        ("h.io", _P, {"_port": "0"}, ("h.io", _P)),
+        # Trailing "/" is trimmed before the port is folded in.
+        ("h.io/", _P, {"_port": 8443}, ("h.io:8443", _P)),
+        ("h.io:8443/", _P, {"_port": 8443}, ("h.io:8443/", _P)),
+        ("h.io/", _P, {}, ("h.io/", _P)),
         ("::1", _P, {}, ("::1", _P)),
         ("::1", _P, {"_port": 8443}, ("[::1]:8443", _P)),
         ("[::1]", _P, {"_port": 8443}, ("[::1]:8443", _P)),
@@ -1266,10 +1277,10 @@ def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
         ("h.io", {"_port": 8443.5}, "Invalid _port"),
         ("h.io:notaport", {"_port": 8443}, "malformed"),
         ("h.io:0", {"_port": 8443}, "out of range"),
-        # AC-P3: a supplied port must agree with a port embedded in server_hostname.
-        ("h.io:7000", {"_port": 8443}, "Conflicting ports"),
-        ("h.io:8443", {"_port": 443}, "Conflicting ports"),
-        ("[::1]:7000", {"_port": 8443}, "Conflicting ports"),
+        # An explicit _port cannot be folded in after a path, query or fragment.
+        ("h.io/x", {"_port": 8443}, "path, query or fragment"),
+        ("h.io?x=1", {"_port": 8443}, "path, query or fragment"),
+        ("h.io#x", {"_port": 8443}, "path, query or fragment"),
         # R11: _port needs a server_hostname unless _connection_uri carries the host.
         ("", {"_port": 8443}, "server_hostname is required"),
         ("", {"_port": 443}, "server_hostname is required"),
@@ -1291,6 +1302,33 @@ def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
 def test_kernel_host_and_path_rejects(server, kwargs, message):
     with pytest.raises(ValueError, match=message):
         _kernel_host_and_path(server, _P, kwargs)
+
+
+@pytest.mark.parametrize(
+    "server, port, embedded",
+    [
+        ("h.io:7000", 8443, 7000),
+        ("h.io:8443", 443, 8443),
+        ("[::1]:7000", 8443, 7000),
+        ("h.io:443", 8443, 443),
+    ],
+)
+def test_embedded_port_wins_over_differing_explicit_port(
+    server, port, embedded, caplog
+):
+    # A port embedded in server_hostname always wins (as on main); a differing _port
+    # is not an error. The warning names both ports, and the host is passed unchanged.
+    with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
+        host, path = _kernel_host_and_path(server, _P, {"_port": port})
+    assert (host, path) == (server, _P)
+    assert f"carries port {embedded}" in caplog.text
+    assert f"_port={port}" in caplog.text
+
+
+def test_embedded_port_equal_to_explicit_port_does_not_warn(caplog):
+    with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
+        _kernel_host_and_path("h.io:8443", _P, {"_port": 8443})
+    assert "differs from _port" not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -1568,3 +1606,60 @@ def test_kernel_dials_over_tls(build):
     thread.join(timeout=70)
     assert "error" not in received, received
     assert received.get("first_byte") == b"\x16", received
+
+
+@pytest.mark.realkernel
+def test_kernel_embedded_port_wins_over_explicit_port():
+    """Loopback on the real kernel wheel: server_hostname 'h:P1' with an explicit _port P2
+    dials P1 (TLS first byte 0x16) and never P2."""
+    try:
+        ilm.version("databricks-sql-kernel")
+    except ilm.PackageNotFoundError:
+        pytest.skip("databricks-sql-kernel wheel not installed")
+
+    def listen():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        sock.settimeout(15)
+        return sock
+
+    embedded, explicit = listen(), listen()
+    embedded_port = embedded.getsockname()[1]
+    explicit_port = explicit.getsockname()[1]
+    received = {}
+
+    def accept_one(name, sock):
+        try:
+            conn, _ = sock.accept()
+            conn.settimeout(10)
+            received[name] = conn.recv(1)
+            conn.close()
+        except OSError as exc:
+            received[name + "_error"] = repr(exc)
+        finally:
+            sock.close()
+
+    threads = [
+        threading.Thread(target=accept_one, args=("embedded", embedded), daemon=True),
+        threading.Thread(target=accept_one, args=("explicit", explicit), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        databricks.sql.connect(
+            server_hostname=f"127.0.0.1:{embedded_port}",
+            http_path=_P,
+            use_kernel=True,
+            access_token="dapi-xyz",
+            enable_telemetry=False,
+            _retry_stop_after_attempts_count=1,
+            _port=explicit_port,
+        ).close()
+    except Exception:
+        pass  # expected: nothing behind the listener completes TLS
+    for thread in threads:
+        thread.join(timeout=70)
+    assert received.get("embedded") == b"\x16", received
+    assert "explicit" not in received, received
+    assert "explicit_error" in received, received

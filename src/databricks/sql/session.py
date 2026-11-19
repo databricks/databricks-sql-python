@@ -53,8 +53,10 @@ _HOSTPORT_RE = re.compile(r"(\[[^\]]*\]|(?!\[)[^:]*)(?::([0-9]+))?")
 
 
 def _port_or_none(value: Any) -> Optional[int]:
-    """Validate ``_port``. ``None`` and ``0`` mean the default (Thrift: ``port or 443``)."""
-    if value is None:
+    """Validate ``_port``. A falsy value (None, 0, '', False) means the default, as on
+    Thrift (``port or 443``); a truthy value must be an integer between 1 and 65535.
+    """
+    if not value or (isinstance(value, str) and not value.strip()):
         return None
     text = (
         str(value).strip()
@@ -148,21 +150,34 @@ def _kernel_host_and_path(
     port = _port_or_none(kwargs.get("_port"))
     if port is None:
         return server_hostname, http_path
-    prefix, name, embedded = _split_host(server_hostname)
     if not server_hostname:
         raise ValueError(
             "server_hostname is required on use_kernel=True when _port is set "
             "(or pass _connection_uri, which carries its own host)"
         )
+    prefix, name, embedded = _split_host(server_hostname)
     if embedded is not None:
+        # A port embedded in server_hostname always wins, as on main (the kernel
+        # connected to it); a differing _port is ignored with a warning, not an error.
         if embedded != port:
-            raise ValueError(
-                f"Conflicting ports: server_hostname {_redact(server_hostname)!r} "
-                f"carries {embedded} but _port={port}"
+            logger.warning(
+                "server_hostname %s carries port %d, which differs from _port=%d; "
+                "connecting to port %d. Set the port in one place only.",
+                _redact(server_hostname),
+                embedded,
+                port,
+                embedded,
             )
         return server_hostname, http_path
     if port == 443:
         return server_hostname, http_path
+    if any(c in name for c in "/?#"):
+        # Folding _port in would put it after the path, query or fragment, so the
+        # port could not be applied; reject rather than silently drop it.
+        raise ValueError(
+            f"Invalid server_hostname {_redact(server_hostname)!r}: a path, query or "
+            "fragment cannot be combined with _port; put the port in server_hostname"
+        )
     if ":" in name and not name.startswith("["):
         name = f"[{name}]"
     return f"{prefix}{name}:{port}", http_path
