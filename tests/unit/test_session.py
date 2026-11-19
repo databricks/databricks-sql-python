@@ -1337,6 +1337,14 @@ def test_kernel_host_and_path_rejects(server, kwargs, message):
             "https://evil.io/sql/x",
             True,
         ),
+        # The kernel auth bridge rejects a custom credentials_provider with NotSupportedError,
+        # so the origin guard does not classify it as OAuth.
+        (
+            "h.io",
+            {"credentials_provider": object()},
+            "https://evil.io/sql/x",
+            False,
+        ),
         (
             "h.io",
             {"oauth_jwt_key_file": "/k.pem", "access_token": "dapi"},
