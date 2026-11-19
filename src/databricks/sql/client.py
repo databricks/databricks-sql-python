@@ -193,6 +193,11 @@ class Connection:
                 decision. This is an intentional divergence from the
                 Thrift/SEA paths, where an explicit ``True`` can still
                 be suppressed by the feature flag.
+
+                Certificate revocation (kernel only): ``_tls_check_certificate_revocation=True``
+                checks the server chain against its CRLs. ``_tls_accept_undetermined_revocation=True``
+                accepts a chain whose status cannot be determined. Both default to ``False`` and
+                raise ``ValueError`` without ``use_kernel=True``.
             :param enable_geospatial_support: `bool`, optional (default is False)
                 Kernel backend only. Controls the public representation of
                 ``GEOMETRY`` and ``GEOGRAPHY`` result values. ``True`` returns

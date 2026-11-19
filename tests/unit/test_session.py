@@ -1184,3 +1184,46 @@ class TestReydenThriftFallback:
                 assert kwargs["auth_options"].get("auth_type") is None
             finally:
                 conn.close()
+
+
+class TestCertificateRevocationRequiresKernel:
+    """AC-R8: revocation kwargs are kernel-only. Enabling either on the Thrift or SEA
+    backend raises ValueError before any connection is made."""
+
+    @pytest.mark.parametrize(
+        "option, extra",
+        [
+            ("_tls_check_certificate_revocation", {}),
+            ("_tls_accept_undetermined_revocation", {}),
+            ("_tls_check_certificate_revocation", {"use_sea": True}),
+            ("_tls_accept_undetermined_revocation", {"use_sea": True}),
+        ],
+    )
+    def test_enabled_on_non_kernel_backend_raises(self, option, extra):
+        from databricks.sql.session import Session
+
+        with pytest.raises(ValueError, match="require use_kernel=True"):
+            Session(
+                "h.example.com",
+                "/sql/1.0/warehouses/abc",
+                None,
+                **{option: True},
+                **extra,
+            )
+
+    @patch("databricks.sql.session.get_python_sql_connector_auth_provider")
+    @patch("databricks.sql.session.Session._create_backend")
+    def test_disabled_on_thrift_is_not_rejected(self, mock_backend, _mock_auth):
+        # False is the default and must not trip the kernel-only check.
+        from databricks.sql.session import Session
+
+        Session(
+            server_hostname="h.example.com",
+            http_path="/sql/1.0/warehouses/abc",
+            http_client=MagicMock(),
+            http_headers=[],
+            enable_telemetry=False,
+            _tls_check_certificate_revocation=False,
+            _tls_accept_undetermined_revocation=False,
+        )
+        mock_backend.assert_called_once()

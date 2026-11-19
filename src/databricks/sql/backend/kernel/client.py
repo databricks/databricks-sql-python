@@ -1223,6 +1223,13 @@ def _kernel_tls_kwargs(ssl_options: Optional[SSLOptions]) -> Dict[str, Any]:
 
     kwargs: Dict[str, Any] = {}
 
+    # Certificate revocation is opt-in. Emit only when enabled, so connections
+    # that don't ask for it keep working with kernel wheels that predate the setters.
+    if ssl_options.tls_check_certificate_revocation:
+        kwargs["tls_check_certificate_revocation"] = True
+    if ssl_options.tls_accept_undetermined_revocation:
+        kwargs["tls_accept_undetermined_revocation"] = True
+
     # Inverted booleans. Emit only the insecure (skip) direction so the
     # default secure path stays implicit. ``tls_verify=False`` disables
     # all chain validation, which subsumes hostname verification — so we

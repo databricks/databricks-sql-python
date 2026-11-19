@@ -2508,6 +2508,38 @@ class TestKernelTlsKwargs:
     def test_none_ssl_options_emit_no_tls_kwargs(self):
         assert kernel_client._kernel_tls_kwargs(None) == {}
 
+    @pytest.mark.parametrize(
+        "overrides, expected",
+        [
+            ({}, {}),
+            ({"tls_check_certificate_revocation": False}, {}),
+            (
+                {"tls_check_certificate_revocation": True},
+                {"tls_check_certificate_revocation": True},
+            ),
+            (
+                {"tls_accept_undetermined_revocation": True},
+                {"tls_accept_undetermined_revocation": True},
+            ),
+            (
+                {
+                    "tls_check_certificate_revocation": True,
+                    "tls_accept_undetermined_revocation": True,
+                },
+                {
+                    "tls_check_certificate_revocation": True,
+                    "tls_accept_undetermined_revocation": True,
+                },
+            ),
+        ],
+    )
+    def test_revocation_forwarded_only_when_enabled(self, overrides, expected):
+        # Opt-in: a default connection emits no revocation kwargs, so it still works
+        # with kernel wheels that predate the setters.
+        assert (
+            kernel_client._kernel_tls_kwargs(self._ssl_options(**overrides)) == expected
+        )
+
     def test_verify_off_maps_to_skip_verify_and_hostname(self):
         # tls_verify=False disables all chain validation, which subsumes
         # hostname verification — so both skip flags are emitted, matching

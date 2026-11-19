@@ -119,6 +119,12 @@ class Session:
             tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
             tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+            tls_check_certificate_revocation=kwargs.get(
+                "_tls_check_certificate_revocation", False
+            ),
+            tls_accept_undetermined_revocation=kwargs.get(
+                "_tls_accept_undetermined_revocation", False
+            ),
         )
 
         # Use the provided HTTP client (created in Connection)
@@ -140,6 +146,14 @@ class Session:
         # otherwise (OAuth M2M/U2M resolve purely from the raw kwargs
         # the bridge reads). The Thrift / SEA backends are unchanged.
         self.use_kernel = kwargs.get("use_kernel", False)
+        if not self.use_kernel and (
+            kwargs.get("_tls_check_certificate_revocation")
+            or kwargs.get("_tls_accept_undetermined_revocation")
+        ):
+            raise ValueError(
+                "_tls_check_certificate_revocation and _tls_accept_undetermined_revocation "
+                "require use_kernel=True; the Thrift and SEA backends do not check certificate revocation."
+            )
         if self.use_kernel:
             access_token = kwargs.get("access_token")
             self.auth_provider = (

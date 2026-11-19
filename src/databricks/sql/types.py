@@ -40,6 +40,8 @@ class SSLOptions:
         tls_client_cert_file: Optional[str] = None,
         tls_client_cert_key_file: Optional[str] = None,
         tls_client_cert_key_password: Optional[str] = None,
+        tls_check_certificate_revocation: bool = False,
+        tls_accept_undetermined_revocation: bool = False,
     ):
         self.tls_verify = tls_verify
         self.tls_verify_hostname = tls_verify_hostname
@@ -47,6 +49,8 @@ class SSLOptions:
         self.tls_client_cert_file = tls_client_cert_file
         self.tls_client_cert_key_file = tls_client_cert_key_file
         self.tls_client_cert_key_password = tls_client_cert_key_password
+        self.tls_check_certificate_revocation = tls_check_certificate_revocation
+        self.tls_accept_undetermined_revocation = tls_accept_undetermined_revocation
 
     def validate_client_identity(self) -> None:
         """Validate the shape of the mutual-TLS client identity.
