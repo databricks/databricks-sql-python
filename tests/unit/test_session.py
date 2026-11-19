@@ -1390,6 +1390,15 @@ def test_oauth_origin_guard(server, kwargs, uri, should_raise):
     [
         ("https://user:secret@h.io/sql/x", "secret"),
         ("https://h.io:8443?token=secret", "secret"),
+        # "@" after the host with no path: the URI is rejected, and the "@" must not leak.
+        ("https://h.io?x=a@secret", "secret"),
+        # Percent-encoded "@" hides the userinfo marker from a literal "@" check.
+        ("https://user%3Asecret%40h.io", "secret"),
+        # A "/" or "?" inside the password must not cut the authority short.
+        ("https://user:sec/ret@h.io/sql/x", "sec/ret"),
+        ("https://user:sec?ret@h.io/sql/x", "sec?ret"),
+        # A "/" inside the password, with "@" after it in the path: netloc stops at "/".
+        ("https://user:secret/foo@h.io/sql/x", "secret"),
         # A fullwidth solidus makes urlsplit's NFKC check raise with the raw netloc in its text.
         ("https://user:secret@h.io／sql/x", "secret"),
     ],
@@ -1398,6 +1407,9 @@ def test_invalid_connection_uri_message_omits_credentials(uri, secret):
     with pytest.raises(ValueError, match="Invalid _connection_uri") as exc:
         _kernel_host_and_path("h", _P, {"_connection_uri": uri})
     assert secret not in str(exc.value)
+    # The secret must not survive in a chained cause or context either.
+    assert exc.value.__cause__ is None
+    assert exc.value.__context__ is None or secret not in str(exc.value.__context__)
 
 
 def test_oauth_origin_message_omits_uri_query():

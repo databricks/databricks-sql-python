@@ -77,7 +77,11 @@ def _redact(value: str) -> str:
     scheme, sep, rest = value.partition("://")
     if not sep:
         scheme, rest = "", value
-    host = rest.split("/", 1)[0].rpartition("@")[2]
+    # A "/" or "?" can sit inside a password, and "@" can sit in a path, so once any
+    # userinfo marker is present the whole authority is dropped rather than guessed at.
+    if "@" in value or "%40" in value.lower():
+        return f"{scheme}{sep}<redacted>"
+    host = rest.split("/", 1)[0]
     return f"{scheme}{sep}{re.split(r'[?#]', host, maxsplit=1)[0]}"
 
 
@@ -107,10 +111,12 @@ def _uri_host_and_path(uri: str) -> Tuple[str, str]:
     try:
         parts = urlsplit(uri)
     except ValueError:
-        # urlsplit echoes the raw netloc, which can carry credentials; re-raise without it.
+        parts = None
+    if parts is None:
+        # Raised outside the except block so no chained exception carries urlsplit's netloc.
         raise ValueError(
             f"Invalid _connection_uri {_redact(uri)!r}: could not be parsed"
-        ) from None
+        )
     try:
         port = parts.port
     except ValueError:
