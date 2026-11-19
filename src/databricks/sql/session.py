@@ -68,6 +68,19 @@ def _port_or_none(value: Any) -> Optional[int]:
     return int(text) or None
 
 
+def _redact(value: str) -> str:
+    """Keep only scheme and host[:port] of a URI or host string for an error message.
+
+    Userinfo, path, query and fragment can carry credentials, so they never reach an
+    exception text or log line.
+    """
+    scheme, sep, rest = value.partition("://")
+    if not sep:
+        scheme, rest = "", value
+    host = rest.split("/", 1)[0].rpartition("@")[2]
+    return f"{scheme}{sep}{re.split(r'[?#]', host, maxsplit=1)[0]}"
+
+
 def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
     """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``; ``name`` keeps IPv6 brackets."""
     prefix, sep, text = host.rstrip("/").rpartition("://")
@@ -76,7 +89,7 @@ def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
     if match is None:
         if text.startswith("[") or text.count(":") == 1:
             raise ValueError(
-                f"Invalid server_hostname {host!r}: malformed IPv6 literal or port"
+                f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port"
             )
         return prefix, text, None  # an unbracketed IPv6 literal such as ::1 has no port
     name, port_text = match.group(1), match.group(2)
@@ -84,7 +97,7 @@ def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
         return prefix, name, None
     if not 1 <= int(port_text) <= 65535:
         raise ValueError(
-            f"Invalid server_hostname {host!r}: port {port_text} is out of range"
+            f"Invalid server_hostname {_redact(host)!r}: port {port_text} is out of range"
         )
     return prefix, name, int(port_text)
 
@@ -104,7 +117,7 @@ def _uri_host_and_path(uri: str) -> Tuple[str, str]:
         or parts.path in ("", "/")
     ):
         raise ValueError(
-            f"Invalid _connection_uri {uri!r}: expected http(s)://host[:port]/path with a "
+            f"Invalid _connection_uri {_redact(uri)!r}: expected http(s)://host[:port]/path with a "
             "warehouse path and no credentials"
         )
     return f"{parts.scheme}://{parts.netloc}", parts.path + (
@@ -132,7 +145,7 @@ def _kernel_host_and_path(
     if embedded is not None:
         if embedded != port:
             raise ValueError(
-                f"Conflicting ports: server_hostname {server_hostname!r} carries {embedded} but _port={port}"
+                f"Conflicting ports: server_hostname {_redact(server_hostname)!r} carries {embedded} but _port={port}"
             )
         return server_hostname, http_path
     if port == 443:
@@ -174,8 +187,8 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
         port or 443,
     ):
         raise ValueError(
-            f"OAuth requires the _connection_uri origin to match https://{server_hostname}; "
-            f"the kernel would send the credentials to {kernel_host}. Use a PAT or match the origin."
+            f"OAuth requires the _connection_uri origin to match https://{_redact(server_hostname)}; "
+            f"the kernel would send the credentials to {_redact(kernel_host)}. Use a PAT or match the origin."
         )
 
 

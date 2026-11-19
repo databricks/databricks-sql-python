@@ -25,8 +25,6 @@ from databricks.sql.exc import (
 )
 from databricks.sql.session import Session
 
-import databricks.sql
-
 
 class TestSession:
     """
@@ -1385,6 +1383,61 @@ def test_oauth_origin_guard(server, kwargs, uri, should_raise):
             _check_oauth_origin(server, kernel_host, kwargs)
     else:
         _check_oauth_origin(server, kernel_host, kwargs)
+
+
+@pytest.mark.parametrize(
+    "uri, secret",
+    [
+        ("https://user:secret@h.io/sql/x", "secret"),
+        ("https://h.io:8443?token=secret", "secret"),
+    ],
+)
+def test_invalid_connection_uri_message_omits_credentials(uri, secret):
+    with pytest.raises(ValueError, match="Invalid _connection_uri") as exc:
+        _kernel_host_and_path("h", _P, {"_connection_uri": uri})
+    assert secret not in str(exc.value)
+
+
+def test_oauth_origin_message_omits_uri_query():
+    kwargs = {
+        "auth_type": "databricks-oauth",
+        "_connection_uri": "https://evil.io/sql/x?token=secret",
+    }
+    kernel_host = _kernel_host_and_path("h.io", _P, kwargs)[0]
+    with pytest.raises(ValueError, match="requires the _connection_uri origin") as exc:
+        _check_oauth_origin("h.io", kernel_host, kwargs)
+    assert "secret" not in str(exc.value)
+    assert "https://evil.io" in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "conn_kwargs, expected_host, expected_path",
+    [
+        ({"server_hostname": "h.io", "http_path": _P, "_port": 8443}, "h.io:8443", _P),
+        (
+            {
+                "server_hostname": "",
+                "http_path": "",
+                "_connection_uri": f"https://d.io:9999{_P}",
+            },
+            "https://d.io:9999",
+            _P,
+        ),
+    ],
+)
+def test_resolved_kernel_host_and_path_reach_kernel_client(
+    fake_kernel, conn_kwargs, expected_host, expected_path
+):
+    client, _ = fake_kernel
+    databricks.sql.connect(
+        use_kernel=True,
+        access_token="dapi-xyz",
+        enable_telemetry=False,
+        **conn_kwargs,
+    )
+    kwargs = client.call_args.kwargs
+    assert kwargs["server_hostname"] == expected_host
+    assert kwargs["http_path"] == expected_path
 
 
 @pytest.fixture
