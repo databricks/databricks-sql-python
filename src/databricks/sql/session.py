@@ -155,6 +155,14 @@ def _kernel_host_and_path(
             "server_hostname is required on use_kernel=True when _port is set "
             "(or pass _connection_uri, which carries its own host)"
         )
+    # Checked before the port is parsed: 'h.io/path:8443' would otherwise read as host
+    # 'h.io/path' with port 8443. Only the text after any scheme is checked.
+    authority = server_hostname.rstrip("/").rpartition("://")[2]
+    if any(c in authority for c in "/?#"):
+        raise ValueError(
+            f"Invalid server_hostname {_redact(server_hostname)!r}: a path, query or "
+            "fragment cannot be combined with _port; put the port in server_hostname"
+        )
     prefix, name, embedded = _split_host(server_hostname)
     if embedded is not None:
         # A port embedded in server_hostname always wins, as on main (the kernel
@@ -171,13 +179,6 @@ def _kernel_host_and_path(
         return server_hostname, http_path
     if port == 443:
         return server_hostname, http_path
-    if any(c in name for c in "/?#"):
-        # Folding _port in would put it after the path, query or fragment, so the
-        # port could not be applied; reject rather than silently drop it.
-        raise ValueError(
-            f"Invalid server_hostname {_redact(server_hostname)!r}: a path, query or "
-            "fragment cannot be combined with _port; put the port in server_hostname"
-        )
     if ":" in name and not name.startswith("["):
         name = f"[{name}]"
     return f"{prefix}{name}:{port}", http_path

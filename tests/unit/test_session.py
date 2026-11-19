@@ -1219,6 +1219,10 @@ _P = "/sql/1.0/warehouses/abc"
         ("h.io/", _P, {"_port": 8443}, ("h.io:8443", _P)),
         ("h.io:8443/", _P, {"_port": 8443}, ("h.io:8443/", _P)),
         ("h.io/", _P, {}, ("h.io/", _P)),
+        # Without _port, a host with a path passes through unchanged, as on main.
+        ("h.io/x", _P, {}, ("h.io/x", _P)),
+        ("https://h.io:8443/", _P, {"_port": 8443}, ("https://h.io:8443/", _P)),
+        ("https://h.io", _P, {"_port": 8443}, ("https://h.io:8443", _P)),
         ("::1", _P, {}, ("::1", _P)),
         ("::1", _P, {"_port": 8443}, ("[::1]:8443", _P)),
         ("[::1]", _P, {"_port": 8443}, ("[::1]:8443", _P)),
@@ -1277,10 +1281,15 @@ def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
         ("h.io", {"_port": 8443.5}, "Invalid _port"),
         ("h.io:notaport", {"_port": 8443}, "malformed"),
         ("h.io:0", {"_port": 8443}, "out of range"),
-        # An explicit _port cannot be folded in after a path, query or fragment.
+        # An explicit _port with a path, query or fragment is rejected, even when the
+        # path looks like a port ('h.io/path:8443') or the port is the default (443).
         ("h.io/x", {"_port": 8443}, "path, query or fragment"),
+        ("h.io/path:8443", {"_port": 8443}, "path, query or fragment"),
+        ("h.io/x", {"_port": 443}, "path, query or fragment"),
         ("h.io?x=1", {"_port": 8443}, "path, query or fragment"),
         ("h.io#x", {"_port": 8443}, "path, query or fragment"),
+        ("https://h.io/x", {"_port": 8443}, "path, query or fragment"),
+        ("h.io/x/", {"_port": 8443}, "path, query or fragment"),
         # R11: _port needs a server_hostname unless _connection_uri carries the host.
         ("", {"_port": 8443}, "server_hostname is required"),
         ("", {"_port": 443}, "server_hostname is required"),
@@ -1329,6 +1338,33 @@ def test_embedded_port_equal_to_explicit_port_does_not_warn(caplog):
     with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
         _kernel_host_and_path("h.io:8443", _P, {"_port": 8443})
     assert "differs from _port" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "server, port",
+    [
+        ("h.io:8443", 443),
+        ("h.io", 8443),
+        ("h.io/x", 8443),
+        ("h.io", ""),
+    ],
+)
+@patch("databricks.sql.session.ThriftDatabricksClient")
+def test_thrift_receives_host_and_port_unchanged(mock_client_class, server, port):
+    # Thrift is unchanged: the host and _port reach ThriftDatabricksClient verbatim, and
+    # ThriftDatabricksClient applies its own `port or 443` to the URL. The kernel-only
+    # folding above does not apply here.
+    connection = databricks.sql.connect(
+        server_hostname=server,
+        http_path=_P,
+        access_token="tok",
+        enable_telemetry=False,
+        _port=port,
+    )
+    call_kwargs = mock_client_class.call_args.kwargs
+    assert call_kwargs["server_hostname"] == server
+    assert call_kwargs["port"] == port
+    connection.close()
 
 
 @pytest.mark.parametrize(
