@@ -54,8 +54,7 @@ connection = sql.connect(
 Notes:
 - HTTPS uses HTTP/2 with HTTP/1.1 fallback. `enable_http2=False` or configured
   proxy environment variables force HTTP/1.1 for session requests, including
-  bypassed destinations. Telemetry may reuse an earlier session's HTTP client
-  for the same host.
+  bypassed destinations.
 - Requires **Python >= 3.10** (the kernel wheel is published as
   `cp310-abi3`). On older interpreters the `[kernel]` extra installs
   nothing and `use_kernel=True` raises an `ImportError`.

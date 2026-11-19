@@ -437,6 +437,21 @@ def test_http2_option_rejects_non_boolean():
         kernel_client._kernel_http2_kwargs("false")
 
 
+def test_http2_option_requires_kernel_support(monkeypatch):
+    def old_session():
+        pytest.fail("unsupported HTTP/2 option reached Session")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", old_session)
+    with pytest.raises(NotSupportedError, match="enable_http2 requires a newer"):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            enable_http2=False,
+        )
+
+
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
 def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     captured = {}
