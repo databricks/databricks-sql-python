@@ -96,6 +96,10 @@ def _redact(value: str) -> str:
 
 def _is_bare_ipv6(text: str) -> bool:
     """True for an unbracketed IPv6 literal such as ``::1``, which urlsplit reads as a port."""
+    # A bare IPv6 literal has at least two colons and no brackets. Checking that first skips
+    # the costly ValueError that ip_address raises for names and host:port strings.
+    if text.count(":") < 2 or text.startswith("["):
+        return False
     try:
         return ipaddress.ip_address(text).version == 6
     except ValueError:
@@ -124,7 +128,7 @@ def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
             f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port; "
             "a port must be 1-65535"
         ) from None
-    if parts.password is not None:
+    if "@" in parts.netloc and parts.password is not None:
         # A colon before '@' is userinfo, not a port, but a credential-bearing host is
         # still refused when a port is requested (as on main), so it is never folded.
         raise ValueError(
