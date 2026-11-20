@@ -226,7 +226,7 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
     access_token = kwargs.get("access_token")
     # A JWT from a foreign issuer is exchanged, so it is an OAuth credential even though
     # it arrives as access_token.
-    foreign_jwt = bool(access_token) and _is_foreign_jwt(access_token, server_hostname)
+    foreign_jwt = bool(access_token and _is_foreign_jwt(access_token, server_hostname))
     oauth = (
         kwargs.get("auth_type") in _OAUTH_AUTH_TYPES
         or kwargs.get("oauth_jwt_key_file")
