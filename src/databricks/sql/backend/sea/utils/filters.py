@@ -174,8 +174,9 @@ class ResultSetFilter:
             raise ValueError(f"Column index {column_index} is out of bounds")
         column_name = result_set.description[column_index][0]
 
-        # Get all remaining rows as Arrow table and filter it
-        arrow_table = result_set.results.remaining_rows()
+        # Get all remaining rows as Arrow table and filter it. Go through
+        # fetchall_arrow() so any rows buffered by fetchone() are included.
+        arrow_table = result_set.fetchall_arrow()
         filtered_table = ResultSetFilter._filter_arrow_table(
             arrow_table, column_name, allowed_values, case_sensitive
         )
@@ -220,8 +221,9 @@ class ResultSetFilter:
         if column_index >= len(result_set.description):
             raise ValueError(f"Column index {column_index} is out of bounds")
 
-        # Extract rows
-        all_rows = result_set.results.remaining_rows()
+        # Extract rows. Go through fetchall_json() so any rows buffered by
+        # fetchone() are included.
+        all_rows = result_set.fetchall_json()
 
         # Convert allowed values if case-insensitive
         if not case_sensitive:

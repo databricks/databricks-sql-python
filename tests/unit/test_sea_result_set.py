@@ -308,6 +308,29 @@ class TestSeaResultSet:
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
+    @pytest.mark.parametrize("fetch_after_close", ["fetchall", "fetchmany_arrow"])
+    def test_close_drops_fetchone_row_buffer(
+        self, result_set_with_data, fetch_after_close
+    ):
+        """Rows parked in the fetchone() buffer must not survive close()."""
+        if fetch_after_close == "fetchmany_arrow" and pyarrow is None:
+            pytest.skip("PyArrow is not installed")
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs = result_set_with_data
+        # Warm refill pulls all 5 rows into the buffer, emptying the queue, so any
+        # row returned after close() could only come from a stale buffer.
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        assert rs.fetchone()[0] == "value1"
+        assert rs._row_buffer_count() == 4
+        rs.close()
+        assert rs._row_buffer_count() == 0
+        if fetch_after_close == "fetchall":
+            assert rs.fetchall() == []
+        else:
+            assert rs.fetchmany_arrow(10).num_rows == 0
+        assert rs.fetchone() is None
+
     def test_convert_json_types(self, result_set_with_data, sample_data):
         """Test the _convert_json_types method."""
         # Call _convert_json_types
@@ -481,6 +504,223 @@ class TestSeaResultSet:
         assert rows[0].col1 == "value1"
         assert rows[0].col2 == 1
         assert rows[0].col3 is True
+
+    def _make_json_result_set(
+        self, mock_connection, mock_sea_client, execute_response, n_rows, arraysize
+    ):
+        data = [["v{}".format(i), str(i), "true"] for i in range(n_rows)]
+        result_data = ResultData(data=data, external_links=None, row_count=n_rows)
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=JsonQueue(data),
+        ):
+            return SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=result_data,
+                manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
+                buffer_size_bytes=1000,
+                arraysize=arraysize,
+            )
+
+    @pytest.mark.parametrize("mode", ["iterate", "fetchone"])
+    def test_json_fetchone_converts_in_batches(
+        self, mock_connection, mock_sea_client, execute_response, mode
+    ):
+        """Issue #981: per-row fetchone must not convert one row at a time."""
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 100, arraysize=10
+        )
+        with patch.object(
+            SeaResultSet,
+            "_create_json_table",
+            autospec=True,
+            side_effect=SeaResultSet._create_json_table,
+        ) as m:
+            if mode == "iterate":
+                rows = list(rs)
+            else:
+                rows = []
+                while True:
+                    row = rs.fetchone()
+                    if row is None:
+                        break
+                    rows.append(row)
+        assert [r.col2 for r in rows] == list(range(100))
+        assert m.call_count <= 100 // 10 + 2
+
+    def test_json_row_fetches_keep_order_and_rownumber(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Mixed fetchone/fetchmany/fetchall ordering without any Arrow path."""
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.fetchone().col2 == 1
+        assert rs.rownumber == 2
+        assert [r.col2 for r in rs.fetchmany(3)] == [2, 3, 4]
+        assert rs.rownumber == 5
+        assert rs.fetchone().col2 == 5
+        assert rs.rownumber == 6
+        assert [r.col2 for r in rs.fetchall()] == [6, 7, 8, 9]
+        assert rs.rownumber == 10
+        assert rs.fetchone() is None
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_json_mixed_fetches_keep_order_and_rownumber(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.fetchone().col2 == 1
+        assert rs.rownumber == 2
+        assert [r.col2 for r in rs.fetchmany(3)] == [2, 3, 4]
+        assert rs.rownumber == 5
+        assert rs.fetchone().col2 == 5
+        assert rs.rownumber == 6
+        table = rs.fetchmany_arrow(2)
+        assert table.column(1).to_pylist() == [6, 7]
+        assert rs.rownumber == 8
+        assert [r.col2 for r in rs.fetchall()] == [8, 9]
+        assert rs.rownumber == 10
+        assert rs.fetchone() is None
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_json_fetchone_then_fetchall_arrow_keeps_order(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        rs = self._make_json_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.rownumber == 1
+        table = rs.fetchall_arrow()
+        assert table.column(1).to_pylist() == list(range(1, 10))
+        assert rs.rownumber == 10
+
+    def _make_arrow_result_set(
+        self, mock_connection, mock_sea_client, execute_response, n_rows, arraysize
+    ):
+        from databricks.sql.utils import ArrowQueue
+
+        mock_connection.disable_pandas = True
+        table = pyarrow.Table.from_pydict(
+            {
+                "col1": ["v{}".format(i) for i in range(n_rows)],
+                "col2": list(range(n_rows)),
+                "col3": [True] * n_rows,
+            }
+        )
+        result_data = ResultData(data=None, external_links=None, row_count=n_rows)
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=ArrowQueue(table, n_rows),
+        ):
+            return SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=result_data,
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
+                buffer_size_bytes=1000,
+                arraysize=arraysize,
+            )
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_arrow_mixed_fetches_keep_order_and_rownumber(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Buffered Arrow slice joined with the queue's next chunk via concat."""
+        rs = self._make_arrow_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        assert rs.rownumber == 1
+        # 3 rows left in the buffer; ask for 5 so 2 must come from the queue.
+        table = rs.fetchmany_arrow(5)
+        assert isinstance(table, pyarrow.Table)
+        assert table.column(1).to_pylist() == [1, 2, 3, 4, 5]
+        assert rs.rownumber == 6
+        assert rs.fetchone().col2 == 6
+        assert rs.rownumber == 7
+        # Fully served from the buffer (remaining == 0 path).
+        assert rs.fetchmany_arrow(1).column(1).to_pylist() == [7]
+        assert rs.rownumber == 8
+        assert [r.col2 for r in rs.fetchall()] == [8, 9]
+        assert rs.rownumber == 10
+        assert rs.fetchone() is None
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_arrow_buffer_with_exhausted_queue_returns_buffer(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Queue returns a 0-row slice after the buffer drains: buffered rows only."""
+        rs = self._make_arrow_result_set(
+            mock_connection, mock_sea_client, execute_response, 3, arraysize=10
+        )
+        assert rs.fetchone().col2 == 0
+        table = rs.fetchmany_arrow(5)
+        assert table.column(1).to_pylist() == [1, 2]
+        assert rs.rownumber == 3
+        assert rs.fetchall_arrow().num_rows == 0
+        assert rs.rownumber == 3
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_arrow_fetchone_then_fetchall_arrow_keeps_order(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        rs = self._make_arrow_result_set(
+            mock_connection, mock_sea_client, execute_response, 10, arraysize=4
+        )
+        assert rs.fetchone().col2 == 0
+        table = rs.fetchall_arrow()
+        assert table.column(1).to_pylist() == list(range(1, 10))
+        assert rs.rownumber == 10
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_cloudfetch_fetchone_refill_capped_to_current_chunk(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """fetchone() refill is capped at the rows left in the current chunk (batch size only)."""
+        from databricks.sql.backend.sea.queue import SeaCloudFetchQueue
+
+        chunk = pyarrow.Table.from_pydict(
+            {
+                "col1": ["v{}".format(i) for i in range(10)],
+                "col2": list(range(10)),
+                "col3": [True] * 10,
+            }
+        )
+        queue = Mock(spec=SeaCloudFetchQueue)
+        queue.table = chunk
+        queue.table_row_index = 8
+        queue.next_n_rows.side_effect = lambda n: chunk.slice(8, n)
+        result_data = ResultData(data=None, external_links=[], row_count=10)
+        with patch(
+            "databricks.sql.backend.sea.queue.SeaResultSetQueueFactory.build_queue",
+            return_value=queue,
+        ):
+            rs = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=result_data,
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
+                buffer_size_bytes=1000,
+                arraysize=100,
+            )
+        # Skip the adaptive refill ramp so the chunk cap, not the ramp, bounds it.
+        from databricks.sql.result_set import _FETCHONE_BUFFER_MAX_ROWS
+
+        rs._fetchone_refill_rows = _FETCHONE_BUFFER_MAX_ROWS
+        assert rs.fetchone().col2 == 8
+        queue.next_n_rows.assert_called_once_with(2)
+        assert rs.fetchone().col2 == 9
+        assert rs.rownumber == 2
 
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response

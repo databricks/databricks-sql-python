@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING, Tuple
+from typing import Any, Callable, List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 import pandas
@@ -16,8 +16,9 @@ if TYPE_CHECKING:
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.types import Row
-from databricks.sql.exc import RequestError, CursorAlreadyClosedError
+from databricks.sql.exc import InternalError, RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
+    CloudFetchQueue,
     ColumnTable,
     ColumnQueue,
     concat_table_chunks,
@@ -26,6 +27,44 @@ from databricks.sql.backend.types import CommandId, CommandState, ExecuteRespons
 from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
+
+# Records that may contain result data go to the non-propagating "unsafe" logger
+# (configured the same way in thrift_backend.py), so enabling DEBUG on
+# ``databricks.sql`` does not leak row values into logs.
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.propagate = False
+if not unsafe_logger.handlers:
+    unsafe_logger.addHandler(logging.NullHandler())
+
+# Upper bound on how many rows a fetchone() refill pulls and converts at once. The
+# refill uses ``arraysize`` but is capped here so a cursor with a large arraysize
+# (default 100000) doesn't materialise a full page just to return one row.
+_FETCHONE_BUFFER_MAX_ROWS = 1000
+
+# fetchone() refills grow geometrically from this size (1 -> 10 -> 100 -> ...) up to
+# min(arraysize, _FETCHONE_BUFFER_MAX_ROWS). The first refill converts a single row,
+# so a lone fetchone() (e.g. SQLAlchemy ``.first()`` / ``.scalar()`` or an EXISTS
+# probe) costs the same as before batching, while iteration loops quickly reach the
+# full batch size.
+_FETCHONE_BUFFER_INITIAL_ROWS = 1
+_FETCHONE_BUFFER_GROWTH_FACTOR = 10
+
+# Conversion errors that are not caused by row data. fetchone() re-raises these
+# straight away instead of bisecting the batch to find the failing row(s).
+_NON_DATA_CONVERSION_ERRORS = (MemoryError, RecursionError)
+
+
+class _FailedRow:
+    """Placeholder in the fetchone() row buffer for a row that failed to convert."""
+
+    __slots__ = ("error", "traceback")
+
+    def __init__(self, error: Exception):
+        self.error = error
+        # Snapshot the conversion traceback. A converter may raise the same
+        # exception instance for many rows; restoring this before each raise keeps
+        # its __traceback__ from growing (and pinning frames) on every fetchone().
+        self.traceback = error.__traceback__
 
 
 class ResultSet(ABC):
@@ -85,6 +124,24 @@ class ResultSet(ABC):
         self._arrow_schema_bytes = arrow_schema_bytes
         # Affected-row count for DML; None for SELECT / unreported.
         self.num_modified_rows = num_modified_rows
+        # Small row buffer that serves fetchone()/iteration. Rows are fetched and
+        # converted ``arraysize`` at a time instead of one at a time (converting a
+        # single row costs a full pandas round-trip). ``_row_buffer_raw`` holds the
+        # un-converted chunk (Arrow table, ColumnTable or JSON row list) aligned with
+        # ``_row_buffer_rows`` so the Arrow/columnar fetch methods can drain it too.
+        # Every fetch method drains this buffer first, preserving row order.
+        self._row_buffer_raw: Any = None
+        self._row_buffer_rows: List[Row] = []
+        self._row_buffer_pos = 0
+        # Set once a fetchone() conversion failure has been logged at WARNING.
+        self._fetchone_conversion_warned = False
+        # Size of the next fetchone() refill; grows on each refill (see
+        # ``_FETCHONE_BUFFER_GROWTH_FACTOR``).
+        self._fetchone_refill_rows = _FETCHONE_BUFFER_INITIAL_ROWS
+        # Set when a fetchone() refill chunk was read from the queue but lost
+        # before it could be buffered (e.g. KeyboardInterrupt / MemoryError during
+        # conversion). Later fetches raise instead of silently skipping those rows.
+        self._lost_rows_error: Optional[str] = None
 
     def __iter__(self):
         while True:
@@ -135,6 +192,323 @@ class ResultSet(ABC):
     @property
     def rownumber(self):
         return self._next_row_index
+
+    # ----- fetchone() row buffer helpers -----
+
+    def _check_no_lost_rows(self) -> None:
+        """Raise if an earlier fetchone() refill lost rows (see ``_lost_rows_error``)."""
+        if self._lost_rows_error is not None:
+            raise InternalError(self._lost_rows_error)
+
+    def _row_buffer_count(self) -> int:
+        return len(self._row_buffer_rows) - self._row_buffer_pos
+
+    def _row_buffer_clear(self) -> None:
+        self._row_buffer_raw = None
+        self._row_buffer_rows = []
+        self._row_buffer_pos = 0
+
+    def _row_buffer_advance(self, n: Optional[int]) -> Tuple[int, int]:
+        """Advance the buffer by up to ``n`` rows (all if None); return (start, length)."""
+        available = self._row_buffer_count()
+        length = available if n is None else max(0, min(n, available))
+        start = self._row_buffer_pos
+        self._row_buffer_pos += length
+        # Buffered rows only count as consumed once they are handed to the caller.
+        self._next_row_index += length
+        return start, length
+
+    def _row_buffer_take_rows(self, n: Optional[int] = None) -> List[Row]:
+        """Pop up to ``n`` (all if None) converted rows from the buffer.
+
+        If the requested range contains a ``_FailedRow``, only the rows up to and
+        including the first failed row are consumed and its error is raised. Rows
+        after it stay in the buffer for the next fetch. The good rows before it in
+        the same call are consumed with the failed fetch (a fetch either returns
+        all of its rows or raises), so ``rownumber`` stays aligned with what is
+        left in the buffer.
+        """
+        self._check_no_lost_rows()
+        if self._row_buffer_count() == 0:
+            return []
+        rows = self._row_buffer_rows
+        available = self._row_buffer_count()
+        length = available if n is None else max(0, min(n, available))
+        start = self._row_buffer_pos
+        failed: Optional[_FailedRow] = None
+        for i in range(start, start + length):
+            row = rows[i]
+            if isinstance(row, _FailedRow):
+                failed = row
+                length = i - start + 1
+                break
+        self._row_buffer_advance(length)
+        if self._row_buffer_count() == 0:
+            self._row_buffer_clear()
+        if failed is not None:
+            raise failed.error.with_traceback(failed.traceback)
+        return rows[start : start + length]
+
+    def _fetch_rows_with_buffer(
+        self,
+        size: Optional[int],
+        fetch_rest: Callable[[Optional[int]], List[Row]],
+    ) -> List[Row]:
+        """Return ``size`` rows (all if None), draining the fetchone() buffer first.
+
+        Every row-level fetchmany()/fetchall() goes through here, so rows the
+        fetchone() buffer already holds are always returned before newly fetched
+        ones. ``fetch_rest(n)`` must fetch up to ``n`` (all if None) rows
+        while bypassing the buffer. It is not called when the buffer already
+        covers ``size``.
+        """
+        buffered = self._row_buffer_take_rows(size)
+        remaining = None if size is None else size - len(buffered)
+        if buffered and remaining == 0:
+            return buffered
+        rest = fetch_rest(remaining)
+        return buffered + rest if buffered else rest
+
+    @staticmethod
+    def _raw_row_count(raw: Any) -> Optional[int]:
+        """Row count of a raw chunk (Arrow table, ColumnTable or list); None if unknown."""
+        if raw is None:
+            return 0
+        n = len(raw) if isinstance(raw, list) else getattr(raw, "num_rows", None)
+        return n if isinstance(n, int) else None
+
+    @staticmethod
+    def _convert_rows_individually(
+        raw: Any,
+        convert: Callable[[Any], List[Row]],
+        batch_error: Exception,
+        log_level: int = logging.WARNING,
+    ) -> Optional[List[Any]]:
+        """Convert ``raw`` in smaller pieces after a batch conversion failed.
+
+        The failed batch is bisected: each failing range is split in half and the
+        halves are converted separately, down to single rows. Only rows that fail
+        on their own are returned as ``_FailedRow`` placeholders (raised when that
+        row is handed out); every row that converts is kept, so a failure is never
+        attributed to a row that was not itself tried. Cost is about
+        ``2 * k * log2(n)`` conversions for ``k`` bad rows, and at most ``2n``
+        when every row fails. Returns None if ``raw`` has no rows to split, in
+        which case the caller re-raises the batch error.
+        """
+        n = ResultSet._raw_row_count(raw)
+        if not n:
+            return None
+
+        rows: List[Any] = []
+
+        def convert_range(lo: int, hi: int, error: Optional[Exception]) -> None:
+            # ``error`` is the failure already seen for [lo, hi), if it was tried.
+            if error is None:
+                piece = raw[lo:hi] if isinstance(raw, list) else raw.slice(lo, hi - lo)
+                try:
+                    rows.extend(convert(piece))
+                    return
+                except _NON_DATA_CONVERSION_ERRORS:
+                    # Resource / interpreter failures are not row-specific: stop
+                    # bisecting and propagate, as the top-level refill does.
+                    raise
+                except Exception as e:
+                    error = e
+            if hi - lo == 1:
+                rows.append(_FailedRow(error))
+                return
+            mid = (lo + hi) // 2
+            convert_range(lo, mid, None)
+            convert_range(mid, hi, None)
+
+        convert_range(0, n, batch_error)
+        failed = sum(isinstance(r, _FailedRow) for r in rows)
+        # One summary line, no traceback: the error itself still reaches the caller
+        # when the failing row is fetched. Only the exception type is logged here,
+        # since conversion error messages often quote the offending result value;
+        # the message and full traceback only go to the non-propagating unsafe logger.
+        # ``log_level`` lets the caller log this at WARNING only once per result set.
+        logger.log(
+            log_level,
+            "fetchone(): failed to convert %d of %d row(s) in a batch; each failing "
+            "row raises when fetched (%s)",
+            failed,
+            n,
+            type(batch_error).__name__,
+        )
+        unsafe_logger.debug(
+            "fetchone(): batch conversion error: %s", batch_error, exc_info=batch_error
+        )
+        return rows
+
+    def _cap_to_current_chunk(self, size: int) -> int:
+        """Cap ``size`` at the rows left in the current CloudFetch chunk, if any.
+
+        Limits each fetchone() refill to a single CloudFetch chunk. It does not
+        avoid waiting on the next download: ``next_n_rows`` advances to the next
+        file as soon as the current one is fully read, inside the same call.
+        Shared by the Thrift and SEA fetchone() refills so the CloudFetchQueue
+        internals (``table`` / ``table_row_index``) are read in one place.
+        """
+        if isinstance(self.results, CloudFetchQueue) and self.results.table:
+            available = self.results.table.num_rows - self.results.table_row_index
+            if available > 0:
+                return min(size, available)
+        return size
+
+    def _row_buffer_take_raw(self, n: Optional[int] = None) -> Any:
+        """Pop up to ``n`` (all if None) un-converted rows from the buffer.
+
+        Returns None when the buffer is empty, otherwise a slice of the raw chunk
+        (same type as what the queue returned: Arrow table, ColumnTable or list).
+        """
+        self._check_no_lost_rows()
+        if self._row_buffer_count() == 0:
+            return None
+        raw = self._row_buffer_raw
+        start, length = self._row_buffer_advance(n)
+        if self._row_buffer_count() == 0:
+            self._row_buffer_clear()
+        if isinstance(raw, list):
+            return raw[start : start + length]
+        return raw.slice(start, length)
+
+    def _fetchone_buffered(
+        self, fetch_raw: Callable[[int], Any], convert: Callable[[Any], List[Row]]
+    ) -> Optional[Row]:
+        """Serve fetchone() from the row buffer, refilling in small batches.
+
+        Refill sizes start at ``_FETCHONE_BUFFER_INITIAL_ROWS`` and grow by
+        ``_FETCHONE_BUFFER_GROWTH_FACTOR`` on each refill, capped at ``arraysize``
+        and ``_FETCHONE_BUFFER_MAX_ROWS``, so a single fetchone() converts only one
+        row while iteration settles into full batches. ``fetch_raw`` may return
+        fewer (Thrift and the
+        kernel backend only serve what is already buffered, refilling at most until
+        one row is available, so latency to the first row is unchanged).
+
+        ``_next_row_index`` keeps counting rows handed to the caller: rows parked in
+        the buffer are subtracted on refill and added back as they are taken. The
+        queue is only read again once the buffer is empty, so at that point the
+        index equals the queue position again (Thrift relies on that for
+        ``expected_row_start_offset``).
+
+        If conversion yields a different number of rows than the raw chunk held,
+        ``InternalError`` is raised and that whole chunk is dropped (the queue and
+        ``rownumber`` have already moved past it). The result set should be
+        considered unusable after that error. The same holds when conversion
+        raises one of ``_NON_DATA_CONVERSION_ERRORS`` (e.g. ``MemoryError``,
+        ``RecursionError``): the error is re-raised and the whole refill chunk
+        (up to ``_FETCHONE_BUFFER_MAX_ROWS`` rows, still counted in ``rownumber``)
+        is lost, so callers should not keep fetching from this result set.
+        The same applies to any ``BaseException`` (e.g. ``KeyboardInterrupt``)
+        raised during conversion. In all these cases every later fetch on this
+        result set raises ``InternalError`` rather than silently skipping the
+        lost rows.
+        """
+        self._check_no_lost_rows()
+        if self._row_buffer_count() == 0:
+            cap = max(min(self.arraysize, _FETCHONE_BUFFER_MAX_ROWS), 1)
+            size = max(min(self._fetchone_refill_rows, cap), 1)
+            raw = fetch_raw(size)
+            # Grow the ramp only once the fetch succeeded, so a transient fetch
+            # error (and a retried fetchone()) does not skip a ramp step.
+            self._fetchone_refill_rows = min(
+                size * _FETCHONE_BUFFER_GROWTH_FACTOR, _FETCHONE_BUFFER_MAX_ROWS
+            )
+            # The queue (and rownumber) has already moved past ``raw``, but it is
+            # only buffered once conversion succeeds. Mark the result set as having
+            # lost rows until then, so any exception escaping below (including
+            # KeyboardInterrupt) makes later fetches fail loudly instead of
+            # resuming from the next chunk with a gap.
+            pending = self._raw_row_count(raw)
+            if pending != 0:
+                self._lost_rows_error = (
+                    "{} row(s) were lost because an earlier fetchone() failed while "
+                    "converting them; this result set can no longer be read "
+                    "consistently, re-execute the query".format(
+                        "Some" if pending is None else pending
+                    )
+                )
+            try:
+                rows = convert(raw)
+            except _NON_DATA_CONVERSION_ERRORS:
+                # Resource / interpreter failures say nothing about individual
+                # rows; retrying smaller slices would only repeat (or worsen) them.
+                # The queue has already moved past ``raw`` and it is not buffered,
+                # so the whole refill chunk is lost: as with the drift error below,
+                # the result set is unusable after this.
+                raise
+            except Exception as batch_error:
+                # The queue has already moved past this batch, so it can't be
+                # re-read. Fall back to bisecting it down to single rows so that,
+                # as before batching, only the row(s) that fail to convert are
+                # lost: each failing row is parked as a _FailedRow and re-raises
+                # its own error when it is reached.
+                # Why not just drop the batch and re-raise (as fetchmany does)?
+                # fetchone() used to convert one row at a time, so callers that
+                # catch a conversion error and keep iterating lost only that row.
+                # Dropping the whole refill would silently lose up to
+                # _FETCHONE_BUFFER_MAX_ROWS good rows per bad one, a behaviour
+                # change hidden behind a perf fix. Bisection keeps the old
+                # semantics; its ~2n-conversion worst case is bounded by the ramp
+                # reset below, and _FailedRow tracebacks are freed as they are
+                # consumed (or with the buffer).
+                # Warn once per result set; later failing batches (e.g. a column
+                # type that fails in every row) log at DEBUG to avoid a WARNING
+                # per refill for callers that catch and keep fetching.
+                fallback = self._convert_rows_individually(
+                    raw,
+                    convert,
+                    batch_error,
+                    log_level=(
+                        logging.DEBUG
+                        if self._fetchone_conversion_warned
+                        else logging.WARNING
+                    ),
+                )
+                if fallback is None:
+                    raise
+                self._fetchone_conversion_warned = True
+                rows = fallback
+                if all(isinstance(r, _FailedRow) for r in rows):
+                    # Every row failed: likely systemic (a column type or library
+                    # problem that hits each row). Restart the refill ramp so later
+                    # refills convert one row at a time, as before batching, rather
+                    # than paying a full ~2n-conversion bisection on every refill.
+                    self._fetchone_refill_rows = _FETCHONE_BUFFER_INITIAL_ROWS
+            # Check for drift before the empty-result early return, so a converter
+            # that yields [] for a non-empty chunk raises instead of silently
+            # ending iteration and losing those rows.
+            raw_count = self._raw_row_count(raw)
+            if raw_count is None:
+                # Every real queue type (Arrow Table, ColumnTable, list) has a row
+                # count, so an unknown chunk type is itself a bug. Fail loudly
+                # rather than skip the drift check and risk rownumber misalignment.
+                raise InternalError(
+                    "fetchone(): cannot determine the row count of a raw chunk of "
+                    "type {}".format(type(raw).__name__)
+                )
+            if raw_count != len(rows):
+                # fetch_raw advanced _next_row_index (and the Thrift fetch offset)
+                # by raw_count; the buffer must line up 1:1 with the raw chunk or
+                # rownumber and fetchmany_arrow slicing would silently drift.
+                # The raw chunk is not buffered, so its raw_count rows are lost
+                # (yet counted in rownumber): the result set is unusable after
+                # this error and later fetches raise (see ``_lost_rows_error``).
+                raise InternalError(
+                    "fetchone(): converted {} row(s) from a chunk of {} raw row(s)".format(
+                        len(rows), raw_count
+                    )
+                )
+            if not rows:
+                return None
+            self._row_buffer_raw = raw
+            self._row_buffer_rows = rows
+            self._row_buffer_pos = 0
+            self._next_row_index -= len(rows)
+            # ``raw`` is buffered now, so no rows were lost.
+            self._lost_rows_error = None
+        return self._row_buffer_take_rows(1)[0]
 
     @property
     def is_staging_operation(self) -> bool:
@@ -189,6 +563,10 @@ class ResultSet(ABC):
             if isinstance(e.args[1], CursorAlreadyClosedError):
                 logger.info("Operation was canceled by a prior request")
         finally:
+            # Drop rows parked by fetchone() (and any lost-rows poison) so
+            # post-close fetches return nothing.
+            self._row_buffer_clear()
+            self._lost_rows_error = None
             self.has_been_closed_server_side = True
             self.status = CommandState.CLOSED
 
@@ -302,6 +680,14 @@ class ThriftResultSet(ResultSet):
 
         return result
 
+    def _prepend_buffered(self, buffered, rest):
+        """Concatenate rows drained from the fetchone() buffer with freshly fetched ones."""
+        if buffered is None:
+            return rest
+        if rest is None or rest.num_rows == 0:
+            return buffered
+        return concat_table_chunks([buffered, rest])
+
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
@@ -309,7 +695,34 @@ class ThriftResultSet(ResultSet):
         An empty sequence is returned when no more rows are available.
         """
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+        buffered = self._row_buffer_take_raw(size)
+        remaining = size - (buffered.num_rows if buffered is not None else 0)
+        rest = self._fetchmany_arrow_from_queue(remaining) if remaining > 0 else None
+        if buffered is None and rest is None:
+            rest = self._fetchmany_arrow_from_queue(0)
+        return self._prepend_buffered(buffered, rest)
+
+    def fetchmany_columnar(self, size: int):
+        """
+        Fetch the next set of rows of a query result, returning a Columnar Table.
+        An empty sequence is returned when no more rows are available.
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+        buffered = self._row_buffer_take_raw(size)
+        remaining = size - (buffered.num_rows if buffered is not None else 0)
+        rest = (
+            self._fetchmany_columnar_from_queue(remaining) if remaining > 0 else None
+        )
+        if buffered is None and rest is None:
+            rest = self._fetchmany_columnar_from_queue(0)
+        return self._prepend_buffered(buffered, rest)
+
+    def _fetchmany_arrow_from_queue(self, size: int) -> "pyarrow.Table":
+        """Fetch up to ``size`` rows from the results queue, bypassing the row buffer."""
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
         # CloudFetchQueue may return a placeholder empty table whose schema does not
@@ -343,13 +756,10 @@ class ThriftResultSet(ResultSet):
             partial_result_chunks.append(zero_row_table)
         return concat_table_chunks(partial_result_chunks)
 
-    def fetchmany_columnar(self, size: int):
-        """
-        Fetch the next set of rows of a query result, returning a Columnar Table.
-        An empty sequence is returned when no more rows are available.
-        """
+    def _fetchmany_columnar_from_queue(self, size: int):
+        """Fetch up to ``size`` rows from the results queue, bypassing the row buffer."""
         if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
@@ -368,8 +778,51 @@ class ThriftResultSet(ResultSet):
 
         return concat_table_chunks(partial_result_chunks)
 
+    def _fetch_available_from_queue(self, size: int):
+        """Fetch up to ``size`` rows the queue already holds, for fetchone() refills.
+
+        Unlike ``_fetchmany_*_from_queue``, this does not keep calling the server
+        until ``size`` rows are collected: it only refills the queue while it is
+        empty, so fetchone() makes no more round-trips than it needs to return one
+        row (server pages can be smaller than ``size`` when they hit the byte limit).
+        On CloudFetch, the request is also capped at what the current chunk still
+        holds (see ``_cap_to_current_chunk``), so a refill never stitches rows from
+        several downloaded files into one batch. This only bounds the batch: reading
+        to the end of a chunk still makes ``next_n_rows`` advance to (and wait for)
+        the next file before it returns, exactly as the uncapped path did.
+        Only called while the fetchone() row buffer is empty.
+        """
+        results = self.results.next_n_rows(self._cap_to_current_chunk(size))
+        while (
+            results.num_rows == 0
+            and not self.has_been_closed_server_side
+            and self.has_more_rows
+        ):
+            self._fill_results_buffer()
+            results = self.results.next_n_rows(self._cap_to_current_chunk(size))
+        self._next_row_index += results.num_rows
+        return results
+
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
+        buffered = self._row_buffer_take_raw()
+        result_table = self._prepend_buffered(
+            buffered, self._fetchall_arrow_from_queue()
+        )
+        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
+        # Valid only for metadata commands result set
+        if isinstance(result_table, ColumnTable) and pyarrow:
+            data = {
+                name: col
+                for name, col in zip(
+                    result_table.column_names, result_table.column_table
+                )
+            }
+            return pyarrow.Table.from_pydict(data)
+        return result_table
+
+    def _fetchall_arrow_from_queue(self):
+        """Drain the results queue (bypassing the row buffer) without type conversion."""
         # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
         # CloudFetchQueue may return a placeholder empty table whose schema does not
         # match the real downloaded chunks; concatenating it would corrupt the result.
@@ -394,21 +847,15 @@ class ThriftResultSet(ResultSet):
         if not partial_result_chunks:
             partial_result_chunks.append(zero_row_table)
 
-        result_table = concat_table_chunks(partial_result_chunks)
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        if isinstance(result_table, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(
-                    result_table.column_names, result_table.column_table
-                )
-            }
-            return pyarrow.Table.from_pydict(data)
-        return result_table
+        return concat_table_chunks(partial_result_chunks)
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
+        buffered = self._row_buffer_take_raw()
+        return self._prepend_buffered(buffered, self._fetchall_columnar_from_queue())
+
+    def _fetchall_columnar_from_queue(self):
+        """Drain the results queue as a Columnar table, bypassing the row buffer."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
         partial_result_chunks = [results]
@@ -426,23 +873,24 @@ class ThriftResultSet(ResultSet):
         or None when no more data is available.
         """
         if isinstance(self.results, ColumnQueue):
-            res = self._convert_columnar_table(self.fetchmany_columnar(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
-
-        if len(res) > 0:
-            return res[0]
-        else:
-            return None
+            return self._fetchone_buffered(
+                self._fetch_available_from_queue, self._convert_columnar_table
+            )
+        return self._fetchone_buffered(
+            self._fetch_available_from_queue, self._convert_arrow_table
+        )
 
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
         if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchall_columnar())
-        else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            return self._fetch_rows_with_buffer(
+                None, lambda _: self._convert_columnar_table(self.fetchall_columnar())
+            )
+        return self._fetch_rows_with_buffer(
+            None, lambda _: self._convert_arrow_table(self.fetchall_arrow())
+        )
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -450,10 +898,15 @@ class ThriftResultSet(ResultSet):
 
         An empty sequence is returned when no more rows are available.
         """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
         if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchmany_columnar(size))
-        else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            return self._fetch_rows_with_buffer(
+                size, lambda n: self._convert_columnar_table(self.fetchmany_columnar(n))
+            )
+        return self._fetch_rows_with_buffer(
+            size, lambda n: self._convert_arrow_table(self.fetchmany_arrow(n))
+        )
 
     @staticmethod
     def _get_schema_description(table_schema_message):

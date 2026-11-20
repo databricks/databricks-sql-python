@@ -189,38 +189,77 @@ class KernelResultSet(ResultSet):
 
     # ----- Arrow fetches -----
 
-    def fetchall_arrow(self) -> pyarrow.Table:
-        return self._drain()
-
-    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
-        if size < 0:
-            raise ValueError(f"fetchmany_arrow size must be >= 0, got {size}")
+    def _fetchmany_arrow_unbuffered(self, size: int) -> pyarrow.Table:
+        """Take up to ``size`` rows from the batch FIFO, bypassing the
+        fetchone() row buffer."""
         if size == 0:
             return pyarrow.Table.from_batches([], schema=self._schema)
         self._ensure_buffered(size)
         return self._take_buffered(size)
 
+    def _fetch_available(self, size: int) -> pyarrow.Table:
+        """Take up to ``size`` rows already buffered, for fetchone() refills.
+
+        Unlike ``_fetchmany_arrow_unbuffered`` this does not keep pulling
+        batches until ``size`` rows are collected: it only pulls from the
+        kernel while the batch FIFO is empty, so latency to the first row
+        matches the pre-buffering behaviour.
+        """
+        self._ensure_buffered(1)
+        return self._take_buffered(min(size, self._buffered_rows()))
+
+    @staticmethod
+    def _concat_buffered_arrow(
+        buffered: Optional[pyarrow.Table], rest: pyarrow.Table
+    ) -> pyarrow.Table:
+        """Prepend rows drained from the fetchone() buffer to ``rest``.
+
+        Both tables are built against the result set's ``_schema``, so a plain
+        ``pyarrow.concat_tables`` suffices (no ColumnTable / schema
+        promotion handling as in ``ThriftResultSet._prepend_buffered``).
+        """
+        if buffered is None:
+            return rest
+        if rest.num_rows == 0:
+            return buffered
+        return pyarrow.concat_tables([buffered, rest])
+
+    def fetchall_arrow(self) -> pyarrow.Table:
+        buffered = self._row_buffer_take_raw()
+        return self._concat_buffered_arrow(buffered, self._drain())
+
+    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
+        if size < 0:
+            raise ValueError(f"fetchmany_arrow size must be >= 0, got {size}")
+        buffered = self._row_buffer_take_raw(size)
+        remaining = size - (buffered.num_rows if buffered is not None else 0)
+        if buffered is not None and remaining == 0:
+            return buffered
+        return self._concat_buffered_arrow(
+            buffered, self._fetchmany_arrow_unbuffered(remaining)
+        )
+
     # ----- Row fetches -----
 
     def fetchone(self) -> Optional[Row]:
-        self._ensure_buffered(1)
-        if self._buffered_rows() == 0:
-            return None
-        table = self._take_buffered(1)
-        rows = self._convert_arrow_table(table)
-        return rows[0] if rows else None
+        # Rows are converted ``arraysize`` at a time and served from the
+        # base-class row buffer; converting one row per call is very slow.
+        return self._fetchone_buffered(
+            self._fetch_available, self._convert_arrow_table
+        )
 
     def fetchmany(self, size: int) -> List[Row]:
         if size < 0:
             raise ValueError(f"fetchmany size must be >= 0, got {size}")
-        if size == 0:
-            return []
-        self._ensure_buffered(size)
-        table = self._take_buffered(size)
-        return self._convert_arrow_table(table)
+        return self._fetch_rows_with_buffer(
+            size,
+            lambda n: self._convert_arrow_table(self._fetchmany_arrow_unbuffered(n)),
+        )
 
     def fetchall(self) -> List[Row]:
-        return self._convert_arrow_table(self._drain())
+        return self._fetch_rows_with_buffer(
+            None, lambda _: self._convert_arrow_table(self._drain())
+        )
 
     def close(self) -> None:
         """Close the underlying kernel handle and notify the backend.
@@ -234,6 +273,10 @@ class KernelResultSet(ResultSet):
         connection-close would otherwise issue a kernel call into an
         already-disposed session.
         """
+        # Drop rows parked by fetchone() (and any lost-rows poison) so
+        # post-close fetches return nothing, matching the cleared batch FIFO below.
+        self._row_buffer_clear()
+        self._lost_rows_error = None
         if self._kernel_handle is None:
             return
         if not self.connection.open:
