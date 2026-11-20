@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import re
 from functools import cached_property
@@ -6,8 +7,10 @@ from typing import Dict, Tuple, List, Optional, Any, Type, TYPE_CHECKING
 
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.auth_utils import decode_token, is_same_host
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider
 from databricks.sql.auth.common import ClientContext
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
@@ -49,7 +52,6 @@ def __getattr__(name: str) -> Any:
 
 
 _OAUTH_AUTH_TYPES = ("databricks-oauth", "azure-oauth", "azure-sp-m2m")
-_HOSTPORT_RE = re.compile(r"(\[[^\]]*\]|(?!\[)[^:]*)(?::([0-9]+))?")
 
 
 def _port_or_none(value: Any) -> Optional[int]:
@@ -63,7 +65,8 @@ def _port_or_none(value: Any) -> Optional[int]:
         if isinstance(value, (int, str)) and not isinstance(value, bool)
         else ""
     )
-    if not re.fullmatch(r"[0-9]+", text) or not int(text) <= 65535:
+    # isdigit with isascii rejects signs, whitespace and underscores that int() would accept.
+    if not (text.isascii() and text.isdigit()) or int(text) > 65535:
         raise ValueError(
             f"Invalid _port {value!r}: expected an integer between 1 and 65535"
         )
@@ -83,29 +86,57 @@ def _redact(value: str) -> str:
     # userinfo marker is present the whole authority is dropped rather than guessed at.
     if "@" in value or "%40" in value.lower():
         return f"{scheme}{sep}<redacted>"
-    host = rest.split("/", 1)[0]
-    return f"{scheme}{sep}{re.split(r'[?#]', host, maxsplit=1)[0]}"
+    try:
+        host = urlsplit(f"//{rest}").netloc
+    except ValueError:
+        # urlsplit refuses some hosts (bad IPv6, NFKC-unsafe text); show none of them.
+        return f"{scheme}{sep}<redacted>"
+    return f"{scheme}{sep}{host}"
+
+
+def _is_bare_ipv6(text: str) -> bool:
+    """True for an unbracketed IPv6 literal such as ``::1``, which urlsplit reads as a port."""
+    try:
+        return ipaddress.ip_address(text).version == 6
+    except ValueError:
+        return False
 
 
 def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
-    """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``; keeps IPv6 brackets."""
-    prefix, sep, text = host.rstrip("/").rpartition("://")
+    """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``. ``name`` keeps the
+    input's case and any userinfo, and a bare IPv6 literal gets its brackets.
+    """
+    prefix, sep, rest = host.rstrip("/").rpartition("://")
     prefix += sep
-    match = _HOSTPORT_RE.fullmatch(text)
-    if match is None:
-        if text.startswith("[") or text.count(":") == 1:
-            raise ValueError(
-                f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port"
-            )
-        return prefix, text, None  # an unbracketed IPv6 literal such as ::1 has no port
-    name, port_text = match.group(1), match.group(2)
-    if port_text is None:
-        return prefix, name, None
-    if not 1 <= int(port_text) <= 65535:
+    if _is_bare_ipv6(rest):
+        return prefix, f"[{rest}]", None
+    # urlsplit reads a trailing ':' as an empty port; with an explicit _port that is an error.
+    if rest.endswith(":"):
         raise ValueError(
-            f"Invalid server_hostname {_redact(host)!r}: port {port_text} is out of range"
+            f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port"
         )
-    return prefix, name, int(port_text)
+    try:
+        parts = urlsplit(f"//{rest}")
+        port = parts.port
+    except ValueError:
+        # ``from None`` drops the urlsplit exception, whose text can quote the raw netloc.
+        raise ValueError(
+            f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port; "
+            "a port must be 1-65535"
+        ) from None
+    if parts.password is not None:
+        # A colon before '@' is userinfo, not a port, but a credential-bearing host is
+        # still refused when a port is requested (as on main), so it is never folded.
+        raise ValueError(
+            f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port"
+        )
+    if port is None:
+        return prefix, parts.netloc, None
+    if not 1 <= port <= 65535:
+        raise ValueError(
+            f"Invalid server_hostname {_redact(host)!r}: port {port} is out of range"
+        )
+    return prefix, parts.netloc.rpartition(":")[0], port
 
 
 def _uri_host_and_path(uri: str) -> Tuple[str, str]:
@@ -167,7 +198,8 @@ def _kernel_host_and_path(
     if embedded is not None:
         # A port embedded in server_hostname always wins, as on main (the kernel
         # connected to it); a differing _port is ignored with a warning, not an error.
-        if embedded != port:
+        # The default 443 is not a choice worth warning about, so it is never flagged.
+        if port != 443 and embedded != port:
             logger.warning(
                 "server_hostname %s carries port %d, which differs from _port=%d; "
                 "connecting to port %d. Set the port in one place only.",
@@ -179,9 +211,19 @@ def _kernel_host_and_path(
         return server_hostname, http_path
     if port == 443:
         return server_hostname, http_path
-    if ":" in name and not name.startswith("["):
-        name = f"[{name}]"
     return f"{prefix}{name}:{port}", http_path
+
+
+def _is_foreign_jwt(access_token: str, server_hostname: str) -> bool:
+    """True when ``access_token`` is a JWT whose issuer is not ``server_hostname``. Thrift
+    token-exchanges such a token at server_hostname (TokenFederationProvider); the kernel
+    wraps every provider with the connection host, so it exchanges at the connection host.
+    """
+    claims = decode_token(access_token)
+    if not claims:
+        return False
+    issuer = claims.get("iss", "")
+    return not is_same_host(issuer, normalize_host_with_protocol(server_hostname))
 
 
 def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) -> None:
@@ -189,30 +231,37 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
     Thrift keeps OAuth on server_hostname; the kernel uses one host for API and token calls.
     URI-only use (empty server_hostname) has no server origin to compare and is not checked.
     """
+    if not (kwargs.get("_connection_uri") and server_hostname):
+        return
+    access_token = kwargs.get("access_token")
+    # A JWT from a foreign issuer is exchanged, so it is an OAuth credential even though
+    # it arrives as access_token.
+    foreign_jwt = bool(access_token) and _is_foreign_jwt(access_token, server_hostname)
     oauth = (
         kwargs.get("auth_type") in _OAUTH_AUTH_TYPES
         or kwargs.get("oauth_jwt_key_file")
         or (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
+        or foreign_jwt
     )
     # The kernel auth bridge routes an access_token with no JWT or client-secret
     # M2M credentials to PAT, even for auth_type='databricks-oauth'; azure-sp-m2m
     # is resolved before that branch and stays OAuth. A custom credentials_provider
     # is rejected by the bridge, so it is not an OAuth origin here.
     routed_to_pat = (
-        bool(kwargs.get("access_token"))
+        bool(access_token)
+        and not foreign_jwt
         and kwargs.get("auth_type") != "azure-sp-m2m"
         and not kwargs.get("oauth_jwt_key_file")
         and not (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
     )
-    if routed_to_pat or not (
-        kwargs.get("_connection_uri") and server_hostname and oauth
-    ):
+    if routed_to_pat or not oauth:
         return
     _, name, port = _split_host(server_hostname)
     uri = urlsplit(kernel_host)
+    server_host = urlsplit(f"//{name}").hostname or ""
     if (uri.scheme, uri.hostname or "", uri.port or 443) != (
         "https",
-        name.strip("[]").lower(),
+        server_host,
         port or 443,
     ):
         raise ValueError(

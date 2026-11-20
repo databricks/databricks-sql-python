@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock, Mock, PropertyMock
 from contextlib import contextmanager
 import gc
 import importlib.metadata as ilm
+import jwt
 import logging
 import socket
 import sys
@@ -1317,7 +1318,6 @@ def test_kernel_host_and_path_rejects(server, kwargs, message):
     "server, port, embedded",
     [
         ("h.io:7000", 8443, 7000),
-        ("h.io:8443", 443, 8443),
         ("[::1]:7000", 8443, 7000),
         ("h.io:443", 8443, 443),
     ],
@@ -1334,10 +1334,59 @@ def test_embedded_port_wins_over_differing_explicit_port(
     assert f"_port={port}" in caplog.text
 
 
+@pytest.mark.parametrize("server", ["h.io:8443", "[::1]:8443", "h.io:7000"])
+def test_embedded_port_with_default_443_does_not_warn(server, caplog):
+    # An explicit _port of the default 443 is not a conflict worth a warning (aligned
+    # with Node), so only a non-default _port that differs from the embedded port logs.
+    with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
+        host, path = _kernel_host_and_path(server, _P, {"_port": 443})
+    assert (host, path) == (server, _P)
+    assert "carries port" not in caplog.text
+
+
 def test_embedded_port_equal_to_explicit_port_does_not_warn(caplog):
     with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
         _kernel_host_and_path("h.io:8443", _P, {"_port": 8443})
     assert "differs from _port" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "server, kwargs, expected",
+    [
+        # urlsplit edge cases: the original string passes through unless a port is folded.
+        ("h:", {}, ("h:", _P)),
+        ("user@h", {}, ("user@h", _P)),
+        ("user@h", {"_port": 8443}, ("user@h:8443", _P)),
+        ("[::1", {}, ("[::1", _P)),
+        ("::1", {"_port": 443}, ("::1", _P)),
+        ("H.Example.COM", {}, ("H.Example.COM", _P)),
+        ("H.Example.COM", {"_port": 8443}, ("H.Example.COM:8443", _P)),
+        ("h:8443/", {"_port": 8443}, ("h:8443/", _P)),
+        ("h/x", {}, ("h/x", _P)),
+        ("h?q", {}, ("h?q", _P)),
+    ],
+)
+def test_kernel_host_and_path_stdlib_edges_accept(server, kwargs, expected):
+    assert _kernel_host_and_path(server, _P, kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    "server, kwargs, message",
+    [
+        # Trailing ':' is an empty port, which is malformed with an explicit _port.
+        ("h:", {"_port": 8443}, "malformed"),
+        ("[::1", {"_port": 8443}, "malformed"),
+        ("h:abc", {"_port": 8443}, "malformed"),
+        # A colon in userinfo is not a port, but a credential-bearing host is never folded.
+        ("user:pass@h", {"_port": 8443}, "malformed"),
+        ("h:70000", {"_port": 8443}, "1-65535"),
+        ("h/x", {"_port": 8443}, "path, query or fragment"),
+        ("h?q", {"_port": 8443}, "path, query or fragment"),
+    ],
+)
+def test_kernel_host_and_path_stdlib_edges_reject(server, kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        _kernel_host_and_path(server, _P, kwargs)
 
 
 @pytest.mark.parametrize(
@@ -1457,6 +1506,51 @@ def test_oauth_origin_guard(server, kwargs, uri, should_raise):
             _check_oauth_origin(server, kernel_host, kwargs)
     else:
         _check_oauth_origin(server, kernel_host, kwargs)
+
+
+def _jwt(issuer):
+    # Unverified on purpose: the guard only reads the iss claim, so the key is a placeholder.
+    return jwt.encode({"iss": issuer, "sub": "user"}, "k" * 32, algorithm="HS256")
+
+
+@pytest.mark.parametrize(
+    "server, uri, token, should_raise",
+    [
+        # A foreign-issuer JWT is exchanged at the kernel's connection host, so a
+        # mismatched _connection_uri origin must fail before any request.
+        (
+            "h.io",
+            "https://evil.io/sql/x",
+            _jwt("https://login.microsoftonline.com/tenant/v2.0"),
+            True,
+        ),
+        # The same foreign JWT is fine when the _connection_uri origin matches.
+        (
+            "h.io",
+            "https://h.io/sql/x",
+            _jwt("https://login.microsoftonline.com/tenant/v2.0"),
+            False,
+        ),
+        # An issuer on the server host is not exchanged (Thrift parity), so it passes.
+        ("h.io", "https://h.io/sql/x", _jwt("https://h.io/oidc"), False),
+        # A PAT is not a JWT and is not guarded.
+        ("h.io", "https://evil.io/sql/x", "dapi-xyz", False),
+    ],
+)
+def test_foreign_issuer_access_token_origin_guard(server, uri, token, should_raise):
+    kwargs = {"access_token": token, "_connection_uri": uri}
+    kernel_host = _kernel_host_and_path(server, _P, kwargs)[0]
+    if should_raise:
+        with pytest.raises(ValueError, match="requires the _connection_uri origin"):
+            _check_oauth_origin(server, kernel_host, kwargs)
+    else:
+        _check_oauth_origin(server, kernel_host, kwargs)
+
+
+def test_foreign_issuer_access_token_without_connection_uri_is_unaffected():
+    # No _connection_uri: the kernel host is the server_hostname, so there is no origin to check.
+    kwargs = {"access_token": _jwt("https://login.microsoftonline.com/tenant/v2.0")}
+    _check_oauth_origin("h.io", "h.io", kwargs)
 
 
 @pytest.mark.parametrize(
