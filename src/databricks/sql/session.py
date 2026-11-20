@@ -231,11 +231,16 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
     # A JWT from a foreign issuer is exchanged, so it is an OAuth credential even though
     # it arrives as access_token.
     foreign_jwt = bool(access_token and _is_foreign_jwt(access_token, server_hostname))
+    # identity_federation_client_id makes the kernel exchange the access_token at the
+    # connection host (mandatory workload-identity exchange), so it is exchanged like a
+    # foreign JWT, whatever the token's issuer.
+    federated = bool(access_token and kwargs.get("identity_federation_client_id"))
+    exchanged = foreign_jwt or federated
     oauth = (
         kwargs.get("auth_type") in _OAUTH_AUTH_TYPES
         or kwargs.get("oauth_jwt_key_file")
         or (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
-        or foreign_jwt
+        or exchanged
     )
     # The kernel auth bridge routes an access_token with no JWT or client-secret
     # M2M credentials to PAT, even for auth_type='databricks-oauth'; azure-sp-m2m
@@ -243,7 +248,7 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
     # is rejected by the bridge, so it is not an OAuth origin here.
     routed_to_pat = (
         bool(access_token)
-        and not foreign_jwt
+        and not exchanged
         and kwargs.get("auth_type") != "azure-sp-m2m"
         and not kwargs.get("oauth_jwt_key_file")
         and not (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))

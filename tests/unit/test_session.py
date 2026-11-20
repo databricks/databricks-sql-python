@@ -1551,6 +1551,29 @@ def test_foreign_issuer_access_token_origin_guard(server, uri, token, should_rai
         _check_oauth_origin(server, kernel_host, kwargs)
 
 
+@pytest.mark.parametrize(
+    "uri, should_raise",
+    [
+        # identity_federation_client_id makes the kernel exchange the token at the
+        # connection host, so a mismatched origin must fail even for an opaque token.
+        ("https://evil.io/sql/x", True),
+        ("https://h.io/sql/x", False),
+    ],
+)
+def test_federation_client_id_access_token_origin_guard(uri, should_raise):
+    kwargs = {
+        "access_token": "dapi-xyz",
+        "identity_federation_client_id": "sp-client",
+        "_connection_uri": uri,
+    }
+    kernel_host = _kernel_host_and_path("h.io", _P, kwargs)[0]
+    if should_raise:
+        with pytest.raises(ValueError, match="requires the _connection_uri origin"):
+            _check_oauth_origin("h.io", kernel_host, kwargs)
+    else:
+        _check_oauth_origin("h.io", kernel_host, kwargs)
+
+
 def test_foreign_issuer_access_token_without_connection_uri_is_unaffected():
     # No _connection_uri: the kernel host is the server_hostname, so there is no origin to check.
     kwargs = {"access_token": _jwt("https://login.microsoftonline.com/tenant/v2.0")}
@@ -1624,7 +1647,7 @@ def test_resolved_kernel_host_and_path_reach_kernel_client(
         access_token="dapi-xyz",
         enable_telemetry=False,
         **conn_kwargs,
-    )
+    ).close()
     kwargs = client.call_args.kwargs
     assert kwargs["server_hostname"] == expected_host
     assert kwargs["http_path"] == expected_path
