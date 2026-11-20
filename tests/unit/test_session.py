@@ -1573,6 +1573,10 @@ def test_foreign_issuer_access_token_without_connection_uri_is_unaffected():
         ("https://user:secret/foo@h.io/sql/x", "secret"),
         # A fullwidth solidus makes urlsplit's NFKC check raise with the raw netloc in its text.
         ("https://user:secret@h.io／sql/x", "secret"),
+        # Scheme-less, with "://" inside the query: the text before it is not a scheme.
+        ("h.io/sql/x?token=secret&redirect=https://example.com", "secret"),
+        # A non-http(s) prefix before "://" is not shown either.
+        ("token=secret://h.io/sql/x", "secret"),
     ],
 )
 def test_invalid_connection_uri_message_omits_credentials(uri, secret):

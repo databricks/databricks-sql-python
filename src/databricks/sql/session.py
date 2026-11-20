@@ -81,6 +81,10 @@ def _redact(value: str) -> str:
     scheme, sep, rest = value.partition("://")
     if not sep:
         scheme, rest = "", value
+    elif scheme.lower() not in ("http", "https"):
+        # Not a real scheme: in a scheme-less URI such as "h.io/x?token=t&next=https://e",
+        # everything before "://" is path and query, so none of it is shown.
+        scheme = "<redacted>"
     # A "/" or "?" can sit inside a password, and "@" can sit in a path, so once any
     # userinfo marker is present the whole authority is dropped rather than guessed at.
     if "@" in value or "%40" in value.lower():
