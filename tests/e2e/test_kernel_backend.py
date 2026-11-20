@@ -21,6 +21,10 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
+from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
+
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import select
@@ -966,3 +970,14 @@ def test_server_cancel_maps_to_operational_error(conn):
     finally:
         t.join()
         cur.close()
+
+
+class TestKernelUCVolume(PySQLUCVolumeTestSuiteMixin):
+    @pytest.fixture(autouse=True)
+    def setup_kernel_connection(self, kernel_conn_params):
+        self.params = kernel_conn_params
+
+    @contextmanager
+    def connection(self, extra_params=()):
+        with sql.connect(**dict(self.params, **dict(extra_params))) as connection:
+            yield connection

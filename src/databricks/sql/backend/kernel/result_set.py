@@ -127,9 +127,6 @@ class KernelResultSet(ResultSet):
                 raise ProgrammingError("Volume operation did not complete")
             self.status = CommandState.SUCCEEDED
         finally:
-            self._buffer.clear()
-            self._buffer_offset = 0
-            self._buffered_count = 0
             self._exhausted = True
             self.has_more_rows = False
             cast("KernelDatabricksClient", self.backend).finish_volume_operation(
@@ -141,7 +138,7 @@ class KernelResultSet(ResultSet):
     ) -> _kernel.VolumeCompletion:
         try:
             return self._kernel_handle.complete_volume_operation(
-                paths, input_bytes=input_bytes
+                paths, False, input_bytes=input_bytes
             )
         except Exception as exc:
             os_code = getattr(exc, "local_os_error", None)
@@ -152,14 +149,6 @@ class KernelResultSet(ResultSet):
                         0, "Local file operation failed", local_path, os_code
                     ) from exc
                 raise OSError(os_code, os.strerror(os_code), local_path) from exc
-            http_status = getattr(exc, "http_status", None)
-            if (
-                http_status is not None
-                and getattr(exc, "error_code", None) == "VOLUME_STORAGE_HTTP_ERROR"
-            ):
-                raise OperationalError(
-                    f"Staging operation over HTTP was unsuccessful: {http_status}"
-                ) from exc
             raise wrap_kernel_exception("complete_volume_operation", exc) from exc
 
     # ----- internal helpers -----

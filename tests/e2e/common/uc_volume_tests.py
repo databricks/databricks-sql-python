@@ -110,7 +110,7 @@ class PySQLUCVolumeTestSuiteMixin:
             fp.write(original_text)
 
         with pytest.raises(
-            Error, match="You must provide at least one staging_allowed_local_path"
+            Error, match="You must provide at least one staging_allowed_local_path|outside the configured allowed roots"
         ):
             with self.connection() as conn:
                 cursor = conn.cursor()
@@ -135,7 +135,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         with pytest.raises(
             Error,
-            match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+            match="Local file operations are restricted to paths within the configured staging_allowed_local_path|outside the configured allowed roots",
         ):
             with self.connection(
                 extra_params={"staging_allowed_local_path": base_path}
@@ -211,7 +211,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         with pytest.raises(
             Error,
-            match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+            match="Local file operations are restricted to paths within the configured staging_allowed_local_path|outside the configured allowed roots",
         ):
             with self.connection(
                 extra_params={"staging_allowed_local_path": staging_allowed_local_path}
@@ -300,7 +300,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
             with pytest.raises(
                 Error,
-                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                match="Local file operations are restricted to paths within the configured staging_allowed_local_path|outside the configured allowed roots",
             ):
                 cursor.execute(put_query3)
 
