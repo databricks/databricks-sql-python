@@ -218,6 +218,19 @@ def _kernel_session_accepts_kwarg(name: str) -> bool:
     return support.accepts_kwargs or name in support.parameters
 
 
+def _kernel_http2_kwargs(value: Optional[bool]) -> Dict[str, bool]:
+    if value is None:
+        return {}
+    if not isinstance(value, bool):
+        raise ValueError("enable_http2 must be a bool")
+    if not _kernel_session_accepts_kwarg("enable_http2"):
+        raise NotSupportedError(
+            "enable_http2 requires a newer databricks-sql-kernel wheel "
+            "that supports HTTP/2 configuration."
+        )
+    return {"enable_http2": value}
+
+
 def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
     """Build the explicit native geospatial-support kwarg.
 
@@ -354,6 +367,7 @@ class KernelDatabricksClient(DatabricksClient):
             or self._max_download_threads <= 0
         ):
             raise ValueError("max_download_threads must be a positive integer")
+        self._http2_kwargs = _kernel_http2_kwargs(kwargs.get("enable_http2"))
         # Opt-in native GEOMETRY / GEOGRAPHY support. True requests
         # the canonical Arrow struct and surfaces as ``{"srid": int, "wkb":
         # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
@@ -538,6 +552,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **geospatial_kwargs,
                 **max_connections_kwargs,
                 **http_headers_kwargs,
+                **self._http2_kwargs,
             )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
