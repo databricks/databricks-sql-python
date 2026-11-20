@@ -37,10 +37,10 @@ class Error(Exception):
             )
 
     def __str__(self):
-        return self.message
+        return self.message or ""
 
     def message_with_context(self):
-        return self.message + ": " + json.dumps(self.context, default=str)
+        return (self.message or "") + ": " + json.dumps(self.context, default=str)
 
 
 class Warning(Exception):
