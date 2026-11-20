@@ -250,43 +250,39 @@ def test_close_skips_kernel_call_when_connection_already_closed(int_schema):
     assert rs.has_been_closed_server_side is True
 
 
-@pytest.mark.parametrize(
-    "data,outcomes,reads",
-    [
-        (
-            b"payload",
-            [
-                _errors._kernel.VolumeCompletion.NeedsInputStream,
-                _errors._kernel.VolumeCompletion.Completed,
-            ],
-            True,
-        ),
-        (
-            b"",
-            [
-                _errors._kernel.VolumeCompletion.NeedsInputStream,
-                _errors._kernel.VolumeCompletion.Completed,
-            ],
-            True,
-        ),
-        (b"payload", [_errors._kernel.VolumeCompletion.Completed], False),
-    ],
-)
-def test_volume_reads_input_only_when_native_requests_it(
-    int_schema, data, outcomes, reads
-):
+@pytest.mark.parametrize("data", [b"payload", b""])
+def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
     handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
     handle.is_volume_operation = True
-    handle.complete_volume_operation = MagicMock(side_effect=outcomes)
+    handle.complete_volume_operation = MagicMock(
+        side_effect=[
+            _errors._kernel.VolumeCompletion.NeedsInputStream,
+            _errors._kernel.VolumeCompletion.Completed,
+        ]
+    )
     rs = _make_rs(handle)
     stream = io.BytesIO(data)
     rs.complete_staging_operation("/allowed", stream)
-    assert stream.tell() == (len(data) if reads else 0)
+    assert stream.tell() == len(data)
     assert handle.complete_volume_operation.call_args_list == [
-        ((["/allowed"], False), {"input_bytes": None}),
-    ] + ([((["/allowed"], False), {"input_bytes": data})] if reads else [])
+        ((["/allowed"],), {"remove_not_found_is_success": False, "input_bytes": None}),
+        ((["/allowed"],), {"remove_not_found_is_success": False, "input_bytes": data}),
+    ]
     assert rs.fetchall() == []
     rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
+
+
+def test_volume_does_not_read_irrelevant_stream(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock(
+        return_value=_errors._kernel.VolumeCompletion.Completed
+    )
+    rs = _make_rs(handle)
+    stream = MagicMock()
+    rs.complete_staging_operation(None, stream)
+    stream.read.assert_not_called()
+    assert rs.fetchall() == []
 
 
 @pytest.mark.parametrize("missing", [False, True])
@@ -372,6 +368,7 @@ def test_volume_instruction_http_error_preserves_mapping(int_schema, code, statu
 def test_volume_http_404_is_an_operational_error(int_schema):
     handle = _FakeKernelHandle(int_schema, [])
     error = _errors._kernel.KernelError("storage response")
+    error.message = "Volume storage request failed: HTTP 404"
     error.http_status = 404
     error.error_code = "VOLUME_STORAGE_HTTP_ERROR"
     handle.complete_volume_operation = MagicMock(side_effect=error)

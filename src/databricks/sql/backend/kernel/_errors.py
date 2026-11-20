@@ -126,8 +126,6 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     """
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
-    if getattr(exc, "error_code", None) == "VOLUME_STORAGE_HTTP_ERROR":
-        cls = OperationalError
 
     # For ServerOperationError, reproduce the Thrift backend's
     # ``context`` dict so callers that read
@@ -145,7 +143,10 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
         }
     message = getattr(exc, "message", str(exc))
     if getattr(exc, "error_code", None) == "VOLUME_STORAGE_HTTP_ERROR":
-        message = f"Staging operation over HTTP was unsuccessful: {getattr(exc, 'http_status', None)}; {message}"
+        cls = OperationalError
+        message = "Staging operation over HTTP was unsuccessful: " + message.replace(
+            "Volume storage request failed: HTTP ", "", 1
+        )
     new = cls(message, context)
 
     for attr in (

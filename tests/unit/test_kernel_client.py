@@ -1430,7 +1430,7 @@ def test_get_execution_result_uses_retained_owning_handle_first(
     if volume_completed:
         rs.complete_staging_operation(["/allowed"])
         fake_stream.complete_volume_operation.assert_called_once_with(
-            ["/allowed"], False, input_bytes=None
+            ["/allowed"], remove_not_found_is_success=False, input_bytes=None
         )
         assert rs.fetchall() == []
         assert c._async_handles[cid.guid] is handle
