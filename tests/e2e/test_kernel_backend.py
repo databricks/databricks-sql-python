@@ -22,9 +22,6 @@ Run from the connector repo root:
 from __future__ import annotations
 
 from contextlib import contextmanager
-
-from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
-
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import select
@@ -42,6 +39,8 @@ from databricks.sql.exc import (
     OperationalError,
     ServerOperationError,
 )
+
+from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 # These tests must run against the REAL databricks-sql-kernel wheel and
 # must NOT silently pass when it's absent or shadowed. We distinguish

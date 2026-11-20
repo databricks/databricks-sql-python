@@ -107,9 +107,7 @@ class KernelResultSet(ResultSet):
         allowed_paths: Union[None, str, List[str]],
         input_stream: Optional[BinaryIO] = None,
     ) -> None:
-        paths = (
-            [allowed_paths] if isinstance(allowed_paths, str) else (allowed_paths or [])
-        )
+        paths = [allowed_paths] if isinstance(allowed_paths, str) else allowed_paths
         try:
             outcome = self._complete_volume_operation(paths)
             if outcome == _kernel.VolumeCompletion.NeedsInputStream:
@@ -134,13 +132,20 @@ class KernelResultSet(ResultSet):
             )
 
     def _complete_volume_operation(
-        self, paths: List[str], input_bytes: Optional[bytes] = None
+        self, paths: Optional[List[str]], input_bytes: Optional[bytes] = None
     ) -> _kernel.VolumeCompletion:
         try:
             return self._kernel_handle.complete_volume_operation(
-                paths, False, input_bytes=input_bytes
+                paths or [], remove_not_found_is_success=False, input_bytes=input_bytes
             )
         except Exception as exc:
+            if getattr(exc, "error_code", None) == "VOLUME_PATH_NOT_ALLOWED":
+                message = (
+                    "Local file operations are restricted to paths within the configured staging_allowed_local_path"
+                    if paths is not None
+                    else "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
+                )
+                raise ProgrammingError(message) from exc
             os_code = getattr(exc, "local_os_error", None)
             if os_code is not None:
                 local_path = getattr(exc, "local_path", None)
