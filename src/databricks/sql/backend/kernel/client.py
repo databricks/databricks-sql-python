@@ -33,7 +33,6 @@ from typing import (
     Optional,
     Set,
     TYPE_CHECKING,
-    Tuple,
     Union,
 )
 
@@ -392,8 +391,8 @@ class KernelDatabricksClient(DatabricksClient):
         # Guarded by its own lock — cancel can race execute teardown.
         self._sync_cancellers: Dict[int, Any] = {}
         self._sync_cancellers_lock = threading.RLock()
-        # Retain the mutable owner until its transfer completes; dropping it cancels the result.
-        self._volume_handles: Dict[str, Tuple[Any, Any]] = {}
+        # Volume transfers remain cancellable after synchronous SQL execution returns.
+        self._volume_handles: Dict[str, Any] = {}
 
     # ── Session lifecycle ──────────────────────────────────────────
 
@@ -639,8 +638,7 @@ class KernelDatabricksClient(DatabricksClient):
                 if executed.is_volume_operation:
                     with self._sync_cancellers_lock:
                         self._volume_handles[command_id.guid] = (
-                            stmt,
-                            self._sync_cancellers.get(id(cursor)),
+                            self._sync_cancellers.get(id(cursor))
                         )
                 # Execute succeeded: the kernel now owns the statement
                 # lifecycle. It auto-closes the server statement when the
@@ -722,8 +720,7 @@ class KernelDatabricksClient(DatabricksClient):
 
     def cancel_command(self, command_id: CommandId) -> None:
         with self._sync_cancellers_lock:
-            volume = self._volume_handles.get(command_id.guid)
-        handle = volume[1] if volume is not None else None
+            handle = self._volume_handles.get(command_id.guid)
         if handle is None:
             with self._async_handles_lock:
                 handle = self._async_handles.get(command_id.guid)
