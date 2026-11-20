@@ -193,6 +193,15 @@ class Connection:
                 decision. This is an intentional divergence from the
                 Thrift/SEA paths, where an explicit ``True`` can still
                 be suppressed by the feature flag.
+
+                Kernel overrides: _port sends the connection to that port
+                (the default 443 adds nothing; a falsy _port means the default). A port
+                embedded in server_hostname wins over a differing _port, with a warning.
+                _connection_uri (https://host[:port]/path?query)
+                sets host, port, path and query, as on Thrift, and wins over _port.
+                With OAuth, _connection_uri must have the same origin as
+                server_hostname. With OAuth and a non-default _port, the token
+                exchange goes to the same host:port, unlike Thrift.
             :param enable_geospatial_support: `bool`, optional (default is False)
                 Kernel backend only. Controls the public representation of
                 ``GEOMETRY`` and ``GEOGRAPHY`` result values. ``True`` returns

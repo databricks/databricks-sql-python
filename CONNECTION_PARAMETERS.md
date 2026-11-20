@@ -73,8 +73,8 @@ to change without notice.
 | ----------------- | ----- | :----: | :----: | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `server_hostname` | `str` |   ✅   |   ✅   | — (required)  | Workspace hostname, e.g. `dbc-12345.cloud.databricks.com`.                                                              |
 | `http_path`       | `str` |   ✅   |   ✅   | — (required)  | Thrift accepts a SQL-warehouse path **or** an all-purpose-cluster path; Kernel requires a warehouse/endpoint path.      |
-| `_port`           | `int` |   ✅   |   —    | `443`         | TCP port (advanced). Not threaded to the kernel; it derives host/port from `server_hostname` + `http_path`.             |
-| `_connection_uri` | `str` |   ✅   |   —    | `None`        | Thrift-only internal override of `server_hostname`/`http_path`. No kernel equivalent.                                   |
+| `_port`           | `int` |   ✅   |   ✅   | `443`         | TCP port (advanced). On Kernel a falsy value means the default, and a port embedded in `server_hostname` wins over a differing `_port` (with a warning). |
+| `_connection_uri` | `str` |   ✅   |   ✅   | `None`        | Overrides `server_hostname`, `_port` and `http_path` on both, and wins over `_port`. On Kernel with OAuth, the URI origin must match `server_hostname`, and OAuth uses the same host:port as the connection (Thrift keeps OAuth on the bare host). An `access_token` that is exchanged counts as OAuth here: a JWT from an issuer other than `server_hostname`, or any token with `identity_federation_client_id`. |
 | `http_headers`    | `List[Tuple[str, str]]` | ✅ | ⚠️ | `None` | Extra headers sent on requests. Kernel filters `Authorization` and `x-databricks-org-id` because it manages them itself; other headers are forwarded. |
 | `user_agent_entry`| `str` |   ✅   |   ✅   | `None`        | Custom tag folded into the composed `User-Agent` on both. (`_user_agent_entry` is a deprecated alias that warns.)       |
 
