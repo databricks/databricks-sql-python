@@ -1286,8 +1286,10 @@ class Cursor:
         staging_allowed_local_path: Union[None, str, List[str]],
         input_stream: Optional[BinaryIO] = None,
     ):
-        """Complete staging through the result set or the HTTP instruction handler.
+        """Run the file transfer for a staging (Volume) statement.
 
+        A result set that can transfer by itself does so (kernel backend).
+        Otherwise fetch the instruction row and send the HTTP request here.
         Local files must be within staging_allowed_local_path.
         """
 

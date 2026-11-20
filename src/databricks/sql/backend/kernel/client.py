@@ -391,7 +391,8 @@ class KernelDatabricksClient(DatabricksClient):
         # Guarded by its own lock — cancel can race execute teardown.
         self._sync_cancellers: Dict[int, Any] = {}
         self._sync_cancellers_lock = threading.RLock()
-        # Volume transfers remain cancellable after synchronous SQL execution returns.
+        # Cancellers for synchronous Volume statements, kept until the transfer
+        # ends so cursor.cancel() can stop it.
         self._volume_handles: Dict[str, Any] = {}
 
     # ── Session lifecycle ──────────────────────────────────────────
