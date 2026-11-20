@@ -526,8 +526,6 @@ class KernelDatabricksClient(DatabricksClient):
     def close_session(self, session_id: SessionId) -> None:
         if self._kernel_session is None:
             return
-        with self._sync_cancellers_lock:
-            self._volume_handles.clear()
         # Close any tracked async handles first so they fire their
         # server-side CloseStatement before the session goes away.
         with self._async_handles_lock:
@@ -637,8 +635,8 @@ class KernelDatabricksClient(DatabricksClient):
                     # Canceller is best-effort; never block execute on it.
                     pass
                 executed = stmt.execute()
+                command_id = CommandId.from_sea_statement_id(executed.statement_id)
                 if executed.is_volume_operation:
-                    command_id = CommandId.from_sea_statement_id(executed.statement_id)
                     with self._sync_cancellers_lock:
                         self._volume_handles[command_id.guid] = (
                             stmt,
@@ -693,7 +691,6 @@ class KernelDatabricksClient(DatabricksClient):
                 except Exception:
                     pass
 
-        command_id = CommandId.from_sea_statement_id(executed.statement_id)
         # Surface the affected-row count for DML (INSERT/UPDATE/DELETE/
         # MERGE) as ``cursor.rowcount`` instead of the hardcoded ``-1``.
         # ``num_modified_rows`` is ``None`` for SELECT (and warehouses

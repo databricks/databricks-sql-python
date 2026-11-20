@@ -909,6 +909,7 @@ def test_execute_command_forwards_parameters_to_bind_param():
     stmt = MagicMock()
     stmt.bind_param = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -957,6 +958,7 @@ def test_execute_command_forwards_query_tags():
     stmt.set_sql = MagicMock()
     stmt.set_query_tags = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -991,6 +993,7 @@ def test_execute_command_forwards_row_limit(row_limit):
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -1121,6 +1124,7 @@ def test_sync_execute_does_not_close_statement_on_success():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -1422,26 +1426,25 @@ def test_get_execution_result_uses_retained_owning_handle_first(
     assert cid.guid in c._async_result_stream_started
     assert rs.is_staging_operation is is_volume
 
-    if is_volume:
-        assert not c._volume_handles
-        if volume_completed:
-            rs.complete_staging_operation(["/allowed"])
-            fake_stream.complete_volume_operation.assert_called_once_with(
-                ["/allowed"], input_bytes=None
-            )
-            assert rs.fetchall() == []
-            assert c._async_handles[cid.guid] is handle
-
-        cancelled_at_stream_close = []
-        fake_stream.close.side_effect = lambda: cancelled_at_stream_close.append(
-            handle.cancel.called
+    assert not c._volume_handles
+    if volume_completed:
+        rs.complete_staging_operation(["/allowed"])
+        fake_stream.complete_volume_operation.assert_called_once_with(
+            ["/allowed"], False, input_bytes=None
         )
-        rs.close()
-        assert cancelled_at_stream_close == [not volume_completed]
-        assert handle.cancel.call_count == int(not volume_completed)
-        fake_stream.close.assert_called_once_with()
-        handle.close.assert_called_once_with()
-        assert cid.guid not in c._async_handles
+        assert rs.fetchall() == []
+        assert c._async_handles[cid.guid] is handle
+
+    cancelled_at_stream_close = []
+    fake_stream.close.side_effect = lambda: cancelled_at_stream_close.append(
+        handle.cancel.called
+    )
+    rs.close()
+    assert cancelled_at_stream_close == [is_volume and not volume_completed]
+    assert handle.cancel.call_count == int(is_volume and not volume_completed)
+    fake_stream.close.assert_called_once_with()
+    handle.close.assert_called_once_with()
+    assert cid.guid not in c._async_handles
 
 
 def test_get_execution_result_attaches_by_id_when_no_retained_handle():
@@ -1990,6 +1993,7 @@ def test_sync_execute_sets_active_command_id():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-abc",
         num_modified_rows=None,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -2098,6 +2102,7 @@ def test_sync_execute_forwards_num_modified_rows_to_rowcount():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="dml-1",
         num_modified_rows=42,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -2132,6 +2137,7 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="select-1",
         num_modified_rows=None,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
