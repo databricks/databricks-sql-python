@@ -1202,7 +1202,7 @@ _P = "/sql/1.0/warehouses/abc"
 @pytest.mark.parametrize(
     "server, hpath, kwargs, expected",
     [
-        # AC-P1: _port folds into host:port; 443 adds nothing; IPv6 is bracketed.
+        # AC-P1: _port folds into host:port; 443 adds nothing; a bracketed IPv6 keeps its brackets.
         ("h.io", _P, {}, ("h.io", _P)),
         ("h.io", _P, {"_port": 8443}, ("h.io:8443", _P)),
         ("h.io", _P, {"_port": "8443"}, ("h.io:8443", _P)),
@@ -1224,8 +1224,9 @@ _P = "/sql/1.0/warehouses/abc"
         ("h.io/x", _P, {}, ("h.io/x", _P)),
         ("https://h.io:8443/", _P, {"_port": 8443}, ("https://h.io:8443/", _P)),
         ("https://h.io", _P, {"_port": 8443}, ("https://h.io:8443", _P)),
+        # Without _port a bare IPv6 host passes through, as on main; with _port it is
+        # rejected (see test_kernel_host_and_path_stdlib_edges_reject). Bracket it.
         ("::1", _P, {}, ("::1", _P)),
-        ("::1", _P, {"_port": 8443}, ("[::1]:8443", _P)),
         ("[::1]", _P, {"_port": 8443}, ("[::1]:8443", _P)),
         ("h.io:8443", _P, {}, ("h.io:8443", _P)),
         ("h.io:8443", _P, {"_port": 8443}, ("h.io:8443", _P)),
@@ -1358,7 +1359,6 @@ def test_embedded_port_equal_to_explicit_port_does_not_warn(caplog):
         ("user@h", {}, ("user@h", _P)),
         ("user@h", {"_port": 8443}, ("user@h:8443", _P)),
         ("[::1", {}, ("[::1", _P)),
-        ("::1", {"_port": 443}, ("::1", _P)),
         ("H.Example.COM", {}, ("H.Example.COM", _P)),
         ("H.Example.COM", {"_port": 8443}, ("H.Example.COM:8443", _P)),
         ("h:8443/", {"_port": 8443}, ("h:8443/", _P)),
@@ -1376,6 +1376,10 @@ def test_kernel_host_and_path_stdlib_edges_accept(server, kwargs, expected):
         # Trailing ':' is an empty port, which is malformed with an explicit _port.
         ("h:", {"_port": 8443}, "malformed"),
         ("[::1", {"_port": 8443}, "malformed"),
+        # Bare IPv6 is not supported with _port: urlsplit reads it as a malformed port.
+        ("::1", {"_port": 8443}, "malformed"),
+        ("::1", {"_port": 443}, "malformed"),
+        ("2001:db8::1", {"_port": 8443}, "malformed"),
         ("h:abc", {"_port": 8443}, "malformed"),
         # A colon in userinfo is not a port, but a credential-bearing host is never folded.
         ("user:pass@h", {"_port": 8443}, "malformed"),

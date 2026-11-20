@@ -1,4 +1,3 @@
-import ipaddress
 import logging
 import re
 from functools import cached_property
@@ -94,26 +93,13 @@ def _redact(value: str) -> str:
     return f"{scheme}{sep}{host}"
 
 
-def _is_bare_ipv6(text: str) -> bool:
-    """True for an unbracketed IPv6 literal such as ``::1``, which urlsplit reads as a port."""
-    # A bare IPv6 literal has at least two colons and no brackets. Checking that first skips
-    # the costly ValueError that ip_address raises for names and host:port strings.
-    if text.count(":") < 2 or text.startswith("["):
-        return False
-    try:
-        return ipaddress.ip_address(text).version == 6
-    except ValueError:
-        return False
-
-
 def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
     """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``. ``name`` keeps the
-    input's case and any userinfo, and a bare IPv6 literal gets its brackets.
+    input's case and any userinfo. IPv6 literals must be bracketed: urlsplit reads a bare
+    ``::1`` as a malformed port, so it is rejected.
     """
     prefix, sep, rest = host.rstrip("/").rpartition("://")
     prefix += sep
-    if _is_bare_ipv6(rest):
-        return prefix, f"[{rest}]", None
     # urlsplit reads a trailing ':' as an empty port; with an explicit _port that is an error.
     if rest.endswith(":"):
         raise ValueError(
