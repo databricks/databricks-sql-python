@@ -73,11 +73,16 @@ class ClientContext:
         # HTTP client configuration
         self.ssl_options = ssl_options
         self.socket_timeout = socket_timeout
-        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 5
+        # Defaults align with the connector-wide retry defaults used by the
+        # Thrift and SEA backends (30 attempts / 900.0s), which are anchored to
+        # the ODBC/JDBC drivers. UnifiedHttpClient (used by CloudFetch downloads)
+        # builds its retry policy from this context, so diverging here cut
+        # cloudfetch retries off far too early (see issue #709).
+        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 30
         self.retry_delay_min = retry_delay_min or 1.0
         self.retry_delay_max = retry_delay_max or 10.0
         self.retry_stop_after_attempts_duration = (
-            retry_stop_after_attempts_duration or 300.0
+            retry_stop_after_attempts_duration or 900.0
         )
         self.retry_delay_default = retry_delay_default or 5.0
         self.retry_dangerous_codes = retry_dangerous_codes or []
