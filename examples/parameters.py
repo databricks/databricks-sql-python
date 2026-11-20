@@ -107,9 +107,11 @@ ex4_p2 = TimestampNTZParameter(value=ex4_p1)
 # will infer the Decimal to be a DECIMAL and will preserve its current precision and scale.
 ex4_p3 = Decimal("12.3456")
 
-# For this parameter value, we bind a decimal with custom scale and precision
-# that will result in the decimal being truncated.
-ex4_p4 = DecimalParameter(value=ex4_p3, scale=4, precision=2)
+# For this parameter value, we bind a decimal with custom precision and scale,
+# i.e. DECIMAL(precision, scale). The declared scale is a minimum: if the value has
+# more fractional digits, the bound type is widened so no digits are lost. Here
+# DECIMAL(10,2) is widened to DECIMAL(12,4) and 12.3456 round-trips unchanged.
+ex4_p4 = DecimalParameter(value=ex4_p3, precision=10, scale=2)
 
 EX4_QUERY = "SELECT ? `p1`, ? `p2`, ? `p3`, ? `p4`"
 EX4_PARAMS = [ex4_p1, ex4_p2, ex4_p3, ex4_p4]
