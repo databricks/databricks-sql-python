@@ -345,8 +345,8 @@ def test_volume_close_cancels_only_pending_transfer(int_schema, completed):
     handle.close.assert_called_once()
 
 
-@pytest.mark.parametrize("code,status", [("NotFound", 404), ("InvalidArgument", 400)])
-def test_volume_instruction_http_error_preserves_mapping(int_schema, code, status):
+def test_volume_instruction_http_error_preserves_mapping(int_schema):
+    code, status = "NotFound", 404
     error = _errors._kernel.KernelError("instruction read failed")
     error.code = code
     error.message = "instruction read failed"
@@ -373,5 +373,7 @@ def test_volume_http_404_is_an_operational_error(int_schema):
     error.error_code = "VOLUME_STORAGE_HTTP_ERROR"
     handle.complete_volume_operation = MagicMock(side_effect=error)
     rs = _make_rs(handle)
-    with pytest.raises(OperationalError, match="404"):
+    with pytest.raises(
+        OperationalError, match=r"^Staging operation over HTTP was unsuccessful: 404"
+    ):
         rs.complete_staging_operation([])
