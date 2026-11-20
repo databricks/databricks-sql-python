@@ -40,6 +40,7 @@ from databricks.sql.exc import (
     ServerOperationError,
 )
 
+from tests.e2e.common.streaming_put_tests import PySQLStreamingPutTestSuiteMixin
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 # These tests must run against the REAL databricks-sql-kernel wheel and
@@ -971,7 +972,7 @@ def test_server_cancel_maps_to_operational_error(conn):
         cur.close()
 
 
-class TestKernelUCVolume(PySQLUCVolumeTestSuiteMixin):
+class TestKernelUCVolume(PySQLUCVolumeTestSuiteMixin, PySQLStreamingPutTestSuiteMixin):
     @pytest.fixture(autouse=True)
     def setup_kernel_connection(self, kernel_conn_params):
         self.params = kernel_conn_params
