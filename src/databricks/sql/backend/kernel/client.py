@@ -359,7 +359,6 @@ class KernelDatabricksClient(DatabricksClient):
         # The kernel binding owns type and range validation.
         self._request_timeout_secs = kwargs.get("request_timeout_secs")
         self._max_connections = kwargs.get("max_connections")
-        self._http2_kwargs = _kernel_http2_kwargs(kwargs.get("enable_http2"))
         self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._max_download_threads = kwargs.get("max_download_threads", 16)
         if (
@@ -368,6 +367,7 @@ class KernelDatabricksClient(DatabricksClient):
             or self._max_download_threads <= 0
         ):
             raise ValueError("max_download_threads must be a positive integer")
+        self._http2_kwargs = _kernel_http2_kwargs(kwargs.get("enable_http2"))
         # Opt-in native GEOMETRY / GEOGRAPHY support. True requests
         # the canonical Arrow struct and surfaces as ``{"srid": int, "wkb":
         # bytes}`` through pyarrow; False requests WKT / EWKT strings. This is
