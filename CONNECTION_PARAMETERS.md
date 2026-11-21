@@ -241,11 +241,6 @@ are forwarded when supported by the installed kernel binding.
   `force_enable_telemetry`, and an omitted `enable_telemetry` or circuit-breaker
   setting uses the kernel's default.
 
-> All kernel-path behavior reflects the current **early-access** surface and is
-> subject to change. Generated against connector version `4.5.0`; the source of
-> truth is `Connection.__init__` (`src/databricks/sql/client.py`) and the
-> per-backend clients under `src/databricks/sql/backend/`.
-
 ### Volume file paths
 
 With `use_kernel=True`, SQL `PUT`, `GET` and `REMOVE` complete their file
@@ -254,3 +249,8 @@ operations before `execute()` or `get_async_execution_result()` returns.
 `staging_allowed_local_path`; `REMOVE` needs no local root.
 `execute(input_stream=stream)` reads the stream only when requested by the server.
 Completed transfers return no instruction rows.
+
+> All kernel-path behavior reflects the current **early-access** surface and is
+> subject to change. Generated against connector version `4.5.0`; the source of
+> truth is `Connection.__init__` (`src/databricks/sql/client.py`) and the
+> per-backend clients under `src/databricks/sql/backend/`.

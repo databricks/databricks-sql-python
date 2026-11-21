@@ -300,7 +300,7 @@ class KernelResultSet(ResultSet):
             self.status = CommandState.CLOSED
             return
         backend = cast("KernelDatabricksClient", self.backend)
-        if self.is_staging_operation and self.status != CommandState.SUCCEEDED:
+        if self.is_staging_operation and not self._exhausted:
             # Cancel first: close() below waits for a running transfer to finish.
             try:
                 backend.cancel_command(self.command_id)
