@@ -21,6 +21,7 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import select
@@ -35,10 +36,12 @@ import databricks.sql as sql
 from databricks.sql.backend.types import CommandState
 from databricks.sql.exc import (
     DatabaseError,
-    NotSupportedError,
     OperationalError,
     ServerOperationError,
 )
+
+from tests.e2e.common.streaming_put_tests import PySQLStreamingPutTestSuiteMixin
+from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 # These tests must run against the REAL databricks-sql-kernel wheel and
 # must NOT silently pass when it's absent or shadowed. We distinguish
@@ -863,30 +866,6 @@ def test_scientific_notation_decimal_parameter_binds(conn):
         assert int(cur.fetchall()[0][0]) == 100
 
 
-# ── Staging / volume — fail loud, not silent no-op ────────────────
-
-
-def test_staging_put_raises_not_supported(conn):
-    """A PUT (volume/staging) statement fails loud on the kernel path
-    rather than silently no-opping (which would make ETL ingest
-    stale/missing data). (CUJ-gap audit)"""
-    with conn.cursor() as cur:
-        with pytest.raises(NotSupportedError, match="staging"):
-            cur.execute("PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'")
-
-
-def test_comment_prefixed_staging_put_raises_not_supported(conn):
-    """A comment-prefixed staging op (common in ETL scripts) must also
-    fail loud — the leading-verb detection strips SQL comments first, so
-    it can't slip past into the silent-no-op bug (PR #825 review #1)."""
-    with conn.cursor() as cur:
-        with pytest.raises(NotSupportedError, match="staging"):
-            cur.execute(
-                "-- upload the daily extract\n"
-                "PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'"
-            )
-
-
 # ── Error fidelity — diagnostic-info reaches .context ─────────────
 
 
@@ -991,3 +970,14 @@ def test_server_cancel_maps_to_operational_error(conn):
     finally:
         t.join()
         cur.close()
+
+
+class TestKernelUCVolume(PySQLUCVolumeTestSuiteMixin, PySQLStreamingPutTestSuiteMixin):
+    @pytest.fixture(autouse=True)
+    def setup_kernel_connection(self, kernel_conn_params):
+        self.params = kernel_conn_params
+
+    @contextmanager
+    def connection(self, extra_params=()):
+        with sql.connect(**dict(self.params, **dict(extra_params))) as connection:
+            yield connection

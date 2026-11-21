@@ -17,6 +17,7 @@ import sys
 import threading
 import types
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -81,6 +82,9 @@ class _FakeKernelError(Exception):
 _fake_kernel_module = types.ModuleType("databricks_sql_kernel")
 _fake_kernel_module.KernelError = _FakeKernelError  # type: ignore[attr-defined]
 _fake_kernel_module.Session = MagicMock()  # type: ignore[attr-defined]
+_fake_kernel_module.VolumeCompletion = Enum(  # type: ignore[attr-defined]
+    "VolumeCompletion", ["NotVolume", "NeedsInputStream", "Completed"]
+)
 sys.modules.setdefault("databricks_sql_kernel", _fake_kernel_module)
 
 
@@ -905,6 +909,7 @@ def test_execute_command_forwards_parameters_to_bind_param():
     stmt = MagicMock()
     stmt.bind_param = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -953,6 +958,7 @@ def test_execute_command_forwards_query_tags():
     stmt.set_sql = MagicMock()
     stmt.set_query_tags = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -987,6 +993,7 @@ def test_execute_command_forwards_row_limit(row_limit):
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -1007,72 +1014,6 @@ def test_execute_command_forwards_row_limit(row_limit):
     )
 
     stmt.set_row_limit.assert_called_once_with(row_limit)
-
-
-# ---------------------------------------------------------------------------
-# Staging / volume operations — fail loud (not silently no-op)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        "PUT '/local/f.csv' INTO '/Volumes/c/s/v/f.csv'",
-        "  put '/local/f' into '/Volumes/...'",  # leading ws + lowercase
-        "GET '/Volumes/c/s/v/f' TO '/local/f'",
-        "REMOVE '/Volumes/c/s/v/f'",
-    ],
-)
-def test_staging_operation_raises_not_supported(operation):
-    """Volume/staging PUT/GET/REMOVE must FAIL LOUD on the kernel path
-    (the kernel can't perform the presigned-URL transfer; silently
-    no-opping would make ETL ingest stale/missing data)."""
-    c = _make_client()
-    c._kernel_session = MagicMock()
-    cursor = MagicMock()
-    cursor.arraysize = 100
-    cursor.buffer_size_bytes = 1024
-
-    with pytest.raises(NotSupportedError, match="staging"):
-        c.execute_command(
-            operation=operation,
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            lz4_compression=False,
-            cursor=cursor,
-            use_cloud_fetch=False,
-            parameters=[],
-            async_op=False,
-            enforce_embedded_schema_correctness=False,
-        )
-
-
-@pytest.mark.parametrize(
-    "operation, is_staging",
-    [
-        ("PUT '/f' INTO '/v'", True),
-        ("get '/v' to '/f'", True),
-        ("REMOVE '/v'", True),
-        # Comment-prefixed staging ops MUST still be caught — otherwise
-        # they slip into the silent-no-op bug this guard exists to close
-        # (regression: review #1 on PR #825). ETL scripts commonly
-        # prefix statements with comments.
-        ("-- upload the file\nPUT '/f' INTO '/v'", True),
-        ("/* staging */ PUT '/f' INTO '/v'", True),
-        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", True),  # mixed, multiple
-        ("   \n\t PUT '/f' INTO '/v'", True),  # leading whitespace only
-        ("SELECT 'GET' AS x", False),  # word appears but not leading verb
-        ("SELECT * FROM puts", False),
-        ("-- PUT in a comment\nSELECT 1", False),  # verb only in comment
-        ("/* PUT */ SELECT 1", False),
-        ("INSERT INTO t VALUES (1)", False),
-        ("", False),
-        ("-- just a comment", False),  # comment only, no statement
-    ],
-)
-def test_is_staging_statement(operation, is_staging):
-    assert kernel_client._is_staging_statement(operation) is is_staging
 
 
 # ---------------------------------------------------------------------------
@@ -1143,6 +1084,7 @@ def test_execute_command_registers_and_clears_sync_canceller():
             )
         return MagicMock(
             statement_id="stmt-id",
+            is_volume_operation=False,
             arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
         )
 
@@ -1182,6 +1124,7 @@ def test_sync_execute_does_not_close_statement_on_success():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-id",
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
     )
@@ -1435,13 +1378,28 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
-@pytest.mark.parametrize("count", [7, 0, None])
-def test_get_execution_result_uses_retained_owning_handle_first(count):
+@pytest.mark.parametrize(
+    "count,is_volume,volume_completed",
+    [
+        pytest.param(7, False, False, id="dml"),
+        pytest.param(0, False, False, id="zero-row-dml"),
+        pytest.param(None, False, False, id="select"),
+        pytest.param(None, True, False, id="pending-volume"),
+        pytest.param(None, True, True, id="completed-volume"),
+    ],
+)
+def test_get_execution_result_uses_retained_owning_handle_first(
+    count, is_volume, volume_completed
+):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
     c._kernel_session = MagicMock()
     fake_stream = MagicMock()
+    fake_stream.is_volume_operation = is_volume
+    fake_stream.complete_volume_operation.return_value = (
+        kernel_client._kernel.VolumeCompletion.Completed
+    )
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
     del handle.num_modified_rows
@@ -1466,6 +1424,27 @@ def test_get_execution_result_uses_retained_owning_handle_first(count):
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
+    assert rs.is_staging_operation is is_volume
+
+    assert not c._volume_cancellers
+    if volume_completed:
+        rs.complete_staging_operation(["/allowed"])
+        fake_stream.complete_volume_operation.assert_called_once_with(
+            ["/allowed"], remove_not_found_is_success=False, input_bytes=None
+        )
+        assert rs.fetchall() == []
+        assert c._async_handles[cid.guid] is handle
+
+    cancelled_at_stream_close = []
+    fake_stream.close.side_effect = lambda: cancelled_at_stream_close.append(
+        handle.cancel.called
+    )
+    rs.close()
+    assert cancelled_at_stream_close == [is_volume and not volume_completed]
+    assert handle.cancel.call_count == int(is_volume and not volume_completed)
+    fake_stream.close.assert_called_once_with()
+    handle.close.assert_called_once_with()
+    assert cid.guid not in c._async_handles
 
 
 def test_get_execution_result_attaches_by_id_when_no_retained_handle():
@@ -2014,6 +1993,7 @@ def test_sync_execute_sets_active_command_id():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="stmt-abc",
         num_modified_rows=None,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -2122,6 +2102,7 @@ def test_sync_execute_forwards_num_modified_rows_to_rowcount():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="dml-1",
         num_modified_rows=42,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -2156,6 +2137,7 @@ def test_sync_execute_leaves_rowcount_default_when_num_modified_rows_none():
 
     stmt = MagicMock()
     stmt.execute.return_value = MagicMock(
+        is_volume_operation=False,
         statement_id="select-1",
         num_modified_rows=None,
         arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -2846,3 +2828,34 @@ class TestKernelHttpHeadersForwarding:
             monkeypatch, [("Authorization", "Bearer x"), ("x-databricks-org-id", "1")]
         )
         assert "http_headers" not in captured
+
+
+@pytest.mark.parametrize("has_canceller", [False, True])
+def test_sync_volume_canceller_survives_until_completion(has_canceller):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    stmt = c._kernel_session.statement.return_value
+    if not has_canceller:
+        stmt.canceller.side_effect = RuntimeError("canceller unavailable")
+    stmt.execute.return_value = MagicMock(
+        statement_id="volume-id",
+        is_volume_operation=True,
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    result = c.execute_command(
+        operation="/* command */ PUT '/local/f' INTO '/Volumes/c/s/v/f'",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=MagicMock(arraysize=100, buffer_size_bytes=1024),
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+    assert result.is_staging_operation
+    c.cancel_command(result.command_id)
+    assert stmt.canceller.return_value.cancel.called is has_canceller
+    c.finish_volume_operation(result.command_id)
+    assert not c._volume_cancellers

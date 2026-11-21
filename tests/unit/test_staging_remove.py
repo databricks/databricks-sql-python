@@ -3,6 +3,7 @@ from unittest.mock import patch, Mock, MagicMock
 import pytest
 
 import databricks.sql.client as client
+from databricks.sql.result_set import ResultSet
 
 
 class TestStagingRemove:
@@ -19,7 +20,7 @@ class TestStagingRemove:
 
     def _setup_mock_remove_response(self, cursor):
         """Set up a mock staging REMOVE response with no localFile."""
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=ResultSet)
         mock_result_set.is_staging_operation = True
         cursor.backend.execute_command.return_value = mock_result_set
 
@@ -63,7 +64,7 @@ class TestStagingRemove:
     def test_get_still_requires_staging_allowed_local_path(self, cursor):
         """GET must still fail when staging_allowed_local_path is None."""
 
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=ResultSet)
         mock_result_set.is_staging_operation = True
         mock_row = Mock()
         mock_row.operation = "GET"
@@ -82,7 +83,7 @@ class TestStagingRemove:
     def test_unsupported_operation_still_errors(self, cursor):
         """An unknown operation must still raise, even with a path configured."""
 
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=ResultSet)
         mock_result_set.is_staging_operation = True
         mock_row = Mock()
         mock_row.operation = "COPY"
