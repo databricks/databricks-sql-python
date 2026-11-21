@@ -1426,7 +1426,7 @@ def test_get_execution_result_uses_retained_owning_handle_first(
     assert cid.guid in c._async_result_stream_started
     assert rs.is_staging_operation is is_volume
 
-    assert not c._volume_handles
+    assert not c._volume_cancellers
     if volume_completed:
         rs.complete_staging_operation(["/allowed"])
         fake_stream.complete_volume_operation.assert_called_once_with(
@@ -2858,4 +2858,4 @@ def test_sync_volume_canceller_survives_until_completion(has_canceller):
     c.cancel_command(result.command_id)
     assert stmt.canceller.return_value.cancel.called is has_canceller
     c.finish_volume_operation(result.command_id)
-    assert not c._volume_handles
+    assert not c._volume_cancellers

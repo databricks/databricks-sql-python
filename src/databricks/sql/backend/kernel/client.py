@@ -393,7 +393,7 @@ class KernelDatabricksClient(DatabricksClient):
         self._sync_cancellers_lock = threading.RLock()
         # Cancellers for synchronous Volume statements, kept until the transfer
         # ends so cursor.cancel() can stop it.
-        self._volume_handles: Dict[str, Any] = {}
+        self._volume_cancellers: Dict[str, Any] = {}
 
     # ── Session lifecycle ──────────────────────────────────────────
 
@@ -638,7 +638,7 @@ class KernelDatabricksClient(DatabricksClient):
                 command_id = CommandId.from_sea_statement_id(executed.statement_id)
                 if executed.is_volume_operation:
                     with self._sync_cancellers_lock:
-                        self._volume_handles[command_id.guid] = (
+                        self._volume_cancellers[command_id.guid] = (
                             self._sync_cancellers.get(id(cursor))
                         )
                 # Execute succeeded: the kernel now owns the statement
@@ -717,11 +717,11 @@ class KernelDatabricksClient(DatabricksClient):
 
     def finish_volume_operation(self, command_id: CommandId) -> None:
         with self._sync_cancellers_lock:
-            self._volume_handles.pop(command_id.guid, None)
+            self._volume_cancellers.pop(command_id.guid, None)
 
     def cancel_command(self, command_id: CommandId) -> None:
         with self._sync_cancellers_lock:
-            handle = self._volume_handles.get(command_id.guid)
+            handle = self._volume_cancellers.get(command_id.guid)
         if handle is None:
             with self._async_handles_lock:
                 handle = self._async_handles.get(command_id.guid)
@@ -776,7 +776,7 @@ class KernelDatabricksClient(DatabricksClient):
 
     def close_command(self, command_id: CommandId) -> None:
         with self._sync_cancellers_lock:
-            self._volume_handles.pop(command_id.guid, None)
+            self._volume_cancellers.pop(command_id.guid, None)
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
             stmt = self._async_statements.pop(command_id.guid, None)

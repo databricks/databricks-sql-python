@@ -323,26 +323,30 @@ def test_failed_volume_consumes_instructions_and_preserves_os_error(int_schema):
     rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
 
 
-@pytest.mark.parametrize("completed", [False, True])
-def test_volume_close_cancels_only_pending_transfer(int_schema, completed):
+@pytest.mark.parametrize("outcome", ["pending", "completed", "failed"])
+def test_volume_close_cancels_only_pending_transfer(int_schema, outcome):
     handle = _FakeKernelHandle(int_schema, [])
     handle.is_volume_operation = True
     rs = _make_rs(handle)
-    if completed:
+    if outcome == "completed":
         handle.complete_volume_operation = MagicMock(
             return_value=_errors._kernel.VolumeCompletion.Completed
         )
         rs.complete_staging_operation([])
+    elif outcome == "failed":
+        handle.complete_volume_operation = MagicMock(
+            side_effect=RuntimeError("transfer failed")
+        )
+        with pytest.raises(Exception):
+            rs.complete_staging_operation([])
 
-    def close_native():
-        if completed:
-            rs.backend.cancel_command.assert_not_called()
-        else:
-            rs.backend.cancel_command.assert_called_once_with(rs.command_id)
-
-    handle.close = MagicMock(side_effect=close_native)
+    handle.close = MagicMock()
     rs.close()
     handle.close.assert_called_once()
+    if outcome == "pending":
+        rs.backend.cancel_command.assert_called_once_with(rs.command_id)
+    else:
+        rs.backend.cancel_command.assert_not_called()
 
 
 def test_volume_instruction_http_error_preserves_mapping(int_schema):
