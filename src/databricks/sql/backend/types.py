@@ -97,26 +97,6 @@ class CommandState(Enum):
         else:
             return None
 
-    @classmethod
-    def from_sea_state(cls, state: str) -> Optional["CommandState"]:
-        """
-        Map SEA state string to CommandState enum.
-        Args:
-            state: SEA state string
-        Returns:
-            CommandState: The corresponding CommandState enum value
-        """
-        state_mapping = {
-            "PENDING": cls.PENDING,
-            "RUNNING": cls.RUNNING,
-            "SUCCEEDED": cls.SUCCEEDED,
-            "FAILED": cls.FAILED,
-            "CLOSED": cls.CLOSED,
-            "CANCELED": cls.CANCELLED,
-        }
-
-        return state_mapping.get(state, None)
-
 
 class BackendType(Enum):
     """

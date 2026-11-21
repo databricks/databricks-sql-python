@@ -38,7 +38,7 @@ class TestSession:
         [
             ({}, "ThriftDatabricksClient"),
             ({"use_kernel": False}, "ThriftDatabricksClient"),
-            ({"use_sea": True}, "SeaDatabricksClient"),
+            ({"use_sea": False}, "ThriftDatabricksClient"),
         ],
     )
     @pytest.mark.parametrize("proxy_uri", [None, "http://proxy.example.com:8081"])
@@ -75,17 +75,24 @@ class TestSession:
             backend.return_value.close_session.assert_called_once()
             http_client.return_value.close.assert_called_once()
 
-    def test_conflicting_kernel_and_sea_flags_preserve_error(self):
+    def test_use_sea_rejected_before_any_setup(self):
         with patch(
-            f"{self.PACKAGE_NAME}.client.UnifiedHttpClient",
-            side_effect=AssertionError(
-                "Explicit kernel must not create a Python client"
-            ),
-        ) as http_client, pytest.raises(ValueError, match="mutually exclusive"):
-            databricks.sql.connect(
-                **self.DUMMY_CONNECTION_ARGS, use_kernel=True, use_sea=True
-            )
+            f"{self.PACKAGE_NAME}.client.UnifiedHttpClient"
+        ) as http_client, patch(
+            f"{self.PACKAGE_NAME}.session.ThriftDatabricksClient"
+        ) as thrift:
+            with pytest.raises(ValueError, match="use_kernel=True"):
+                databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, use_sea=True)
         http_client.assert_not_called()
+        thrift.assert_not_called()
+
+    def test_rejected_connect_finalizes_quietly(self):
+        unraisable = []
+        with patch("sys.unraisablehook", unraisable.append):
+            with pytest.raises(ValueError):
+                databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, use_sea=True)
+            gc.collect()
+        assert unraisable == []
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
@@ -1107,15 +1114,6 @@ class TestReydenThriftFallback:
         with pytest.raises(DatabaseError) as excinfo:
             self._connect()
         assert not isinstance(excinfo.value, ReydenThriftUnsupportedError)
-
-    @patch("%s.session.SeaDatabricksClient" % PACKAGE)
-    def test_explicit_use_sea_not_recovered(self, mock_sea):
-        # An explicit backend choice is always honored — even the (contrived)
-        # case of SEA surfacing the marker must not trigger Thrift→kernel
-        # recovery.
-        mock_sea.return_value.open_session.side_effect = self._reject()
-        with pytest.raises(ReydenThriftUnsupportedError):
-            self._connect(use_sea=True)
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE)
     def test_kernel_retry_failure_chains_both_errors(self, mock_thrift):

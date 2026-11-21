@@ -49,31 +49,17 @@ def _mock_pool_method(method_name):
 
 
 class Client429ResponseMixin:
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_client_should_retry_automatically_when_getting_429(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_client_should_retry_automatically_when_getting_429(self):
+        with self.cursor() as cursor:
             for _ in range(10):
                 cursor.execute("SELECT 1")
                 rows = cursor.fetchall()
                 self.assertEqual(len(rows), 1)
                 self.assertEqual(rows[0][0], 1)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_client_should_not_retry_429_if_RateLimitRetry_is_0(self, extra_params):
+    def test_client_should_not_retry_429_if_RateLimitRetry_is_0(self):
         with pytest.raises(self.error_type) as cm:
-            extra_params = {**extra_params, **self.conf_to_disable_rate_limit_retries}
+            extra_params = {**self.conf_to_disable_rate_limit_retries}
             with self.cursor(extra_params) as cursor:
                 for _ in range(10):
                     cursor.execute("SELECT 1")
@@ -93,32 +79,14 @@ class Client429ResponseMixin:
 
 
 class Client503ResponseMixin:
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_wait_cluster_startup(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_wait_cluster_startup(self):
+        with self.cursor() as cursor:
             cursor.execute("SELECT 1")
             cursor.fetchall()
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def _test_retry_disabled_with_message(
-        self, error_msg_substring, exception_type, extra_params
-    ):
+    def _test_retry_disabled_with_message(self, error_msg_substring, exception_type):
         with pytest.raises(exception_type) as cm:
-            with self.connection(
-                self.conf_to_disable_temporarily_unavailable_retries, extra_params
-            ):
+            with self.connection(self.conf_to_disable_temporarily_unavailable_retries):
                 pass
         assert error_msg_substring in str(cm.exception)
 
@@ -250,14 +218,7 @@ class PySQLRetryTestsMixin:
         "enable_telemetry": False,
     }
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_urllib3_settings_are_honored(self, extra_params):
+    def test_retry_urllib3_settings_are_honored(self):
         """Databricks overrides some of urllib3's configuration. This tests confirms that what configuration
         we DON'T override is preserved in urllib3's internals
         """
@@ -277,32 +238,18 @@ class PySQLRetryTestsMixin:
         assert rp.read == 11
         assert rp.redirect == 12
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_oserror_retries(self, extra_params):
+    def test_oserror_retries(self):
         """If a network error occurs during make_request, the request is retried according to policy"""
         with _mock_pool_method("_validate_conn") as mock_validate_conn:
             mock_validate_conn.side_effect = OSError("Some arbitrary network error")
             with pytest.raises(MaxRetryError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
 
             assert mock_validate_conn.call_count == 6
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_max_count_not_exceeded(self, extra_params):
+    def test_retry_max_count_not_exceeded(self):
         """GIVEN the max_attempts_count is 5
         WHEN the server sends nothing but 429 responses
         THEN the connector issues six request (original plus five retries)
@@ -312,19 +259,12 @@ class PySQLRetryTestsMixin:
             status=429, headers={"Retry-After": "0"}
         ) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
             assert mock_obj.return_value.getresponse.call_count == 6
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_exponential_backoff(self, extra_params):
+    def test_retry_exponential_backoff(self):
         """GIVEN the retry policy is configured for reasonable exponential backoff
         WHEN the server sends nothing but 429 responses with retry-afters
         THEN the connector will use those retry-afters values as floor
@@ -337,7 +277,7 @@ class PySQLRetryTestsMixin:
             status=429, headers={"Retry-After": "8"}
         ) as mock_obj:
             with pytest.raises(RequestError) as cm:
-                extra_params = {**extra_params, **retry_policy}
+                extra_params = {**retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
 
@@ -354,33 +294,19 @@ class PySQLRetryTestsMixin:
             # Should be less than 26, but this is a safe margin for CI/CD slowness
             assert duration < 30
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_max_duration_not_exceeded(self, extra_params):
+    def test_retry_max_duration_not_exceeded(self):
         """GIVEN the max attempt duration of 10 seconds
         WHEN the server sends a Retry-After header of 60 seconds
         THEN the connector raises a MaxRetryDurationError
         """
         with mocked_server_response(status=429, headers={"Retry-After": "60"}):
             with pytest.raises(RequestError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
             assert isinstance(cm.value.args[1], MaxRetryDurationError)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_abort_non_recoverable_error(self, extra_params):
+    def test_retry_abort_non_recoverable_error(self):
         """GIVEN the server returns a code 501
         WHEN the connector receives this response
         THEN nothing is retried and an exception is raised
@@ -389,24 +315,17 @@ class PySQLRetryTestsMixin:
         # Code 501 is a Not Implemented error
         with mocked_server_response(status=501):
             with pytest.raises(RequestError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
                 assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_abort_unsafe_execute_statement_retry_condition(self, extra_params):
+    def test_retry_abort_unsafe_execute_statement_retry_condition(self):
         """GIVEN the server sends a code other than 429 or 503
         WHEN the connector sent an ExecuteStatement command
         THEN nothing is retried because it's idempotent
         """
-        extra_params = {**extra_params, **self._retry_policy}
+        extra_params = {**self._retry_policy}
         with self.connection(extra_params=extra_params) as conn:
             with conn.cursor() as cursor:
                 # Code 502 is a Bad Gateway, which we commonly see in production under heavy load
@@ -415,14 +334,7 @@ class PySQLRetryTestsMixin:
                         cursor.execute("Not a real query")
                         assert isinstance(cm.value.args[1], UnsafeToRetryError)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_dangerous_codes(self, extra_params):
+    def test_retry_dangerous_codes(self):
         """GIVEN the server sends a dangerous code and the user forced this to be retryable
         WHEN the connector sent an ExecuteStatement command
         THEN the command is retried
@@ -438,7 +350,7 @@ class PySQLRetryTestsMixin:
         }
 
         # Prove that these codes are not retried by default
-        extra_params = {**extra_params, **self._retry_policy}
+        extra_params = {**self._retry_policy}
         with self.connection(extra_params=extra_params) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
@@ -449,7 +361,7 @@ class PySQLRetryTestsMixin:
 
         # Prove that these codes are retried if forced by the user
         with self.connection(
-            extra_params={**extra_params, **self._retry_policy, **additional_settings}
+            extra_params={**self._retry_policy, **additional_settings}
         ) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
@@ -457,14 +369,7 @@ class PySQLRetryTestsMixin:
                         with pytest.raises(MaxRetryError) as cm:
                             cursor.execute("Not a real query")
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_safe_execute_statement_retry_condition(self, extra_params):
+    def test_retry_safe_execute_statement_retry_condition(self):
         """GIVEN the server sends either code 429 or 503
         WHEN the connector sent an ExecuteStatement command
         THEN the request is retried because these are idempotent
@@ -477,7 +382,6 @@ class PySQLRetryTestsMixin:
 
         with self.connection(
             extra_params={
-                **extra_params,
                 **self._retry_policy,
                 "_retry_stop_after_attempts_count": 1,
             }
@@ -489,14 +393,7 @@ class PySQLRetryTestsMixin:
                         cursor.execute("This query never reaches the server")
                     assert mock_obj.return_value.getresponse.call_count == 2
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_abort_close_session_on_404(self, extra_params, caplog):
+    def test_retry_abort_close_session_on_404(self, caplog):
         """GIVEN the connector sends a CloseSession command
         WHEN server sends a 404 (which is not retried since commit 41b28159)
         THEN nothing is retried because 404 is globally non-retryable
@@ -508,20 +405,13 @@ class PySQLRetryTestsMixin:
             {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
-        extra_params = {**extra_params, **self._retry_policy}
+        extra_params = {**self._retry_policy}
         with self.connection(extra_params=extra_params) as conn:
             with mock_sequential_server_responses(responses):
                 # Should not raise an exception, the error is caught internally
                 conn.close()
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_abort_close_operation_on_404(self, extra_params, caplog):
+    def test_retry_abort_close_operation_on_404(self, caplog):
         """GIVEN the connector sends a CancelOperation command
         WHEN server sends a 404 (which is not retried since commit 41b28159)
         THEN nothing is retried because 404 is globally non-retryable
@@ -533,7 +423,7 @@ class PySQLRetryTestsMixin:
             {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
-        extra_params = {**extra_params, **self._retry_policy}
+        extra_params = {**self._retry_policy}
         with self.connection(extra_params=extra_params) as conn:
             with conn.cursor() as curs:
                 with patch(
@@ -547,14 +437,7 @@ class PySQLRetryTestsMixin:
                         # Should not raise an exception, the error is caught internally
                         curs.close()
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_3xx_redirect_codes_are_not_retried(self, extra_params):
+    def test_3xx_redirect_codes_are_not_retried(self):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy receives a 302 redirect
         THEN the connector does not retry since 3xx codes are not retried per policy
@@ -571,7 +454,6 @@ class PySQLRetryTestsMixin:
             with pytest.raises(RequestError):  # Should get RequestError, not MaxRetryError
                 with self.connection(
                     extra_params={
-                        **extra_params,
                         **self._retry_policy,
                         "_retry_max_redirects": max_redirects,
                     }
@@ -580,16 +462,7 @@ class PySQLRetryTestsMixin:
             # Total call count should be 1 (original only, no retries for 3xx codes)
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_3xx_codes_not_retried_regardless_of_max_redirects_setting(
-        self, extra_params
-    ):
+    def test_3xx_codes_not_retried_regardless_of_max_redirects_setting(self):
         """GIVEN the connector is configured without a custom max_redirects
         WHEN the DatabricksRetryPolicy receives a 302 redirect
         THEN the connector does not retry since 3xx codes are not retried per policy
@@ -606,7 +479,6 @@ class PySQLRetryTestsMixin:
             with pytest.raises(RequestError):  # Should get RequestError, not MaxRetryError
                 with self.connection(
                     extra_params={
-                        **extra_params,
                         **self._retry_policy,
                     }
                 ):
@@ -615,16 +487,7 @@ class PySQLRetryTestsMixin:
             # Total call count should be 1 (original only, no retries for 3xx codes)
             assert mock_obj.return_value.getresponse.call_count == 1
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_3xx_codes_stop_request_immediately_no_retry_attempts(
-        self, extra_params
-    ):
+    def test_3xx_codes_stop_request_immediately_no_retry_attempts(self):
         # Since 3xx codes are not retried per policy, we only ever see the first 302 response
         responses = [
             {"status": 302, "headers": {}, "redirect_location": "/foo.bar"},
@@ -640,7 +503,6 @@ class PySQLRetryTestsMixin:
             with mock_sequential_server_responses(responses):
                 with self.connection(
                     extra_params={
-                        **extra_params,
                         **self._retry_policy,
                         **additional_settings,
                     }
@@ -651,19 +513,9 @@ class PySQLRetryTestsMixin:
         assert "too many redirects" not in str(cm.value.message)
         assert "Error during request to server" in str(cm.value.message)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(
-        self, extra_params, caplog
-    ):
+    def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(self, caplog):
         with self.connection(
             extra_params={
-                **extra_params,
                 **self._retry_policy,
                 **{
                     "_retry_max_redirects": 100,
@@ -673,17 +525,9 @@ class PySQLRetryTestsMixin:
         ):
             assert "it will have no affect!" in caplog.text
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_retry_legacy_behavior_warns_user(self, extra_params, caplog):
+    def test_retry_legacy_behavior_warns_user(self, caplog):
         with self.connection(
             extra_params={
-                **extra_params,
                 **self._retry_policy,
                 "_enable_v3_retries": False,
             }
@@ -692,14 +536,7 @@ class PySQLRetryTestsMixin:
                 "Legacy retry behavior is enabled for this connection." in caplog.text
             )
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_403_not_retried(self, extra_params):
+    def test_403_not_retried(self):
         """GIVEN the server returns a code 403
         WHEN the connector receives this response
         THEN nothing is retried and an exception is raised
@@ -708,19 +545,12 @@ class PySQLRetryTestsMixin:
         # Code 403 is a Forbidden error
         with mocked_server_response(status=403):
             with pytest.raises(RequestError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
                 assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_401_not_retried(self, extra_params):
+    def test_401_not_retried(self):
         """GIVEN the server returns a code 401
         WHEN the connector receives this response
         THEN nothing is retried and an exception is raised
@@ -729,7 +559,7 @@ class PySQLRetryTestsMixin:
         # Code 401 is an Unauthorized error
         with mocked_server_response(status=401):
             with pytest.raises(RequestError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**self._retry_policy}
                 with self.connection(extra_params=extra_params):
                     pass
                 assert isinstance(cm.value.args[1], NonRecoverableNetworkError)

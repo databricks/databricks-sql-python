@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Remove the deprecated pure-Python SEA backend. Passing `use_sea=True` now raises `ValueError`; use `use_kernel=True` to connect through the Rust kernel instead. The SEA-only `use_hybrid_disposition` and `max_connections` options are removed and ignored if passed.
 - Honor `max_download_threads` on kernel connections, with a default download window of 16 and explicit chunk-setting overrides. Invalid values raise `ValueError` when connecting with `use_kernel=True`.
 - Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
 - Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
