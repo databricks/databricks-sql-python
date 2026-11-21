@@ -894,7 +894,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = True
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
@@ -919,7 +918,7 @@ class TestConnectionParameterTelemetry:
             
             # Verify fields are populated
             assert driver_params.http_path == "/sql/1.0/warehouses/test"
-            assert driver_params.mode == DatabricksClientType.SEA
+            assert driver_params.mode == DatabricksClientType.THRIFT
             assert driver_params.host_info.host_url == "workspace.databricks.com"
             assert driver_params.host_info.port == 443
 
@@ -930,7 +929,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = False
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.azuredatabricks.net"
         mock_session.return_value = mock_session_instance
@@ -960,7 +958,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = True
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
@@ -1005,7 +1002,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = federated_pat
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = False
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
@@ -1033,7 +1029,6 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.use_kernel = False
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = False
-        mock_session_instance.use_sea = True
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance

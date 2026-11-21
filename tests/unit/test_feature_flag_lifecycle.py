@@ -8,9 +8,8 @@ from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.telemetry.telemetry_client import TelemetryHelper
 
 
-@pytest.mark.parametrize("use_sea", [False, True])
 @pytest.mark.parametrize("oauth", [False, True])
-def test_flags_available_with_telemetry_disabled(session_feature_flags, use_sea, oauth):
+def test_flags_available_with_telemetry_disabled(session_feature_flags, oauth):
     session_feature_flags.get_instance.side_effect = (
         FeatureFlagsContextFactory.get_instance
     )
@@ -31,19 +30,17 @@ def test_flags_available_with_telemetry_disabled(session_feature_flags, use_sea,
         assert kwargs["auth_provider"] is auth
         return backend
 
-    backend_name = "SeaDatabricksClient" if use_sea else "ThriftDatabricksClient"
     try:
         with patch("databricks.sql.client.UnifiedHttpClient", return_value=http), patch(
             "databricks.sql.session.get_python_sql_connector_auth_provider",
             return_value=auth,
         ) as auth_factory, patch(
-            f"databricks.sql.session.{backend_name}", side_effect=create_backend
+            "databricks.sql.session.ThriftDatabricksClient", side_effect=create_backend
         ):
             conn = sql.connect(
                 "flags.example",
                 "/sql/1.0/warehouses/test?o=123",
                 enable_telemetry=False,
-                use_sea=use_sea,
                 **(
                     {"auth_type": "databricks-oauth"}
                     if oauth
