@@ -126,8 +126,6 @@ There are several e2e test suites available:
 - `PySQLCoreTestSuite`
 - `PySQLLargeQueriesSuite`
 - `PySQLStagingIngestionTestSuite`
-- `PySQLRetryTestSuite.HTTP503Suite` **[not documented]**
-- `PySQLRetryTestSuite.HTTP429Suite` **[not documented]**
 - `PySQLUnityCatalogTestSuite` **[not documented]**
 
 To execute the core test suite:

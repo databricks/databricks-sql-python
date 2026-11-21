@@ -42,10 +42,6 @@ from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
 from tests.e2e.common.large_queries_mixin import fetch_rows
 from tests.e2e.common.timestamp_tests import TimestampTestsMixin
 from tests.e2e.common.decimal_tests import DecimalTestsMixin
-from tests.e2e.common.retry_test_mixins import (
-    Client429ResponseMixin,
-    Client503ResponseMixin,
-)
 from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSuiteMixin
 from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
@@ -76,11 +72,6 @@ class PySQLPytestTestCase:
     so that we can use pytest.mark.parameterize
     """
 
-    error_type = Error
-    conf_to_disable_rate_limit_retries = {"_retry_stop_after_attempts_count": 1}
-    conf_to_disable_temporarily_unavailable_retries = {
-        "_retry_stop_after_attempts_count": 1
-    }
     arraysize = 1000
     buffer_size_bytes = 104857600
     POLLING_INTERVAL = 2
@@ -999,20 +990,6 @@ class TestPySQLCoreSuite(
             assert (
                 arrow_table.num_rows == expected_rows
             ), f"Expected {expected_rows} rows, got {arrow_table.num_rows}"
-
-
-# use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep
-# the 429/503 subsuites separate since they execute under different circumstances.
-class TestPySQLRetrySuite:
-    class HTTP429Suite(Client429ResponseMixin, PySQLPytestTestCase):
-        pass  # Mixin covers all
-
-    class HTTP503Suite(Client503ResponseMixin, PySQLPytestTestCase):
-        # 503Response suite gets custom error here vs PyODBC
-        def test_retry_disabled(self):
-            self._test_retry_disabled_with_message(
-                "TEMPORARILY_UNAVAILABLE", OperationalError
-            )
 
 
 class TestPySQLUnityCatalogSuite(PySQLPytestTestCase):
