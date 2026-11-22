@@ -39,7 +39,7 @@ from databricks.sql.backend.kernel._errors import _kernel, wrap_kernel_exception
 from databricks.sql.backend.kernel.type_mapping import description_from_arrow_schema
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.result_set import ResultSet
-from databricks.sql.exc import OperationalError, ProgrammingError
+from databricks.sql.exc import ProgrammingError
 from databricks.sql.types import Row
 
 if TYPE_CHECKING:
