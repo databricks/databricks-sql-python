@@ -4,7 +4,7 @@ The Python SQL connector historically imported the PyPI ``thrift`` package
 eagerly whenever ``connect()`` (i.e. ``databricks.sql.client``) was imported,
 regardless of which backend the caller selected. Build systems that vendor
 their own ``thrift`` (e.g. Meta's Buck) then hit a namespace collision even on
-the SEA / kernel code paths, which never speak Thrift on the wire.
+the kernel code path, which never speaks Thrift on the wire.
 
 These tests assert that importing the connector and the non-Thrift backends
 does NOT import ``thrift``, while the Thrift backend still does. The invariant
@@ -94,7 +94,7 @@ def _probe_import(module_name: str) -> _ImportProbeResult:
 
 
 # Modules on the connect()/execute() path that must stay Thrift-free so the
-# SEA and kernel backends can be used without the ``thrift`` package present.
+# kernel backend can be used without the ``thrift`` package present.
 THRIFT_FREE_MODULES = [
     "databricks.sql",
     "databricks.sql.client",
@@ -103,8 +103,6 @@ THRIFT_FREE_MODULES = [
     "databricks.sql.parameters.native",
     "databricks.sql.backend.types",
     "databricks.sql.backend.databricks_client",
-    "databricks.sql.backend.sea.backend",
-    "databricks.sql.backend.sea.queue",
     "databricks.sql.backend.kernel.type_mapping",
     "databricks.sql.backend.kernel.client",
     "databricks.sql.cloudfetch.downloader",
@@ -118,7 +116,7 @@ def test_module_does_not_import_thrift(module_name):
     Apache Thrift runtime.
 
     This is what unblocks callers (e.g. Buck-based builds) that ship their own
-    ``thrift`` package and use only the SEA or kernel backend.
+    ``thrift`` package and use only the kernel backend.
     """
     result = _probe_import(module_name)
 

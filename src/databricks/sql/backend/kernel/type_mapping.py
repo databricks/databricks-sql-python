@@ -6,12 +6,9 @@ type-name string per column. ``description_from_arrow_schema``
 flattens the conversion so ``KernelResultSet`` and any future
 kernel-result wrapper share the same mapping.
 
-The string constants come from ``SqlType`` in the SEA backend's
-``conversion`` module — same single source of truth both backends
-already use. The Arrow → ``SqlType`` lookup itself is kernel-
-specific (SEA receives type-text from the server and normalises it;
-the kernel receives Arrow schemas directly), so the mapping
-function stays local but the names are shared.
+The type-name strings in ``SqlType`` match the Thrift backend's
+``description`` type codes, so consumers can branch on them
+identically across backends.
 
 Parameter binding (``TSparkParameter`` → kernel
 ``Statement.bind_param``) is handled by ``bind_tspark_params`` —
@@ -25,7 +22,6 @@ from typing import Any, List, Optional, Tuple, TYPE_CHECKING
 
 import pyarrow
 
-from databricks.sql.backend.sea.utils.conversion import SqlType
 from databricks.sql.exc import NotSupportedError
 
 if TYPE_CHECKING:
@@ -34,6 +30,31 @@ if TYPE_CHECKING:
     # attributes (duck-typed) at runtime, so the kernel backend never imports
     # the Apache Thrift ``thrift`` package. See ``test_lazy_thrift_import``.
     from databricks.sql.thrift_api.TCLIService import ttypes
+
+
+class SqlType:
+    """PEP 249 ``description`` type codes.
+
+    Values are the Thrift ``TTypeId`` names lowercased without the
+    ``_TYPE`` suffix, which is the form the Thrift backend reports.
+    """
+
+    TINYINT = "tinyint"
+    SMALLINT = "smallint"
+    INT = "int"
+    BIGINT = "bigint"
+    FLOAT = "float"
+    DOUBLE = "double"
+    DECIMAL = "decimal"
+    BOOLEAN = "boolean"
+    DATE = "date"
+    TIMESTAMP = "timestamp"
+    STRING = "string"
+    BINARY = "binary"
+    ARRAY = "array"
+    MAP = "map"
+    STRUCT = "struct"
+
 
 # Type names that the connector emits as compound TSparkParameter
 # shapes (payload on ``arguments``, not ``value``). The kernel's
@@ -46,7 +67,7 @@ _COMPOUND_PARAM_TYPES = frozenset({"ARRAY", "MAP", "STRUCT"})
 def _arrow_type_to_dbapi_string(arrow_type: pyarrow.DataType) -> str:
     """Map a pyarrow type to the Databricks SQL type name used in
     PEP 249 ``description``. Names come from ``SqlType`` so the
-    kernel and SEA backends emit identical type-code strings;
+    kernel and Thrift backends emit identical type-code strings;
     consumers can branch on them identically.
     """
     if pyarrow.types.is_boolean(arrow_type):
