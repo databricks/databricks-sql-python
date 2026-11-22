@@ -532,6 +532,7 @@ class Connection:
             use_system_trust_store=True,  # Python uses system SSL by default
             enable_arrow=pyarrow is not None,
             enable_direct_results=True,  # Always enabled in Python
+            enable_sea_hybrid_results=kwargs.get("use_hybrid_disposition", False),
             http_connection_pool_size=kwargs.get("pool_maxsize", None),
             rows_fetched_per_block=DEFAULT_ARRAY_SIZE,
             async_poll_interval_millis=2000,  # Default polling interval
