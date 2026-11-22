@@ -1,7 +1,4 @@
-# Engineer-bot task config for databricks-sql-python. Loaded by
-# databricks_bot_engine.engineer_bot.bot_config.load_bot. The reviewer needs NO
-# .bot/config.yaml (its prompts are engine-owned + the optional additive
-# .bot/prompts/review/system.md); only the engineer-bot is config-driven.
+# Engineer-bot task config and shared retrospective lesson routing.
 name: databricks_sql_python_bugfix
 marker_namespace: engineer-bot-python
 bot_login_prefix: peco-engineer-bot
@@ -14,15 +11,14 @@ max_replies_per_thread: 5
 # run gets the engine's `feat:` templates instead of a misleading `fix:` prefix.
 # Add a string (all flows) or a {flow: template} map here only to override.
 
-# safe_path denylist. Only the always-on hard-denied prefixes apply here
-# (.git/ and .gitleaksignore), seeded by the engine regardless — so this key is
-# omitted. Everything else under the repo root is writable; the safeguard is the
-# human PR-review gate, not a tool-layer block. Reviewers MUST scrutinize any
-# agent-authored diff reaching .github/, .bot/, or pyproject.toml. To hard-block
-# a path at the tool layer, add it under `denied_subpaths:` (repo-relative).
+# Keep workflow code and the bot's own config/prompts outside agent edits.
+denied_subpaths:
+  - .github
+  - .bot
 
 # Filled from the tracking ISSUE the maintainer labelled. (pr_body_template has no
-# engine default, so it stays required here.)
+# engine default, so it stays required here.) Omit files_changed: follow-up
+# pushes cannot refresh that inventory, so it would go stale.
 pr_body_template: |-
   ## Summary
 
@@ -32,9 +28,6 @@ pr_body_template: |-
 
   ## Root cause & plan
   {plan}
-
-  ## Files changed
-  {files_changed}
 
   ## Test plan
   {test_plan}
@@ -86,10 +79,6 @@ author:
     issue_url: ISSUE_URL
   context_files:
     - issue_body.txt   # {{issue_body}}
-  # Close the loop: the author phase READS this log (newest-first, capped) into its
-  # system prompt as accumulated lessons, so retrospective learnings actually steer
-  # future fixes. MUST match retrospective.log_path below (write half ↔ read half).
-  knowledge_log: .claude/knowledge/learning-log.md
 
 # Engine orchestration for the author phase. `bug-fix` runs the plan →
 # author_tests → fix pipeline (write a failing test → fix the code → re-run to
@@ -99,19 +88,14 @@ author:
 # system.md, not here.
 flow: bug-fix
 
-# Daily-cron learning extraction (retrospective flow). Run by engineer-bot-learning.yml
-# via `python -m databricks_bot_engine.engineer_bot.retrospective`: over an adaptive
-# look-back window the engine ITSELF gathers merged PRs (diff + review comments) AND
-# recent engineer-bot author-run logs, and if the model finds durable learnings opens
-# ONE rolling PR appending a dated section to log_path. Human-gated — never commits the
-# canonical log directly. Omitting this block makes the retrospective a no-op.
-#
-# No `system_prompt` override: the engine ships the authoritative batch-aware base
-# (engineer_prompts.RETRO_SYSTEM_PROMPT); a `.bot/prompts/` override is optional.
-# No `context_files` — the daily-cron engine enumerates its own sources via the
-# GitHub API (context_files is an AUTHOR-phase key only).
+# Both bots receive matching lessons; the old log is a frozen archive.
 retrospective:
-  log_path: .claude/knowledge/learning-log.md   # MUST match author.knowledge_log above
-  branch_prefix: ai/learning-pr-                 # rolling PR lands on the derived stable branch `ai/learning-pr`
+  log_mode: distill
+  log_path: .claude/knowledge/learning-log.md
+  journal_dir: .claude/knowledge/journal
+  lessons_path: .claude/knowledge/lessons.md
+  auto_merge_learning_pr: false
+  author_workflow: engineer-bot.yml
+  # Keep the legacy append-mode PR (#1018) on its original branch.
+  branch_prefix: ai/learning-distill-pr-
   pr_label: engineer-bot-learning
-  author_workflow: engineer-bot.yml              # Track B: which workflow's author runs to mine

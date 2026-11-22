@@ -54,6 +54,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Keep the required result in this workflow's suite. Manually posted checks
+  # can attach to an unrelated suite that a later run supersedes.
+  kernel-e2e-result:
+    name: Kernel E2E
+    if: always()
+    needs: [skip-kernel-e2e-pr, detect-changes, run-kernel-e2e, auto-pass-merge-queue]
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check kernel test outcomes
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq -e 'all(.[]; . == "success" or . == "skipped")' <<< "$RESULTS"
+
   # ───────────────────────────────────────────────────────────────
   # Security: auto-remove `kernel-e2e` label on new commits, same as
   # trigger-integration-tests.yml.
@@ -331,6 +347,9 @@ jobs:
         # here rather than masked by `poetry run python` re-resolving.
         run: |
           $CONNECTOR_VENV_PY -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel module has no __file__ — wheel install failed'; print('kernel ok:', k.__file__)"
+
+      - name: Run async reader routing tests
+        run: $CONNECTOR_VENV_PY -m pytest tests/unit/test_kernel_async_readers.py -m realkernel -v
 
       - name: Run kernel e2e tests
         run: poetry run pytest tests/e2e/test_kernel_backend.py -v

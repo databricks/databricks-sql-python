@@ -1,7 +1,21 @@
 # Release History
 
 # Unreleased
+- Honor `max_download_threads` on kernel connections, with a default download window of 16 and explicit chunk-setting overrides. Invalid values raise `ValueError` when connecting with `use_kernel=True`.
+- Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
+- Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
+- Speed up Thrift response handling: read replies in 1 MiB chunks and decode them with Thrift's C-accelerated protocol, and stop stringifying every request/response for the default no-op debug logger. Wide result schemas, metadata calls with many rows, and inline Arrow results benefit most.
+- Report `cursor.rowcount` after asynchronous DML completes on both the Thrift and kernel backends, preserving zero counts and fetched result rows.
 - Correct explicit `DecimalParameter` precision and scale ordering and honor a declared zero scale. Callers that followed the previously reversed parameter descriptions must use `precision` for total digits and `scale` for fractional digits. Explicit zero precision is now sent as declared instead of silently using automatic sizing.
+
+# 4.9.0 (2026-11-04)
+- Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
+- Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.
+
+# 4.8.0 (2026-10-24)
+- Upgrade Databricks SQL Kernel to 1.3.0 to address security findings.
+- Update locked Black and certifi dependencies to address security findings.
+- Fix Arrow result fetching for queries that return duplicate column names.
 
 # 4.7.0 (2026-10-20)
 - Upgrade Databricks SQL Kernel to 1.2.0.

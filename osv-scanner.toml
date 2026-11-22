@@ -8,7 +8,7 @@
 # just the artifact we have in mind. The alternative
 # ([[PackageOverrides]] with `vulnerability.ignore = true`) is
 # per-package but blanket-ignores ALL vulnerabilities on that package,
-# which is much worse. OSV-Scanner v2.3.8 does NOT support an
+# which is much worse. OSV-Scanner v2.7.0 does NOT support an
 # intersection ("this CVE on this package only").
 #
 # See google.github.io/osv-scanner/configuration/ for the schema.

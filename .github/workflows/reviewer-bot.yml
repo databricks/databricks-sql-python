@@ -58,12 +58,11 @@ jobs:
       labels: [linux-ubuntu-latest]
     timeout-minutes: 30
     steps:
-      # Checkout FIRST. Default ref = the PR merge ref on pull_request, the
-      # default branch on dispatch. persist-credentials:false — the reviewer
-      # reads this tree via read_paths/grep, so no token may sit in .git/config.
-      - name: Checkout
+      # Run trusted workflow code; inspect the resolved PR head separately.
+      - name: Checkout trusted workflow source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -106,8 +105,19 @@ jobs:
           fi
           [[ "$RAW_PR" =~ ^[0-9]+$ ]] || { echo "::error::Invalid pr_number '$RAW_PR'"; exit 1; }
           case "$DRY_RUN" in true|false) ;; *) DRY_RUN="true" ;; esac  # fail safe
-          HEAD_SHA=$(gh pr view "$RAW_PR" --repo "$REPO" --json headRefOid -q .headRefOid)
-          { echo "pr_number=$RAW_PR"; echo "head_sha=$HEAD_SHA"; echo "dry_run=$DRY_RUN"; } >> "$GITHUB_OUTPUT"
+          PR_JSON=$(gh api "repos/$REPO/pulls/$RAW_PR")
+          jq -e --arg repo "$REPO" '.state == "open" and .head.repo.full_name == $repo and .head.repo.fork == false' <<< "$PR_JSON" >/dev/null \
+            || { echo "::error::Reviewer requires an open PR from this repository"; exit 1; }
+          HEAD_SHA=$(jq -r '.head.sha' <<< "$PR_JSON")
+          BASE_SHA=$(jq -r '.base.sha' <<< "$PR_JSON")
+          { echo "pr_number=$RAW_PR"; echo "head_sha=$HEAD_SHA"; echo "base_sha=$BASE_SHA"; echo "dry_run=$DRY_RUN"; } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout reviewed PR (read-only)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ steps.inputs.outputs.head_sha }}
+          path: review-content
+          persist-credentials: false
 
       - name: Run reviewer
         env:
@@ -115,8 +125,11 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
           HEAD_SHA: ${{ steps.inputs.outputs.head_sha }}
+          PR_BASE_SHA: ${{ steps.inputs.outputs.base_sha }}
           DRY_RUN: ${{ steps.inputs.outputs.dry_run }}
-          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
+          REVIEW_CONTENT_ROOT: ${{ github.workspace }}/review-content
+          REVIEWER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
           # The reviewer's repo-specific ADDITIVE guidance, read from the TRUSTED

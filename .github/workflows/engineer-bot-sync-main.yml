@@ -1,0 +1,61 @@
+# Engineer Bot — sync main.
+#
+# GitHub runs no pull_request workflows on a PR that conflicts with its base, so
+# neither bot responds to review comments until someone resolves the conflict.
+# Bot PRs usually conflict only in CHANGELOG.md, where two PRs add entries at the same spot. After each push to main, this merges main into open
+# `engineer-bot` PRs that now conflict. A conflict limited to new Unreleased
+# entries is resolved by keeping both sides' entries; anything else gets a comment
+# for a maintainer. See .github/scripts/sync-engineer-bot-prs.py.
+name: Engineer Bot — Sync main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: engineer-bot-sync-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.11'
+
+      # Pushes made with an App token start the PR's workflows; GITHUB_TOKEN
+      # pushes would not, leaving the PR without CI or bot reviews.
+      - name: Mint engineer bot token
+        id: token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.ENGINEER_BOT_APP_ID }}
+          private-key: ${{ secrets.ENGINEER_BOT_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Merge main into conflicting bot PRs
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          python -I .github/scripts/sync-engineer-bot-prs.py

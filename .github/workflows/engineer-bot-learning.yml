@@ -1,20 +1,5 @@
-# Engineer Bot — learning (retrospective) extraction — DAILY CRON.
-#
-# Over an adaptive look-back window the engine gathers merged PRs (diff + review
-# comments) AND recent engineer-bot author-run console logs ITSELF via the GitHub
-# API — no in-workflow context gathering, no per-PR trigger — and if the model
-# finds durable, reusable learnings, opens ONE ROLLING PR on a stable branch
-# (`ai/learning-pr`), appending a dated section per day until a human merges it.
-# Human-gated by design: it NEVER commits the canonical log directly.
-#
-# Own job (NOT `uses: databricks/databricks-bot-engine/...`): an external repo
-# can't resolve the internal engine's reusable workflows ("not found"). It shares
-# the SAME prelude the other bots use — ./.github/actions/bot-prelude (tokens +
-# Node + pinned engine install) — so the engine pin stays single-sourced in
-# bot-prelude's `engine-ref` default (no second SHA to drift).
-#
-# Opt-in is purely via the `retrospective:` block in .bot/config.yaml + this
-# workflow; absent that block the engine phase is a clean no-op.
+# Daily journal extraction and lesson distillation in a rolling PR.
+# The legacy log is frozen; learning PRs require human review.
 name: Engineer Bot — Learning
 
 on:
@@ -106,8 +91,9 @@ jobs:
           # translate_endpoint's already-v2 early-return, which keeps the trailing
           # `invocations`, so the CLI appends `/v1/messages` →
           # `.../anthropic/invocations/v1/messages` → HTTP 400 (unsupported path).
-          # The effective model is set by the engine default (no retrospective.model).
-          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-4-8/invocations
+          # The engine adds the [1m] context suffix to the override.
+          ENGINEER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
+          MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           RUNNER_TEMP: ${{ runner.temp }}
           SINCE: ${{ inputs.since }}

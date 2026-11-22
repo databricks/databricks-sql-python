@@ -6,6 +6,7 @@ import math
 import re
 import time
 import threading
+import weakref
 from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
@@ -253,12 +254,18 @@ class ThriftDatabricksClient(DatabricksClient):
         self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
         self._transport.setCustomHeaders(dict(http_headers))
-        protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(
+        # Replies decode with thrift's C extension when available, else in pure Python.
+        input_protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocolAccelerated(
             self._transport,
             string_length_limit=THRIFT_BINARY_PROTOCOL_STRING_LENGTH_LIMIT,
             container_length_limit=THRIFT_BINARY_PROTOCOL_CONTAINER_LENGTH_LIMIT,
         )
-        self._client = TCLIService.Client(protocol)
+        # Requests use the pure-Python encoder: the C one rejects structs nested
+        # deeper than ~64 levels, e.g. native array parameters nested 62+ deep.
+        output_protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(
+            self._transport
+        )
+        self._client = TCLIService.Client(input_protocol, output_protocol)
 
         try:
             self._transport.open()
@@ -267,6 +274,9 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
+        self._terminal_operation_statuses: weakref.WeakKeyDictionary[
+            CommandId, ttypes.TGetOperationStatusResp
+        ] = weakref.WeakKeyDictionary()
         self._session_id_hex = None
 
     @property
@@ -443,7 +453,9 @@ class ThriftDatabricksClient(DatabricksClient):
                 this_method_name = getattr(method, "__name__")
 
                 logger.debug("Sending request: {}(<REDACTED>)".format(this_method_name))
-                unsafe_logger.debug("Sending request: {}".format(request))
+                # Lazy %s args: unsafe_logger is DEBUG-level with a NullHandler by
+                # default, so eager formatting would stringify every payload.
+                unsafe_logger.debug("Sending request: %s", request)
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
@@ -457,7 +469,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 logger.debug(
                     "Received response: {}(<REDACTED>)".format(type(response).__name__)
                 )
-                unsafe_logger.debug("Received response: {}".format(response))
+                unsafe_logger.debug("Received response: %s", response)
                 return response
 
             except urllib3.exceptions.HTTPError as err:
@@ -927,9 +939,31 @@ class ThriftDatabricksClient(DatabricksClient):
     def get_execution_result(
         self, command_id: CommandId, cursor: Cursor
     ) -> "ResultSet":
+        """Fetch a completed async result and its latest operation metadata.
+
+        FetchResults does not carry ``numModifiedRows``, so reuse a terminal
+        status observed for the same ``CommandId`` instance by
+        ``get_query_state``, or refresh the status when the caller resumes
+        directly by command ID.
+        Failed or closed operations raise before result rows are fetched.
+        """
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
+
+        with self._request_lock:
+            operation_status = self._terminal_operation_statuses.pop(command_id, None)
+        if operation_status is None:
+            operation_status = self._poll_for_status(thrift_handle)
+            self._check_command_not_in_error_or_closed_state(
+                thrift_handle, operation_status
+            )
+
+        num_modified_rows = (
+            operation_status.numModifiedRows
+            if operation_status.operationState == ttypes.TOperationState.FINISHED_STATE
+            else None
+        )
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
@@ -981,6 +1015,7 @@ class ThriftDatabricksClient(DatabricksClient):
             is_staging_operation=is_staging_operation,
             arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
+            num_modified_rows=num_modified_rows,
         )
 
         return ThriftResultSet(
@@ -1029,6 +1064,9 @@ class ThriftDatabricksClient(DatabricksClient):
         state = CommandState.from_thrift_state(operation_state)
         if state is None:
             raise ValueError(f"Unknown command state: {operation_state}")
+        if state == CommandState.SUCCEEDED:
+            with self._request_lock:
+                self._terminal_operation_statuses[command_id] = poll_resp
         return state
 
     @staticmethod
