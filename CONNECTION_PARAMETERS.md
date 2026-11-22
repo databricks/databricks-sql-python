@@ -114,7 +114,7 @@ to change without notice.
 
 | Option                               | Type        | Thrift | Kernel | Default Value | Note                                                                                                                                            |
 | ------------------------------------ | ----------- | :----: | :----: | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `_socket_timeout`                    | `float` (s) |   ✅   |   ✅   | `900` (Thrift SQL); `120` (kernel SQL) | Thrift: socket send/recv/connect timeout. Kernel: total HTTP request deadline from connect through response-body completion. A positive value is forwarded; unset or `0` selects the kernel's 120s SQL request default. Volume transfers have no total deadline: an explicit positive value caps storage connection establishment, reads, upload progress and PUT response waits. A redirected stream PUT resend has no idle bound. Unset or `0` leaves storage inactivity unbounded. |
+| `_socket_timeout`                    | `float` (s) |   ✅   |   ✅   | `900` (Thrift SQL); `120` (kernel SQL) | Thrift: socket send/recv/connect timeout. Kernel: total HTTP request deadline from connect through response-body completion. A positive value is forwarded; unset or `0` selects the kernel's 120s SQL request default. Volume transfers have no total deadline: an explicit positive value caps storage connection establishment, reads, upload progress and PUT response waits. A redirected PUT resend has no idle bound. Unset or `0` leaves storage inactivity unbounded. |
 | `_pool_connections`                  | `int`       |   ⚠️   |   ❌   | `10`          | Number of pools in the shared Python HTTP client. On Thrift this affects auxiliary auth/feature-flag/telemetry traffic, not the separate Thrift query transport. Kernel-owned network traffic does not use this client. |
 | `_pool_maxsize`                      | `int`       |   ⚠️   |   ⚠️   | `20` (Python); `100` (kernel when unset) | Max idle connections retained per host. It configures the shared Python client but not the Thrift query transport. With kernel ≥ 1.1.0, a positive value also configures the kernel's Rust HTTP pool. Unset or `0` keeps each client's default. |
 | `_proxy_auth_method`                 | `str`       |   ✅   |   ❌   | `None`        | `basic` or `negotiate` (Kerberos). Applied to both Thrift query traffic and the shared Python client. It is not forwarded to the kernel's Rust transport. See [`docs/proxy.md`](docs/proxy.md). |
@@ -249,6 +249,9 @@ operations before `execute()` or `get_async_execution_result()` returns.
 `staging_allowed_local_path`; `REMOVE` needs no local root.
 `execute(input_stream=stream)` reads the stream only when requested by the server.
 Completed transfers return no instruction rows.
+On the kernel backend, cancelling or closing the cursor stops a running
+transfer. The Thrift backend lets it finish.
+A GET that has started copying into the destination finishes the copy.
 
 > All kernel-path behavior reflects the current **early-access** surface and is
 > subject to change. Generated against connector version `4.5.0`; the source of

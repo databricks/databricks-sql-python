@@ -375,6 +375,8 @@ class Connection:
         #  operations. On the kernel path, a positive value is the total HTTP
         #  request deadline. Kernel values of None or 0 select its 120-second
         #  default; 0 is neither unlimited nor an immediate timeout.
+        #  A positive value is also the idle limit for Volume file transfers
+        #  on the kernel path; None or 0 sets no idle limit.
         # _disable_pandas
         #  In case the deserialisation through pandas causes any issues, it can be disabled with
         #  this flag.

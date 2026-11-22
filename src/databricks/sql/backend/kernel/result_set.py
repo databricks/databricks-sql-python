@@ -301,7 +301,7 @@ class KernelResultSet(ResultSet):
             return
         backend = cast("KernelDatabricksClient", self.backend)
         if self.is_staging_operation and not self._exhausted:
-            # Cancel first: close() below waits for a running transfer to finish.
+            # Cancel first: the native close below does not stop a transfer running on another thread.
             try:
                 backend.cancel_command(self.command_id)
             except Exception:
