@@ -340,9 +340,14 @@ def test_volume_close_cancels_only_pending_transfer(int_schema, outcome):
         with pytest.raises(Exception):
             rs.complete_staging_operation([])
 
-    handle.close = MagicMock()
+    cancels_at_close = []
+    handle.close = MagicMock(
+        side_effect=lambda: cancels_at_close.append(
+            rs.backend.cancel_command.call_count
+        )
+    )
     rs.close()
-    handle.close.assert_called_once()
+    assert cancels_at_close == [1 if outcome == "pending" else 0]
     if outcome == "pending":
         rs.backend.cancel_command.assert_called_once_with(rs.command_id)
     else:
