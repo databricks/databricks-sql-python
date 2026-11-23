@@ -173,7 +173,9 @@ def _kernel_host_and_path(
     if kwargs.get("_connection_uri"):
         return _uri_host_and_path(kwargs["_connection_uri"])
     port = _port_or_none(kwargs.get("_port"))
-    if port is None:
+    # The default 443 adds nothing, so the host is passed through unchanged, as on main,
+    # before any of the checks below (a path, userinfo or bare IPv6 host keeps working).
+    if port is None or port == 443:
         return server_hostname, http_path
     if not server_hostname:
         raise ValueError(
@@ -192,8 +194,7 @@ def _kernel_host_and_path(
     if embedded is not None:
         # A port embedded in server_hostname always wins, as on main (the kernel
         # connected to it); a differing _port is ignored with a warning, not an error.
-        # The default 443 is not a choice worth warning about, so it is never flagged.
-        if port != 443 and embedded != port:
+        if embedded != port:
             logger.warning(
                 "server_hostname %s carries port %d, which differs from _port=%d; "
                 "connecting to port %d. Set the port in one place only.",
@@ -202,8 +203,6 @@ def _kernel_host_and_path(
                 port,
                 embedded,
             )
-        return server_hostname, http_path
-    if port == 443:
         return server_hostname, http_path
     return f"{prefix}{name}:{port}", http_path
 

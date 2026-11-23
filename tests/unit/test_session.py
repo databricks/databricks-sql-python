@@ -1266,6 +1266,11 @@ _P = "/sql/1.0/warehouses/abc"
         ("h.io:0", _P, {}, ("h.io:0", _P)),
         ("h.io:notaport", _P, {}, ("h.io:notaport", _P)),
         ("h.io:", _P, {}, ("h.io:", _P)),
+        # An explicit _port of the default 443 adds nothing, so the host passes through
+        # unchanged as on main, before any path, userinfo or IPv6 check (aligned with Node).
+        ("h.io/x", _P, {"_port": 443}, ("h.io/x", _P)),
+        ("h.io?x=1", _P, {"_port": 443}, ("h.io?x=1", _P)),
+        ("", _P, {"_port": 443}, ("", _P)),
     ],
 )
 def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
@@ -1283,18 +1288,16 @@ def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
         ("h.io", {"_port": 8443.5}, "Invalid _port"),
         ("h.io:notaport", {"_port": 8443}, "malformed"),
         ("h.io:0", {"_port": 8443}, "out of range"),
-        # An explicit _port with a path, query or fragment is rejected, even when the
-        # path looks like a port ('h.io/path:8443') or the port is the default (443).
+        # A non-default _port with a path, query or fragment is rejected, even when the
+        # path looks like a port ('h.io/path:8443').
         ("h.io/x", {"_port": 8443}, "path, query or fragment"),
         ("h.io/path:8443", {"_port": 8443}, "path, query or fragment"),
-        ("h.io/x", {"_port": 443}, "path, query or fragment"),
         ("h.io?x=1", {"_port": 8443}, "path, query or fragment"),
         ("h.io#x", {"_port": 8443}, "path, query or fragment"),
         ("https://h.io/x", {"_port": 8443}, "path, query or fragment"),
         ("h.io/x/", {"_port": 8443}, "path, query or fragment"),
         # R11: _port needs a server_hostname unless _connection_uri carries the host.
         ("", {"_port": 8443}, "server_hostname is required"),
-        ("", {"_port": 443}, "server_hostname is required"),
         # AC-P3: _connection_uri must be http(s) with a host and a warehouse path.
         ("h", {"_connection_uri": "d.io/sql/x"}, "Invalid _connection_uri"),
         ("h", {"_connection_uri": "ftp://h.io/sql/x"}, "Invalid _connection_uri"),
@@ -1364,6 +1367,10 @@ def test_embedded_port_equal_to_explicit_port_does_not_warn(caplog):
         ("h:8443/", {"_port": 8443}, ("h:8443/", _P)),
         ("h/x", {}, ("h/x", _P)),
         ("h?q", {}, ("h?q", _P)),
+        # With the default _port=443 these pass through unchanged, as on main.
+        ("::1", {"_port": 443}, ("::1", _P)),
+        ("user:pass@h", {"_port": 443}, ("user:pass@h", _P)),
+        ("https://user:pass@h:8443", {"_port": 443}, ("https://user:pass@h:8443", _P)),
     ],
 )
 def test_kernel_host_and_path_stdlib_edges_accept(server, kwargs, expected):
@@ -1378,7 +1385,6 @@ def test_kernel_host_and_path_stdlib_edges_accept(server, kwargs, expected):
         ("[::1", {"_port": 8443}, "malformed"),
         # Bare IPv6 is not supported with _port: urlsplit reads it as a malformed port.
         ("::1", {"_port": 8443}, "malformed"),
-        ("::1", {"_port": 443}, "malformed"),
         ("2001:db8::1", {"_port": 8443}, "malformed"),
         ("h:abc", {"_port": 8443}, "malformed"),
         # A colon in userinfo is not a port, but a credential-bearing host is never folded.
