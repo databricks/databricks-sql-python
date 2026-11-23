@@ -254,9 +254,15 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
     )
     if routed_to_pat or not oauth:
         return
-    _, name, port = _split_host(server_hostname)
+    try:
+        _, name, port = _split_host(server_hostname)
+        server_host = urlsplit(f"//{name}").hostname or ""
+    except ValueError:
+        # A server_hostname with no comparable origin (a bare IPv6 literal, an empty port,
+        # credentials) cannot match the URI origin, so it is reported as an origin mismatch
+        # rather than as a malformed host.
+        server_host, port = "", None
     uri = urlsplit(kernel_host)
-    server_host = urlsplit(f"//{name}").hostname or ""
     if (uri.scheme, uri.hostname or "", uri.port or 443) != (
         "https",
         server_host,

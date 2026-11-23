@@ -1504,6 +1504,16 @@ def test_thrift_receives_host_and_port_unchanged(mock_client_class, server, port
             None,
             False,
         ),  # documented, not guarded
+        # A server_hostname with no comparable origin is an origin mismatch, not a
+        # "malformed host" error.
+        ("::1", {"auth_type": "databricks-oauth"}, "https://h.io/sql/x", True),
+        ("h.io:", {"auth_type": "databricks-oauth"}, "https://h.io/sql/x", True),
+        (
+            "user:pass@h.io",
+            {"auth_type": "databricks-oauth"},
+            "https://h.io/sql/x",
+            True,
+        ),
     ],
 )
 def test_oauth_origin_guard(server, kwargs, uri, should_raise):
