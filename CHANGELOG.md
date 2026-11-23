@@ -1,6 +1,12 @@
 # Release History
 
 # Unreleased
+- Upgrade Databricks SQL Kernel to 1.5.0, avoiding redundant status requests when asynchronous kernel statements complete.
+- Reduce overhead when fetching buffered kernel results, checking for end of results, and closing drained cursors.
+- Fix file-descriptor leaks when closing kernel connections, including OAuth connections.
+- Keep kernel CloudFetch downloads progressing across result pages and respond to cancellation during prefetch.
+- Omit presigned CloudFetch URL query strings, including signatures, from kernel request errors and debug logs.
+- Preserve affected-row counts from immediately completed kernel statements without consuming result rows.
 - Honor `max_download_threads` on kernel connections, with a default download window of 16 and explicit chunk-setting overrides. Invalid values raise `ValueError` when connecting with `use_kernel=True`.
 - Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
 - Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
