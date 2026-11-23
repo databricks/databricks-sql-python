@@ -107,8 +107,14 @@ class KernelResultSet(ResultSet):
         allowed_paths: Union[None, str, List[str]],
         input_stream: Optional[BinaryIO] = None,
     ) -> None:
-        paths = [allowed_paths] if isinstance(allowed_paths, str) else allowed_paths
         try:
+            if isinstance(allowed_paths, str):
+                allowed_paths = [allowed_paths]
+            paths = (
+                None
+                if allowed_paths is None
+                else [os.fspath(path) for path in allowed_paths]
+            )
             outcome = self._complete_volume_operation(paths)
             if outcome == _kernel.VolumeCompletion.NeedsInputStream:
                 try:
@@ -117,6 +123,8 @@ class KernelResultSet(ResultSet):
                             "No input stream provided for streaming operation"
                         )
                     data = input_stream.read()
+                    if isinstance(data, str):
+                        data = data.encode("utf-8")
                 except BaseException:
                     self.close()
                     raise

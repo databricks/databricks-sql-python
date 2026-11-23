@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections import deque
 import errno
 import io
+import pathlib
 from typing import Deque
 from unittest.mock import MagicMock
 
@@ -269,6 +270,41 @@ def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
         ((["/allowed"],), {"remove_not_found_is_success": False, "input_bytes": data}),
     ]
     assert rs.fetchall() == []
+    rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
+
+
+def test_volume_accepts_path_entries_and_text_streams(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock(
+        side_effect=[
+            _errors._kernel.VolumeCompletion.NeedsInputStream,
+            _errors._kernel.VolumeCompletion.Completed,
+        ]
+    )
+    rs = _make_rs(handle)
+    allowed = pathlib.Path("/allowed")
+    rs.complete_staging_operation([allowed], io.StringIO("é"))
+    assert handle.complete_volume_operation.call_args_list == [
+        (
+            ([str(allowed)],),
+            {"remove_not_found_is_success": False, "input_bytes": None},
+        ),
+        (
+            ([str(allowed)],),
+            {"remove_not_found_is_success": False, "input_bytes": "é".encode("utf-8")},
+        ),
+    ]
+
+
+def test_volume_invalid_allowed_path_still_finishes(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock()
+    rs = _make_rs(handle)
+    with pytest.raises(TypeError):
+        rs.complete_staging_operation([1])
+    handle.complete_volume_operation.assert_not_called()
     rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
 
 
