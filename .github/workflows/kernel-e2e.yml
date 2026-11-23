@@ -241,6 +241,7 @@ jobs:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CATALOG: peco
     steps:
       - name: Check out connector
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
