@@ -16,7 +16,7 @@
 #
 # Row class was taken from Apache Spark pyspark.
 
-from typing import Any, Dict, List, Optional, Tuple, Union, TypeVar
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union, TypeVar
 import datetime
 import decimal
 from ssl import SSLContext, CERT_NONE, CERT_REQUIRED, create_default_context
@@ -315,3 +315,25 @@ def _create_row(
     row = Row(*values)
     row.__fields__ = fields
     return row
+
+
+def _create_rows(fields: "Row", rows: Iterable[Sequence[Any]]) -> List["Row"]:
+    """Return ``[fields(*values) for values in rows]``, built without per-row Python calls.
+
+    ``fields(*values)`` creates the row through ``Row.__call__``, ``_create_row``,
+    ``Row.__new__`` and ``Row.__setattr__``. Result fetches build one row per result row,
+    so this builds the same object directly: the values as a ``Row`` tuple, with
+    ``__fields__`` stored where ``Row.__setattr__`` stores it. A row with more values than
+    ``fields`` goes through ``fields(*values)`` to raise the same ``ValueError``.
+    """
+    width = len(fields)
+    new_row = tuple.__new__
+    result: List[Row] = []
+    append = result.append
+    for values in rows:
+        if len(values) > width:
+            fields(*values)
+        row = new_row(Row, values)
+        row.__dict__["__fields__"] = fields
+        append(row)
+    return result
