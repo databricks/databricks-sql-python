@@ -1,7 +1,6 @@
 # Release History
 
 # Unreleased
-
 - Upgrade Databricks SQL Kernel to 1.5.0.
 - Honor `max_download_threads` on kernel connections, with a default download window of 16 and explicit chunk-setting overrides. Invalid values raise `ValueError` when connecting with `use_kernel=True`.
 - Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
