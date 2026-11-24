@@ -1,5 +1,8 @@
 # Release History
 
+# Unreleased
+- Include the available SQL statement ID in Thrift failure telemetry so errors can be correlated with the failed statement.
+
 # 4.10.0 (2026-11-24)
 - Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
 - Kernel TLS certificate errors fail after one attempt and report the underlying cause, including for CloudFetch.
