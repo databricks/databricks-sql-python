@@ -14,7 +14,9 @@ client touches (``Session``, ``KernelError``, ``Statement``,
 from __future__ import annotations
 
 import sys
+import threading
 import types
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -95,6 +97,12 @@ from databricks.sql.exc import (
     ProgrammingError,
     ServerOperationError,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_kernel_session_parameter_support(monkeypatch):
+    monkeypatch.setattr(kernel_client, "_KERNEL_SESSION_PARAMETER_SUPPORT", None)
+
 
 # ---------------------------------------------------------------------------
 # Error mapping
@@ -344,6 +352,61 @@ def test_open_session_passes_complex_types_as_json_to_kernel(
     assert captured.get("complex_types_as_json") is expected_flag
 
 
+@pytest.mark.parametrize(
+    "kwargs, configuration, expected",
+    [
+        ({}, {"TIMEZONE": "UTC"}, {"TIMEZONE": "UTC"}),
+        (
+            {"use_cloud_fetch": True},
+            {"can_cloud_download": "false"},
+            {"can_cloud_download": "false"},
+        ),
+        ({"use_cloud_fetch": False}, None, {"cloudfetch_enabled": "false"}),
+        (
+            {"use_cloud_fetch": False},
+            {"TIMEZONE": "UTC"},
+            {"TIMEZONE": "UTC", "cloudfetch_enabled": "false"},
+        ),
+        (
+            {"use_cloud_fetch": False},
+            {"can_cloud_download": "true"},
+            {"can_cloud_download": "true", "cloudfetch_enabled": "false"},
+        ),
+        (
+            {"use_cloud_fetch": False},
+            {"CLOUDFETCH_ENABLED": "true", "cloudfetch_enabled": "true"},
+            {"CLOUDFETCH_ENABLED": "true", "cloudfetch_enabled": "false"},
+        ),
+    ],
+)
+def test_open_session_honors_cloudfetch_option(
+    monkeypatch, kwargs, configuration, expected
+):
+    captured = {}
+
+    def fake_session(**options):
+        captured.update(options)
+        session = MagicMock()
+        session.session_id = "sess-id"
+        return session
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        **kwargs,
+    )
+    original = dict(configuration) if configuration is not None else None
+    client.open_session(configuration, catalog=None, schema=None)
+    assert captured["session_conf"] == {
+        "cloudfetch_max_chunks_in_memory": "16",
+        **expected,
+    }
+    assert configuration == original
+
+
 @pytest.mark.parametrize("timeout", [None, 0, 12.5])
 def test_open_session_passes_request_timeout_to_kernel(monkeypatch, timeout):
     captured = {}
@@ -393,9 +456,7 @@ def test_open_session_passes_max_connections_to_kernel(monkeypatch, max_connecti
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_open_session_passes_geospatial_representation_to_kernel(
-    monkeypatch, enabled
-):
+def test_open_session_passes_geospatial_representation_to_kernel(monkeypatch, enabled):
     captured = {}
 
     def fake_session(*, enable_geospatial_support=True, **kw):
@@ -518,6 +579,7 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
         telemetry_options={
             "enable_telemetry": True,
             "telemetry_batch_size": 17,
+            "telemetry_flush_interval_ms": 300_000,
             "telemetry_circuit_breaker_enabled": False,
         },
     )
@@ -537,7 +599,28 @@ def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     assert captured["process_name"] is None
     assert captured["telemetry_enabled"] is True
     assert captured["telemetry_batch_size"] == 17
+    assert captured["telemetry_flush_interval_ms"] == 300_000
     assert captured["telemetry_circuit_breaker_enabled"] is False
+
+
+@pytest.mark.parametrize("value", [0, -1, "300000", 1.5, True])
+def test_invalid_telemetry_flush_interval_is_rejected(value):
+    with pytest.raises(ValueError, match="telemetry_flush_interval_ms"):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            telemetry_options={"telemetry_flush_interval_ms": value},
+        )
+
+
+def test_unset_telemetry_flush_interval_is_not_forwarded(monkeypatch):
+    monkeypatch.setattr(kernel_client, "_kernel_session_accepts_kwarg", lambda _: True)
+    kwargs = kernel_client._kernel_telemetry_kwargs(
+        {"enable_telemetry": True, "telemetry_flush_interval_ms": None}
+    )
+    assert "telemetry_flush_interval_ms" not in kwargs
 
 
 def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
@@ -612,7 +695,11 @@ def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
     # The kwargs the client builds must be filtered to what fake_session
     # accepts, so open_session succeeds instead of raising TypeError.
     kwargs = kernel_client._kernel_telemetry_kwargs(
-        {"enable_telemetry": True, "telemetry_batch_size": 17}
+        {
+            "enable_telemetry": True,
+            "telemetry_batch_size": 17,
+            "telemetry_flush_interval_ms": 300_000,
+        }
     )
     assert kwargs == {}, f"expected no unsupported phase-7 kwargs, got {kwargs}"
 
@@ -630,7 +717,120 @@ def test_open_session_omits_optional_kwargs_kernel_does_not_accept(monkeypatch):
     assert captured["host"] == "example.cloud.databricks.com"
 
 
-def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monkeypatch):
+def test_kernel_session_signature_is_reused(monkeypatch):
+    class Session:
+        def __init__(self, *, driver_name=None, max_connections=None):
+            pass
+
+    signature = MagicMock(wraps=kernel_client.inspect.signature)
+    monkeypatch.setattr(kernel_client._kernel, "Session", Session)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
+
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is True
+    assert kernel_client._kernel_session_accepts_kwarg("max_connections") is True
+    assert kernel_client._kernel_session_accepts_kwarg("unsupported") is False
+    signature.assert_called_once_with(Session)
+
+
+@pytest.mark.parametrize("signature_error", [None, TypeError, ValueError])
+def test_kernel_session_signature_is_shared_across_threads(
+    monkeypatch, signature_error
+):
+    class Session:
+        def __init__(self, *, driver_name=None):
+            pass
+
+    inspect_signature = kernel_client.inspect.signature
+    lock = threading.Lock()
+    lock_attempted = threading.Event()
+    signature_started = threading.Event()
+    release_signature = threading.Event()
+
+    class NotifyingLock:
+        def __enter__(self):
+            lock_attempted.set()
+            return lock.__enter__()
+
+        def __exit__(self, *args):
+            return lock.__exit__(*args)
+
+    def inspect_session(session_type):
+        signature_started.set()
+        assert release_signature.wait(timeout=10)
+        if signature_error is not None:
+            raise signature_error("no signature found for builtin type")
+        return inspect_signature(session_type)
+
+    signature = MagicMock(side_effect=inspect_session)
+    monkeypatch.setattr(kernel_client._kernel, "Session", Session)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
+    monkeypatch.setattr(
+        kernel_client, "_KERNEL_SESSION_PARAMETER_SUPPORT_LOCK", NotifyingLock()
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(
+            kernel_client._kernel_session_accepts_kwarg, "driver_name"
+        )
+        try:
+            assert signature_started.wait(timeout=10)
+            lock_attempted.clear()
+            second = executor.submit(
+                kernel_client._kernel_session_accepts_kwarg, "unsupported"
+            )
+            assert lock_attempted.wait(timeout=10)
+        finally:
+            release_signature.set()
+        assert first.result(timeout=10) is (signature_error is None)
+        assert second.result(timeout=10) is False
+
+    signature.assert_called_once_with(Session)
+
+
+@pytest.mark.parametrize("signature_error", [None, TypeError, ValueError])
+def test_kernel_session_signature_refreshes_when_class_changes(
+    monkeypatch, signature_error
+):
+    class OriginalSession:
+        def __init__(self, *, driver_name=None, **kwargs):
+            pass
+
+    class ReplacementSession:
+        def __init__(self, *, max_connections=None):
+            pass
+
+    inspect_signature = kernel_client.inspect.signature
+
+    def inspect_session(session_type):
+        if session_type is OriginalSession and signature_error is not None:
+            raise signature_error("no signature found for builtin type")
+        return inspect_signature(session_type)
+
+    signature = MagicMock(side_effect=inspect_session)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
+    monkeypatch.setattr(kernel_client._kernel, "Session", OriginalSession)
+
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is (
+        signature_error is None
+    )
+    assert kernel_client._kernel_session_accepts_kwarg("arbitrary_option") is (
+        signature_error is None
+    )
+    signature.assert_called_once_with(OriginalSession)
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", ReplacementSession)
+
+    assert kernel_client._kernel_session_accepts_kwarg("max_connections") is True
+    assert kernel_client._kernel_session_accepts_kwarg("driver_name") is False
+    assert kernel_client._kernel_session_accepts_kwarg("arbitrary_option") is False
+    assert signature.call_count == 2
+    signature.assert_called_with(ReplacementSession)
+
+
+@pytest.mark.parametrize("signature_error", [TypeError, ValueError])
+def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(
+    monkeypatch, signature_error
+):
     """When ``inspect.signature(_kernel.Session)`` raises (a PyO3 class built
     without ``#[pyo3(signature=...)]`` exposes no ``__text_signature__``, so
     ``inspect.signature`` raises ``ValueError``), the gate must fall
@@ -650,11 +850,12 @@ def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monke
         def __init__(self, *args, **kwargs):  # pragma: no cover - never called
             pass
 
-    def raise_value_error(_obj):
-        raise ValueError("no signature found for builtin type")
+    signature = MagicMock(
+        side_effect=signature_error("no signature found for builtin type")
+    )
 
     monkeypatch.setattr(kernel_client._kernel, "Session", NonIntrospectableSession)
-    monkeypatch.setattr(kernel_client.inspect, "signature", raise_value_error)
+    monkeypatch.setattr(kernel_client.inspect, "signature", signature)
 
     assert kernel_client._kernel_session_accepts_kwarg("driver_name") is False
 
@@ -681,6 +882,7 @@ def test_kernel_session_accepts_kwarg_falls_closed_when_not_introspectable(monke
     assert (
         kwargs == {}
     ), f"expected no phase-7 kwargs when signature unreadable, got {kwargs}"
+    signature.assert_called_once_with(NonIntrospectableSession)
 
 
 def test_execute_command_forwards_parameters_to_bind_param():
@@ -1233,7 +1435,8 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
-def test_get_execution_result_uses_retained_owning_handle_first():
+@pytest.mark.parametrize("count", [7, 0, None])
+def test_get_execution_result_uses_retained_owning_handle_first(count):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
@@ -1241,7 +1444,13 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
-    handle.await_result.return_value = fake_stream
+    del handle.num_modified_rows
+
+    def await_result():
+        handle.num_modified_rows = count
+        return fake_stream
+
+    handle.await_result.side_effect = await_result
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1252,6 +1461,8 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == count
+    fake_stream.fetch_next_batch.assert_not_called()
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
@@ -1264,6 +1475,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = _attach_returns(c, await_result=fake_stream)
+    handle.num_modified_rows = 7
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1272,6 +1484,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == 7
     c._kernel_session.attach_async_statement.assert_called_once_with("async-1")
     handle.await_result.assert_called_once_with()
 
@@ -1326,6 +1539,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     retry_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     reader = MagicMock()
     reader.await_result.return_value = retry_stream
+    reader.num_modified_rows = 0
     owning_handle.reader.return_value = reader
     cursor = MagicMock()
     cursor.arraysize = 100
@@ -1334,6 +1548,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == 0
     owning_handle.reader.assert_called_once_with()
     c._kernel_session.attach_async_statement.assert_not_called()
     reader.await_result.assert_called_once_with()
@@ -1414,11 +1629,60 @@ def test_get_query_state_returns_state_when_no_failure():
 # ---------------------------------------------------------------------------
 
 
-def test_max_download_threads_is_nonzero():
-    """Property is consulted by Thrift code paths that don't run for
-    ``use_kernel=True``; a non-zero default avoids divide-by-zero."""
-    c = _make_client()
-    assert c.max_download_threads > 0
+@pytest.mark.parametrize(
+    "threads, override",
+    [
+        (1, None),
+        (4, None),
+        (10, None),
+        (1000, None),
+        (10**100, None),
+        (4, "cloudfetch_max_chunks_in_memory"),
+        (4, "CLOUDFETCH_MAX_CHUNKS_IN_MEMORY"),
+    ],
+)
+def test_max_download_threads_configures_kernel(monkeypatch, threads, override):
+    captured = {}
+
+    def fake_session(**options):
+        captured.update(options)
+        return MagicMock(session_id="sess-id")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        max_download_threads=threads,
+    )
+    configuration = {"TIMEZONE": "UTC"}
+    if override:
+        configuration[override] = "2"
+    original = dict(configuration)
+    client.open_session(configuration, catalog=None, schema=None)
+    expected = (
+        original
+        if override
+        else {**original, "cloudfetch_max_chunks_in_memory": str(min(threads, 256))}
+    )
+    assert captured["session_conf"] == expected
+    assert configuration == original
+    assert client.max_download_threads == threads
+
+
+@pytest.mark.parametrize("threads", [0, -1, None, "4", 1.5, True])
+def test_max_download_threads_rejects_invalid_values(threads):
+    with pytest.raises(
+        ValueError, match="max_download_threads must be a positive integer"
+    ):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            max_download_threads=threads,
+        )
 
 
 def test_synthetic_command_id_is_uuid_shaped():

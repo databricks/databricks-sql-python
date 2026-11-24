@@ -3,6 +3,22 @@
 # Unreleased
 - Include the available SQL statement ID in Thrift failure telemetry so errors can be correlated with the failed statement.
 
+# 4.10.0 (2026-11-24)
+- Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
+- Kernel TLS certificate errors fail after one attempt and report the underlying cause, including for CloudFetch.
+- A failed OAuth token request fails kernel connections immediately instead of authenticating again.
+- Fix file-descriptor leaks when closing kernel connections, including OAuth connections.
+- Kernel CloudFetch downloads keep progressing across result pages and respond to cancellation.
+- Fix the kernel backend ignoring `use_cloud_fetch=False`.
+- Omit presigned CloudFetch URL query strings from kernel errors and debug logs.
+- Preserve affected-row counts from immediately completed kernel statements.
+- Honor `max_download_threads` on kernel connections; invalid values raise `ValueError` with `use_kernel=True`.
+- Forward `telemetry_flush_interval_ms` to the kernel, which previously ignored it.
+- Report `cursor.rowcount` after asynchronous DML completes on the Thrift and kernel backends.
+- Fix `use_inline_params=True` rendering a sequence after `IN` as `ARRAY(...)`, which Spark rejects ([#629](https://github.com/databricks/databricks-sql-python/issues/629)).
+- Speed up Thrift response handling for wide results and metadata calls.
+- Update oauthlib to 4.0.1 to address security findings.
+
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
 - Preserve the originating session when re-fetching or concurrently polling async statements on the kernel backend.

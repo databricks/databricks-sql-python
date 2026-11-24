@@ -543,6 +543,56 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 assert result.bar == 2
                 assert result.baz == 3
 
+    @pytest.mark.parametrize(
+        "query,params,expected_ids",
+        [
+            (
+                "SELECT id FROM range(5) WHERE id IN %(ids)s ORDER BY id",
+                {"ids": [1, 3]},
+                [1, 3],
+            ),
+            ("SELECT id FROM range(5) WHERE id IN %s ORDER BY id", [[1, 3]], [1, 3]),
+            (
+                "SELECT id FROM range(5) WHERE id NOT IN %(ids)s ORDER BY id",
+                {"ids": (1, 3)},
+                [0, 2, 4],
+            ),
+            (
+                # The same parameter renders as a list after IN and as an ARRAY elsewhere.
+                "SELECT id FROM range(5) WHERE id IN %(ids)s"
+                " AND array_contains(%(ids)s, id) ORDER BY id",
+                {"ids": [1, 3]},
+                [1, 3],
+            ),
+            (
+                "SELECT id FROM range(5) WHERE id IN %(ids)s ORDER BY id LIMIT %(n)d",
+                {"ids": [1, 3, 4], "n": 2},
+                [1, 3],
+            ),
+            (
+                # Tuples render as rows for a multi-column IN. Spark does not widen the field
+                # types of a row, so the INT and STRING columns match the rendered literals.
+                "SELECT id FROM VALUES (1, 'a'), (2, 'b'), (3, 'c') AS t(id, tag)"
+                " WHERE (id, tag) IN %(pairs)s ORDER BY id",
+                {"pairs": [(1, "a"), (2, "x"), (3, "c")]},
+                [1, 3],
+            ),
+            (
+                # A set is accepted directly after IN and rendered sorted.
+                "SELECT id FROM range(5) WHERE id NOT IN %(ids)s ORDER BY id",
+                {"ids": {4, 0, 2}},
+                [1, 3],
+            ),
+        ],
+    )
+    def test_inline_sequence_in_clause(self, query, params, expected_ids):
+        """Regression test for #629: a sequence bound directly after IN must render as a
+        parenthesised list, not an ARRAY literal, or the server rejects the query."""
+        with self.cursor(extra_params={"use_inline_params": True}) as cursor:
+            result = cursor.execute(query, parameters=params).fetchall()
+
+        assert [row.id for row in result] == expected_ids
+
     def test_inline_ordinals_can_break_sql(self):
         """With inline mode, ordinal parameters can break the SQL syntax
         because `%` symbols are used to wildcard match within LIKE statements. This test

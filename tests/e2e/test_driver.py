@@ -559,6 +559,8 @@ class TestPySQLCoreSuite(
 
     def test_get_columns(self):
         with self.cursor({}) as cursor:
+            cursor.execute("SELECT current_catalog()")
+            catalog_name = cursor.fetchone()[0]
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             table_names = [table_name + "_1", table_name + "_2"]
 
@@ -573,7 +575,11 @@ class TestPySQLCoreSuite(
                         "array('item1', 'item2', 'item3') as col_5)".format(table)
                     )
 
-                cursor.columns(schema_name="defa%", table_name=table_name + "%")
+                cursor.columns(
+                    catalog_name=catalog_name,
+                    schema_name="defa%",
+                    table_name=table_name + "%",
+                )
                 cols = cursor.fetchall()
                 cols_desc = cursor.description
 

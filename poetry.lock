@@ -497,19 +497,19 @@ ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
 name = "databricks-sql-kernel"
-version = "1.4.0"
+version = "1.5.0"
 description = "Python bindings for the Databricks SQL Kernel (PyO3)"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"kernel\""
 files = [
-    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:d7888fe54bb5b47c15741557495a0910c0ccb57297c99197c7e4092d963d398f"},
-    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:bd8b72af9e72a55e300d55bc793f2f3ed107dfbc0370e6180a13390b5f365865"},
-    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:9f6ed61f8571840b310a1b7e11d26891586268436c1a967dd029a8ef56038957"},
-    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:7d1d92fca31d6e50600b248db053738c5df6bbe1cac7d6f1ba4dffb60cd2991f"},
-    {file = "databricks_sql_kernel-1.4.0-cp39-abi3-win_amd64.whl", hash = "sha256:9d91bc753638991ca17970d6547f156c56309fc7782c73b3dddcf40c209838d5"},
-    {file = "databricks_sql_kernel-1.4.0.tar.gz", hash = "sha256:4cd4f9296b853d610f4bf082eb8dfd86eb2701df7097af6b77414ef176cf229f"},
+    {file = "databricks_sql_kernel-1.5.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:99f2a9c55091c92aa70bf01cd3abd290c7e02896836759ce8c273acbee170f72"},
+    {file = "databricks_sql_kernel-1.5.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:a2d22f4ca43763516116e420a19c08597fe80b98996cc7420620df8d1662faea"},
+    {file = "databricks_sql_kernel-1.5.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:8d4f9882265446b91a0ee8d944d6a63b168eabcbbb4cbcf0cf4174a2d6e7a428"},
+    {file = "databricks_sql_kernel-1.5.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:3a8a5eda0f6bcbe12a8c9a9426230902021667fa39fc8e19da688d630f0454c6"},
+    {file = "databricks_sql_kernel-1.5.0-cp39-abi3-win_amd64.whl", hash = "sha256:9fa535d02fd9e1dfc574097bc7729bad154355b2320fe6ab00e3da192c64d7c9"},
+    {file = "databricks_sql_kernel-1.5.0.tar.gz", hash = "sha256:4e48a9c117930f01ec050b7acecedb05685df7661db3791e789ae1d0394574bd"},
 ]
 
 [package.dependencies]
@@ -1160,14 +1160,14 @@ files = [
 
 [[package]]
 name = "oauthlib"
-version = "4.0.0"
+version = "4.0.1"
 description = "A generic, spec-compliant, thorough implementation of the OAuth request-signing logic"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "oauthlib-4.0.0-py3-none-any.whl", hash = "sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd"},
-    {file = "oauthlib-4.0.0.tar.gz", hash = "sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86"},
+    {file = "oauthlib-4.0.1-py3-none-any.whl", hash = "sha256:498a298876e996301950a5b053d12c31628bb7b895db03666430c69ce182eb61"},
+    {file = "oauthlib-4.0.1.tar.gz", hash = "sha256:3d73febdb6faa00f277c81fb04be7b7586fb96fc3b7f0b9c772dada69a25ede7"},
 ]
 
 [package.extras]
@@ -2057,4 +2057,4 @@ pyarrow = ["pyarrow", "pyarrow", "pyarrow"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "bd560a68822615b0af6e21116e0765f2c34610f4ee8d043b4ae34fea7111a404"
+content-hash = "379036c1d3da438060dca0c756ea2e16a08ae09e22d88191f25ffbbba099eead"

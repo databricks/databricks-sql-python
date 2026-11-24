@@ -303,6 +303,29 @@ class ClientTestSuite(unittest.TestCase):
         cursor.execute("SELECT 1")
         self.assertEqual(cursor.rowcount, -1)
 
+    def test_async_rowcount_on_completion_and_reset(self):
+        for count in (5, 0, None):
+            with self.subTest(count=count):
+                result_set = Mock(num_modified_rows=count, is_staging_operation=False)
+                backend = ThriftDatabricksClientMockFactory.new()
+                backend.get_execution_result.return_value = result_set
+                backend.get_query_state.return_value = CommandState.SUCCEEDED
+                cursor = client.Cursor(connection=Mock(), backend=backend)
+                cursor.rowcount = 9
+
+                cursor.execute_async("UPDATE t SET x = 1")
+                self.assertEqual(cursor.rowcount, -1)
+                cursor.active_command_id = Mock(spec=CommandId)
+                self.assertIs(cursor.get_async_execution_result(), cursor)
+                self.assertEqual(cursor.rowcount, count if count is not None else -1)
+                result_set.fetchall.assert_not_called()
+
+                result_set.num_modified_rows = None
+                cursor.execute_async("SELECT 1")
+                self.assertEqual(cursor.rowcount, -1)
+                cursor.get_async_execution_result()
+                self.assertEqual(cursor.rowcount, -1)
+
     def test_closed_cursor_doesnt_allow_operations(self):
         cursor = client.Cursor(Mock(), Mock())
         cursor.close()
@@ -485,6 +508,31 @@ class ClientTestSuite(unittest.TestCase):
                 {"datetime": datetime(2022, 2, 1, 10, 23)},
             ),
             ("SELECT %(date)s", "SELECT '2022-02-01'", {"date": date(2022, 2, 1)}),
+        ]
+
+        for query, expected_query, params in tests:
+            cursor.execute(query, parameters=params)
+            self.assertEqual(
+                mock_thrift_backend.execute_command.call_args[1]["operation"],
+                expected_query,
+            )
+
+    def test_execute_inline_sequence_after_in_renders_as_list(self):
+        """Regression test for databricks-sql-python#629: `x IN ARRAY(...)` is a syntax error."""
+        mock_thrift_backend = ThriftDatabricksClientMockFactory.new()
+        cursor = client.Cursor(Mock(), mock_thrift_backend)
+
+        tests = [
+            (
+                "SELECT * FROM t WHERE x IN %(ids)s",
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+                {"ids": [1, 2, 3]},
+            ),
+            (
+                "SELECT * FROM t WHERE x IN %s",
+                "SELECT * FROM t WHERE x IN (1,2,3)",
+                [[1, 2, 3]],
+            ),
         ]
 
         for query, expected_query, params in tests:

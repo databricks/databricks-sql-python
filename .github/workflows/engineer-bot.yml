@@ -82,7 +82,7 @@ jobs:
           python-version: '3.11'
           # Match code-coverage.yml's e2e job: install optional extras (notably
           # pyarrow, declared optional=true behind the `pyarrow` extra) so the
-          # agent's REQUIRED live E2E repro test runs against the same runtime as
+          # agent's live E2E repro test runs against the same runtime as
           # the e2e suite it mirrors. Without this, arrow-touching e2e tests
           # ModuleNotFoundError/skip instead of failing red-for-the-right-reason.
           install-args: "--all-extras"
@@ -175,7 +175,7 @@ jobs:
 
       - name: Write E2E connection config (token survives the agent env scrub)
         id: e2e_config
-        # The bug-fix flow's REQUIRED tests/e2e repro authenticates via the repo's
+        # The bug-fix flow's tests/e2e repro authenticates via the repo's
         # conftest, which reads DATABRICKS_TOKEN. But the author agent runs pytest
         # in a subprocess whose env is scrubbed of every credential-shaped var
         # (engine shared/env_scrub.py strips *TOKEN*/*SECRET*/…), so DATABRICKS_TOKEN
@@ -222,7 +222,7 @@ jobs:
           ENGINEER_BOT_MODEL_OVERRIDE: databricks-claude-opus-5-5
           MODEL_ENDPOINT: https://${{ secrets.DATABRICKS_HOST }}/serving-endpoints/databricks-claude-opus-5-5/invocations
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # Live-warehouse connection env for the agent's REQUIRED E2E repro test
+          # Live-warehouse connection env for the agent's E2E repro test
           # (see .bot/prompts/engineer/system.md — the bug-fix flow reproduces the
           # bug via a tests/e2e test against a real warehouse; a mocked unit test
           # alone cannot prove the live server behaves correctly). Mirrors the
