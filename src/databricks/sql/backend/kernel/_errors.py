@@ -144,8 +144,9 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     message = getattr(exc, "message", str(exc))
     if getattr(exc, "error_code", None) == "VOLUME_STORAGE_HTTP_ERROR":
         cls = OperationalError
-        message = "Staging operation over HTTP was unsuccessful: " + message.replace(
-            "Volume storage request failed: HTTP ", "", 1
+        message = (
+            "Staging operation over HTTP was unsuccessful: "
+            f"{getattr(exc, 'http_status', None)}-{message}"
         )
     new = cls(message, context)
 

@@ -251,8 +251,25 @@ def test_close_skips_kernel_call_when_connection_already_closed(int_schema):
     assert rs.has_been_closed_server_side is True
 
 
-@pytest.mark.parametrize("data", [b"payload", b""])
-def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
+@pytest.mark.parametrize(
+    "allowed,paths,stream,sent",
+    [
+        pytest.param(
+            "/allowed", ["/allowed"], io.BytesIO(b"payload"), b"payload", id="bytes"
+        ),
+        pytest.param("/allowed", ["/allowed"], io.BytesIO(b""), b"", id="empty"),
+        pytest.param(
+            [pathlib.Path("/allowed")],
+            [str(pathlib.Path("/allowed"))],
+            io.StringIO("é"),
+            "é".encode("utf-8"),
+            id="path-root-and-text-stream",
+        ),
+    ],
+)
+def test_volume_reads_input_only_when_native_requests_it(
+    int_schema, allowed, paths, stream, sent
+):
     handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
     handle.is_volume_operation = True
     handle.complete_volume_operation = MagicMock(
@@ -262,39 +279,14 @@ def test_volume_reads_input_only_when_native_requests_it(int_schema, data):
         ]
     )
     rs = _make_rs(handle)
-    stream = io.BytesIO(data)
-    rs.complete_staging_operation("/allowed", stream)
-    assert stream.tell() == len(data)
+    rs.complete_staging_operation(allowed, stream)
+    assert not stream.read()
     assert handle.complete_volume_operation.call_args_list == [
-        ((["/allowed"],), {"remove_not_found_is_success": False, "input_bytes": None}),
-        ((["/allowed"],), {"remove_not_found_is_success": False, "input_bytes": data}),
+        ((paths,), {"remove_not_found_is_success": False, "input_bytes": None}),
+        ((paths,), {"remove_not_found_is_success": False, "input_bytes": sent}),
     ]
     assert rs.fetchall() == []
     rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
-
-
-def test_volume_accepts_path_entries_and_text_streams(int_schema):
-    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
-    handle.is_volume_operation = True
-    handle.complete_volume_operation = MagicMock(
-        side_effect=[
-            _errors._kernel.VolumeCompletion.NeedsInputStream,
-            _errors._kernel.VolumeCompletion.Completed,
-        ]
-    )
-    rs = _make_rs(handle)
-    allowed = pathlib.Path("/allowed")
-    rs.complete_staging_operation([allowed], io.StringIO("é"))
-    assert handle.complete_volume_operation.call_args_list == [
-        (
-            ([str(allowed)],),
-            {"remove_not_found_is_success": False, "input_bytes": None},
-        ),
-        (
-            ([str(allowed)],),
-            {"remove_not_found_is_success": False, "input_bytes": "é".encode("utf-8")},
-        ),
-    ]
 
 
 def test_volume_invalid_allowed_path_still_finishes(int_schema):
@@ -419,6 +411,7 @@ def test_volume_http_404_is_an_operational_error(int_schema):
     handle.complete_volume_operation = MagicMock(side_effect=error)
     rs = _make_rs(handle)
     with pytest.raises(
-        OperationalError, match=r"^Staging operation over HTTP was unsuccessful: 404"
+        OperationalError,
+        match=r"^Staging operation over HTTP was unsuccessful: 404-Volume storage request failed: HTTP 404$",
     ):
         rs.complete_staging_operation([])

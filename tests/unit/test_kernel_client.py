@@ -1379,27 +1379,20 @@ def test_get_query_state_uses_reader_after_result_stream_started():
 
 
 @pytest.mark.parametrize(
-    "count,is_volume,volume_completed",
+    "count",
     [
-        pytest.param(7, False, False, id="dml"),
-        pytest.param(0, False, False, id="zero-row-dml"),
-        pytest.param(None, False, False, id="select"),
-        pytest.param(None, True, False, id="pending-volume"),
-        pytest.param(None, True, True, id="completed-volume"),
+        pytest.param(7, id="dml"),
+        pytest.param(0, id="zero-row-dml"),
+        pytest.param(None, id="select"),
     ],
 )
-def test_get_execution_result_uses_retained_owning_handle_first(
-    count, is_volume, volume_completed
-):
+def test_get_execution_result_uses_retained_owning_handle_first(count):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
     c._kernel_session = MagicMock()
     fake_stream = MagicMock()
-    fake_stream.is_volume_operation = is_volume
-    fake_stream.complete_volume_operation.return_value = (
-        kernel_client._kernel.VolumeCompletion.Completed
-    )
+    fake_stream.is_volume_operation = False
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
     del handle.num_modified_rows
@@ -1424,8 +1417,37 @@ def test_get_execution_result_uses_retained_owning_handle_first(
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
-    assert rs.is_staging_operation is is_volume
+    assert rs.is_staging_operation is False
 
+    rs.close()
+    fake_stream.close.assert_called_once_with()
+    handle.close.assert_called_once_with()
+    handle.cancel.assert_not_called()
+    assert cid.guid not in c._async_handles
+
+
+@pytest.mark.parametrize("volume_completed", [False, True])
+def test_async_volume_result_close_cancels_only_pending_transfer(volume_completed):
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    fake_stream = MagicMock()
+    fake_stream.is_volume_operation = True
+    fake_stream.complete_volume_operation.return_value = (
+        kernel_client._kernel.VolumeCompletion.Completed
+    )
+    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    handle = MagicMock()
+    handle.num_modified_rows = None
+    handle.await_result.return_value = fake_stream
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    cid = CommandId.from_sea_statement_id("async-volume")
+    c._async_handles[cid.guid] = handle
+
+    rs = c.get_execution_result(cid, cursor=cursor)
+
+    assert rs.is_staging_operation is True
     assert not c._volume_cancellers
     if volume_completed:
         rs.complete_staging_operation(["/allowed"])
@@ -1440,8 +1462,8 @@ def test_get_execution_result_uses_retained_owning_handle_first(
         handle.cancel.called
     )
     rs.close()
-    assert cancelled_at_stream_close == [is_volume and not volume_completed]
-    assert handle.cancel.call_count == int(is_volume and not volume_completed)
+    assert cancelled_at_stream_close == [not volume_completed]
+    assert handle.cancel.call_count == int(not volume_completed)
     fake_stream.close.assert_called_once_with()
     handle.close.assert_called_once_with()
     assert cid.guid not in c._async_handles
