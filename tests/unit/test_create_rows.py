@@ -72,11 +72,20 @@ def test_create_rows_pickles_like_row_factory():
     assert restored.asDict() == want.asDict()
 
 
-def test_create_rows_rejects_more_values_than_fields_like_row_factory():
+@pytest.mark.parametrize(
+    "extra_row",
+    [
+        (1, "a", None, "extra"),
+        [1, "a", None, "extra"],
+        numpy.array([1, "a", None, "extra"], dtype="object"),
+    ],
+    ids=["tuple", "list", "numpy_object_row"],
+)
+def test_create_rows_rejects_more_values_than_fields_like_row_factory(extra_row):
     with pytest.raises(ValueError) as expected:
-        FIELDS(1, "a", None, "extra")
+        FIELDS(*extra_row)
     with pytest.raises(ValueError) as actual:
-        _create_rows(FIELDS, [(1, "a", None), (1, "a", None, "extra")])
+        _create_rows(FIELDS, [(1, "a", None), extra_row])
     assert str(actual.value) == str(expected.value)
 
 

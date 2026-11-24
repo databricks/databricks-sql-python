@@ -253,10 +253,7 @@ class Row(tuple):
     def __call__(self, *args: Any) -> "Row":
         """create new Row object"""
         if len(args) > len(self):
-            raise ValueError(
-                "Can not create Row with fields %s, expected %d values "
-                "but got %s" % (self, len(self), args)
-            )
+            raise _too_many_values_error(self, args)
         return _create_row(self, args)
 
     def __getitem__(self, item: Any) -> Any:
@@ -317,6 +314,13 @@ def _create_row(
     return row
 
 
+def _too_many_values_error(fields: "Row", values: Tuple[Any, ...]) -> ValueError:
+    return ValueError(
+        "Can not create Row with fields %s, expected %d values "
+        "but got %s" % (fields, len(fields), values)
+    )
+
+
 def _create_rows(fields: "Row", rows: Iterable[Sequence[Any]]) -> List["Row"]:
     """Return ``[fields(*values) for values in rows]``, built without per-row Python calls.
 
@@ -324,7 +328,7 @@ def _create_rows(fields: "Row", rows: Iterable[Sequence[Any]]) -> List["Row"]:
     ``Row.__new__`` and ``Row.__setattr__``. Result fetches build one row per result row,
     so this builds the same object directly: the values as a ``Row`` tuple, with
     ``__fields__`` stored where ``Row.__setattr__`` stores it. A row with more values than
-    ``fields`` goes through ``fields(*values)`` to raise the same ``ValueError``.
+    ``fields`` raises the same ``ValueError`` as ``fields(*values)``.
     """
     width = len(fields)
     new_row = tuple.__new__
@@ -332,7 +336,7 @@ def _create_rows(fields: "Row", rows: Iterable[Sequence[Any]]) -> List["Row"]:
     append = result.append
     for values in rows:
         if len(values) > width:
-            fields(*values)
+            raise _too_many_values_error(fields, tuple(values))
         row = new_row(Row, values)
         row.__dict__["__fields__"] = fields
         append(row)
