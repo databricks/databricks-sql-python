@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.types import Row
+from databricks.sql.types import Row, _create_rows
 from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
@@ -99,9 +99,9 @@ class ResultSet(ABC):
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
+            return _create_rows(
+                ResultRow, ([v.as_py() for v in r] for r in zip(*table.itercolumns()))
+            )
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
@@ -130,7 +130,10 @@ class ResultSet(ABC):
         )
 
         res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
+        rows = []
+        for start in range(0, len(res), 1024):
+            rows += _create_rows(ResultRow, res[start : start + 1024].tolist())
+        return rows
 
     @property
     def rownumber(self):
@@ -293,14 +296,14 @@ class ThriftResultSet(ResultSet):
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
-        result = []
-        for row_index in range(table.num_rows):
-            curr_row = []
-            for col_index in range(table.num_columns):
-                curr_row.append(table.get_item(col_index, row_index))
-            result.append(ResultRow(*curr_row))
-
-        return result
+        rows = (
+            [
+                table.get_item(col_index, row_index)
+                for col_index in range(table.num_columns)
+            ]
+            for row_index in range(table.num_rows)
+        )
+        return _create_rows(ResultRow, rows)
 
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
