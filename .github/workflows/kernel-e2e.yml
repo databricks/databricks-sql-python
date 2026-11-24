@@ -54,6 +54,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Keep the required result in this workflow's suite. Manually posted checks
+  # can attach to an unrelated suite that a later run supersedes.
+  kernel-e2e-result:
+    name: Kernel E2E
+    if: always()
+    needs: [skip-kernel-e2e-pr, detect-changes, run-kernel-e2e, auto-pass-merge-queue]
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check kernel test outcomes
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq -e 'all(.[]; . == "success" or . == "skipped")' <<< "$RESULTS"
+
   # ───────────────────────────────────────────────────────────────
   # Security: auto-remove `kernel-e2e` label on new commits, same as
   # trigger-integration-tests.yml.

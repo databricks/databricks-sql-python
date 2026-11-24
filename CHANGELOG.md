@@ -1,11 +1,24 @@
 # Release History
 
 # Unreleased
-- Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
-- Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
-- Speed up Thrift response handling: read replies in 1 MiB chunks and decode them with Thrift's C-accelerated protocol, and stop stringifying every request/response for the default no-op debug logger. Wide result schemas, metadata calls with many rows, and inline Arrow results benefit most.
-- Report `cursor.rowcount` after asynchronous DML completes on both the Thrift and kernel backends, preserving zero counts and fetched result rows.
+
 - **Behaviour change:** `DecimalParameter` now binds `DECIMAL(precision, scale)`, matching SQL: `precision` is the total number of digits and `scale` the number of fractional digits (earlier docs described them the other way round). Calls written for the old convention (`scale > precision`, e.g. `scale=10, precision=2`) still bind `DECIMAL(10,2)` but emit a `FutureWarning`; swap your arguments, as this will raise `ValueError` in a future release. A declared `scale` equal to or less than `precision` is now interpreted with the SQL meaning, and a declared `scale` smaller than the value's own scale is widened (growing the precision by the same amount) so fractional digits are not lost (e.g. `DecimalParameter(Decimal("123.4567"), precision=10, scale=2)` binds `DECIMAL(12,4)`). The declared integer room (`precision - scale`) is not widened, so a value with more integer digits is still rejected by the server as out of range. Widening is capped at the 38-digit DECIMAL maximum; a value needing more digits than that still has its excess fractional digits rounded. The constructor now also raises `ValueError` for inputs it previously accepted: a `precision` outside 0..38, a negative `scale`, and `bool` values for `scale` or `precision`. `precision=0` (e.g. `scale=5, precision=0`) still falls back to an inferred type as before, but now emits a `FutureWarning`; it will raise `ValueError` in a future release. `scale=0` (previously also treated as unset) is now honoured as `DECIMAL(precision, 0)`, except that when the value has more integer digits than `precision` (which earlier releases accepted via the inferred type) it falls back to the inferred type with a `FutureWarning`; this will raise `ValueError` in a future release.
+
+# 4.10.0 (2026-11-24)
+- Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
+- Kernel TLS certificate errors fail after one attempt and report the underlying cause, including for CloudFetch.
+- A failed OAuth token request fails kernel connections immediately instead of authenticating again.
+- Fix file-descriptor leaks when closing kernel connections, including OAuth connections.
+- Kernel CloudFetch downloads keep progressing across result pages and respond to cancellation.
+- Fix the kernel backend ignoring `use_cloud_fetch=False`.
+- Omit presigned CloudFetch URL query strings from kernel errors and debug logs.
+- Preserve affected-row counts from immediately completed kernel statements.
+- Honor `max_download_threads` on kernel connections; invalid values raise `ValueError` with `use_kernel=True`.
+- Forward `telemetry_flush_interval_ms` to the kernel, which previously ignored it.
+- Report `cursor.rowcount` after asynchronous DML completes on the Thrift and kernel backends.
+- Fix `use_inline_params=True` rendering a sequence after `IN` as `ARRAY(...)`, which Spark rejects ([#629](https://github.com/databricks/databricks-sql-python/issues/629)).
+- Speed up Thrift response handling for wide results and metadata calls.
+- Update oauthlib to 4.0.1 to address security findings.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
