@@ -15,7 +15,7 @@ except ImportError:
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
     from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.types import Row
+from databricks.sql.types import Row, _create_rows
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.result_set import ResultSet
@@ -141,7 +141,7 @@ class SeaResultSet(ResultSet):
         """
 
         ResultRow = Row(*[col[0] for col in self.description])
-        return [ResultRow(*self._convert_json_types(row)) for row in rows]
+        return _create_rows(ResultRow, (self._convert_json_types(row) for row in rows))
 
     def fetchmany_json(self, size: int) -> List[List[str]]:
         """
