@@ -130,7 +130,10 @@ class ResultSet(ABC):
         )
 
         res = df.to_numpy(na_value=None, dtype="object")
-        return _create_rows(ResultRow, res)
+        rows = []
+        for start in range(0, len(res), 1024):
+            rows += _create_rows(ResultRow, res[start : start + 1024].tolist())
+        return rows
 
     @property
     def rownumber(self):

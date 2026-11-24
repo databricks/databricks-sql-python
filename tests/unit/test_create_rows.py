@@ -118,6 +118,25 @@ def test_convert_arrow_table_builds_rows(disable_pandas):
     _assert_rows_for_description(ResultSet._convert_arrow_table(result_set, table))
 
 
+@pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
+@pytest.mark.parametrize("num_rows", [1023, 1024, 1025, 2049])
+def test_convert_arrow_table_keeps_every_row_across_chunks(num_rows):
+    ids = [None if i % 5 == 0 else i for i in range(num_rows)]
+    names = [f"name-{i}" for i in range(num_rows)]
+    table = pa.table(
+        {"id": pa.array(ids, pa.int64()), "name": pa.array(names, pa.string())}
+    )
+    result_set = SimpleNamespace(
+        description=DESCRIPTION, connection=SimpleNamespace(disable_pandas=False)
+    )
+
+    rows = ResultSet._convert_arrow_table(result_set, table)
+
+    assert rows == [Row("id", "name")(*values) for values in zip(ids, names)]
+    assert all(type(row) is Row for row in rows)
+    assert {id(row.__fields__) for row in rows} == {id(rows[0].__fields__)}
+
+
 def test_convert_columnar_table_builds_rows():
     table = ColumnTable([[1, None, 3], ["a", None, "c"]], ["id", "name"])
     result_set = SimpleNamespace(description=DESCRIPTION)
