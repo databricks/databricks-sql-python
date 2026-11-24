@@ -254,7 +254,7 @@ transfer. The Thrift backend lets it finish.
 A GET that has started copying into the destination finishes the copy.
 
 Volume transfers have no total deadline.
-An explicit positive _socket_timeout caps storage connection establishment, reads, upload progress and PUT response waits.
+An explicit positive `_socket_timeout` caps storage connection establishment, reads, upload progress and PUT response waits.
 A redirected PUT resend has no idle bound.
 Unset or `0` leaves storage inactivity unbounded.
 
