@@ -2,11 +2,23 @@
 
 # Unreleased
 - Honor `_port` and `_connection_uri` on kernel connections (`use_kernel=True`), as Thrift does. The kernel applies `_port`: a port other than 443 (or 80 for an `http://` host) makes the connection use `scheme://host:port`, bare IPv6 hosts are bracketed, and `0`, unset or `443` change nothing. A port embedded in `server_hostname` wins over a differing `_port`, with a warning. For a non-default `_port`, the kernel rejects credentials, a path, query or fragment in the host, an empty host, and a bad embedded port with `InvalidArgument`, which surfaces as `ProgrammingError`. `_connection_uri` (`http(s)://host[:port]/path?query`) sets host, port, path and query and wins over `_port`; URI-only connections work. Invalid `_port` values and malformed URIs raise `ValueError`. With OAuth, a `_connection_uri` origin that differs from `server_hostname` raises. With OAuth and a non-default `_port`, the token exchange goes to the same host:port, unlike Thrift (documented, not guarded). This needs a databricks-sql-kernel release that includes databricks-sql-kernel#505.
-- Honor `max_download_threads` on kernel connections, with a default download window of 16 and explicit chunk-setting overrides. Invalid values raise `ValueError` when connecting with `use_kernel=True`.
-- Fix the kernel backend ignoring `use_cloud_fetch=False`, so complete results can be fetched without cloud-storage downloads.
-- Fix inline parameters (`use_inline_params=True`) so a sequence directly after `IN` renders as a list again: `x IN %(ids)s` renders as `x IN (1,2,3)` instead of `x IN ARRAY(1,2,3)`, which Spark rejects. Inside the list, tuples render as rows for a multi-column `IN`, and a `set` or `frozenset` is accepted again. Sequences anywhere else still render as `ARRAY(...)` ([#629](https://github.com/databricks/databricks-sql-python/issues/629))
-- Speed up Thrift response handling: read replies in 1 MiB chunks and decode them with Thrift's C-accelerated protocol, and stop stringifying every request/response for the default no-op debug logger. Wide result schemas, metadata calls with many rows, and inline Arrow results benefit most.
-- Report `cursor.rowcount` after asynchronous DML completes on both the Thrift and kernel backends, preserving zero counts and fetched result rows.
+- Speed up `fetchone()`, `fetchmany()` and `fetchall()` by building each result `Row` with fewer Python calls. The rows are unchanged. Large results and many concurrent cursors in one process benefit most.
+
+# 4.10.0 (2026-11-24)
+- Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
+- Kernel TLS certificate errors fail after one attempt and report the underlying cause, including for CloudFetch.
+- A failed OAuth token request fails kernel connections immediately instead of authenticating again.
+- Fix file-descriptor leaks when closing kernel connections, including OAuth connections.
+- Kernel CloudFetch downloads keep progressing across result pages and respond to cancellation.
+- Fix the kernel backend ignoring `use_cloud_fetch=False`.
+- Omit presigned CloudFetch URL query strings from kernel errors and debug logs.
+- Preserve affected-row counts from immediately completed kernel statements.
+- Honor `max_download_threads` on kernel connections; invalid values raise `ValueError` with `use_kernel=True`.
+- Forward `telemetry_flush_interval_ms` to the kernel, which previously ignored it.
+- Report `cursor.rowcount` after asynchronous DML completes on the Thrift and kernel backends.
+- Fix `use_inline_params=True` rendering a sequence after `IN` as `ARRAY(...)`, which Spark rejects ([#629](https://github.com/databricks/databricks-sql-python/issues/629)).
+- Speed up Thrift response handling for wide results and metadata calls.
+- Update oauthlib to 4.0.1 to address security findings.
 
 # 4.9.0 (2026-11-04)
 - Upgrade Databricks SQL Kernel to 1.4.0, which keeps Lakehouse Real-Time session affinity and flushes shared telemetry only after the final session closes.
