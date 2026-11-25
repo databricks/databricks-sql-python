@@ -1,6 +1,6 @@
 # Lessons
 
-<!-- distilled-through: 2026-11-18 -->
+<!-- distilled-through: 2026-11-25 -->
 
 ## Backend contracts and configuration
 - L-0001 (1×, log:2026-08-13): When changing cursor.description type_code strings, update every downstream conversion branch that matches them.
@@ -40,6 +40,8 @@
 - L-0032 (1×, #1022): KERNEL_REV changes CI source only. Shipping a kernel fix requires a released wheel and matching packaging floor/lock update, plus an in-repo E2E regression.
 - L-0033 (1×, #1020): Prove optional C acceleration actually executes and skip when unavailable. Choose input/output protocols separately and verify encoded bytes and nesting limits against the fallback.
 - L-0034 (1×, #1016): Carry sync result metadata into async get_execution_result. Read numModifiedRows from the existing terminal FINISHED_STATE status response via the shared helper, avoiding an extra RPC.
+- L-0051 (1×, #1078): In row-conversion fast paths, stream per-row values via generators, convert numpy object arrays with tolist() in bounded chunks (not per-row views or one full tolist()), and report peak traced memory vs main with timings.
+- L-0052 (1×, #1078): Fast paths bypassing a class constructor must match the public factory across all input shapes: type, repr, equality, pickle bytes, field identity, immutability, exact error messages and chunk-boundary row counts.
 
 ## Logging and concurrency
 - L-0035 (2×, #924): pyo3-log caches effective logger levels. Reset its cache after relevant level changes/session setup and isolate cached state in tests.
@@ -57,3 +59,6 @@
 - L-0045 (1×, #1004): Recheck capability claims after tool upgrades; replacing version numbers inside old support statements does not validate them.
 - L-0046 (1×, #1013): Confirm targeted regression tests fail when their guarded check is removed; inject inputs where earlier sanitization cannot neutralize the case.
 - L-0047 (1×, #1045): Secret-bearing CI steps must run Python isolated or from a neutral directory, preventing checkout modules from shadowing trusted imports.
+
+## Release and packaging
+- L-0050 (1×, #1079): Before a changelog claims a security dependency update, raise the pyproject.toml minimum or state it is lock-only; poetry.lock does not constrain installers of the published package.
