@@ -615,9 +615,9 @@ class DecimalParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         :scale:
-            The maximum precision (total number of digits) of the number between 1 and 38.
+            The number of digits to the right of the decimal point, from 0 to precision.
         :precision:
-            The number of digits to the right of the decimal point.
+            The maximum precision (total number of digits) of the number between 1 and 38.
         """
         self.value: decimal.Decimal = value
         self.name = name
@@ -638,8 +638,8 @@ class DecimalParameter(DbsqlParameterBase):
             return False
 
     def _cast_expr(self):
-        if self.scale and self.precision:
-            return self.CAST_EXPR.format(self.scale, self.precision)
+        if self.scale is not None and self.precision is not None:
+            return self.CAST_EXPR.format(self.precision, self.scale)
         else:
             return self.calculate_decimal_cast_string(self.value)
 

@@ -2,6 +2,7 @@
 
 # Unreleased
 - Speed up `fetchone()`, `fetchmany()` and `fetchall()` by building each result `Row` with fewer Python calls. The rows are unchanged. Large results and many concurrent cursors in one process benefit most.
+- Correct explicit `DecimalParameter` precision and scale ordering and honor a declared zero scale. Callers that followed the previously reversed parameter descriptions must use `precision` for total digits and `scale` for fractional digits. Explicit zero precision is now sent as declared instead of silently using automatic sizing.
 
 # 4.10.0 (2026-11-24)
 - Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
