@@ -595,12 +595,29 @@ def test_port_kwargs_are_empty_without_a_port():
 
 def test_port_requires_kernel_wheel_that_accepts_port(monkeypatch):
     """A wheel whose fixed ``Session`` signature has no ``port`` raises instead of
-    connecting to the default port."""
-    fake_session = MagicMock()
-    monkeypatch.setattr(
-        kernel_client, "_kernel_session_accepts_kwarg", lambda name: name != "port"
-    )
-    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    connecting to the default port. The real signature introspection decides."""
+    calls = []
+
+    def fake_session_without_port(
+        host,
+        http_path,
+        *,
+        catalog=None,
+        schema=None,
+        session_conf=None,
+        complex_types_as_json=False,
+        intervals_as_string=False,
+        request_timeout_secs=None,
+        auth_type=None,
+        access_token=None,
+        enable_geospatial_support=False,
+    ):
+        calls.append(host)
+        sess = MagicMock()
+        sess.session_id = "sess-id"
+        return sess
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session_without_port)
     c = kernel_client.KernelDatabricksClient(
         server_hostname="example.cloud.databricks.com",
         http_path="/sql/1.0/warehouses/abc",
@@ -609,9 +626,9 @@ def test_port_requires_kernel_wheel_that_accepts_port(monkeypatch):
         port=8443,
     )
 
-    with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
+    with pytest.raises(NotSupportedError, match="_port requires a newer"):
         c.open_session(session_configuration=None, catalog=None, schema=None)
-    fake_session.assert_not_called()
+    assert calls == []
 
 
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):

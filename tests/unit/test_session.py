@@ -22,6 +22,7 @@ import databricks.sql
 from databricks.sql.exc import (
     ReydenThriftUnsupportedError,
     DatabaseError,
+    NotSupportedError,
     OperationalError,
 )
 from databricks.sql.session import Session
@@ -1446,6 +1447,9 @@ def _jwt(issuer):
         ),
         # An issuer on the server host is not exchanged (Thrift parity), so it passes.
         ("h.io", "https://h.io/sql/x", _jwt("https://h.io/oidc"), False),
+        # The same issuer is foreign to a different _connection_uri host, where the kernel
+        # exchanges it, so the mismatched origin fails.
+        ("h.io", "https://other.io/sql/x", _jwt("https://h.io/oidc"), True),
         # A PAT is not a JWT and is not guarded.
         ("h.io", "https://evil.io/sql/x", "dapi-xyz", False),
     ],
@@ -1652,27 +1656,45 @@ def test_spog_org_id_follows_resolved_path(fake_kernel, hp, uri, expected_org):
     )
 
 
-@pytest.mark.realkernel
-@pytest.mark.parametrize(
-    "build",
-    [
-        lambda p: {"server_hostname": "127.0.0.1", "http_path": _P, "_port": p},
-        lambda p: {
-            "server_hostname": "",
-            "http_path": "",
-            "_connection_uri": f"https://127.0.0.1:{p}{_P}",
-        },
-    ],
-    ids=["port", "uri-only"],
-)
-def test_kernel_dials_over_tls(build):
-    """Loopback dial on the real kernel wheel: a TCP listener on 127.0.0.1 must receive the
-    kernel's TLS handshake (first byte 0x16) at the requested port. Nothing completes the
-    handshake, so connect() is expected to fail; only the dial is asserted."""
+def _require_real_kernel_wheel(port_kwarg):
+    """Skip unless the kernel wheel is installed and, when ``port_kwarg`` is set, its
+    ``Session`` takes ``port``. An older wheel raises NotSupportedError for a non-default
+    ``_port``, which a loopback test would otherwise report as a listener timeout."""
     try:
         ilm.version("databricks-sql-kernel")
     except ilm.PackageNotFoundError:
         pytest.skip("databricks-sql-kernel wheel not installed")
+    if port_kwarg:
+        from databricks.sql.backend.kernel import client as kernel_client
+
+        if not kernel_client._kernel_session_accepts_kwarg("port"):
+            pytest.skip("installed databricks-sql-kernel wheel has no port kwarg")
+
+
+@pytest.mark.realkernel
+@pytest.mark.parametrize(
+    "build, port_kwarg",
+    [
+        (
+            lambda p: {"server_hostname": "127.0.0.1", "http_path": _P, "_port": p},
+            True,
+        ),
+        (
+            lambda p: {
+                "server_hostname": "",
+                "http_path": "",
+                "_connection_uri": f"https://127.0.0.1:{p}{_P}",
+            },
+            False,
+        ),
+    ],
+    ids=["port", "uri-only"],
+)
+def test_kernel_dials_over_tls(build, port_kwarg):
+    """Loopback dial on the real kernel wheel: a TCP listener on 127.0.0.1 must receive the
+    kernel's TLS handshake (first byte 0x16) at the requested port. Nothing completes the
+    handshake, so connect() is expected to fail; only the dial is asserted."""
+    _require_real_kernel_wheel(port_kwarg)
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -1701,6 +1723,8 @@ def test_kernel_dials_over_tls(build):
             _retry_stop_after_attempts_count=1,
             **build(port),
         ).close()
+    except NotSupportedError:
+        raise
     except Exception:
         pass  # expected: nothing behind the listener completes TLS
     thread.join(timeout=70)
@@ -1712,10 +1736,7 @@ def test_kernel_dials_over_tls(build):
 def test_kernel_embedded_port_wins_over_explicit_port():
     """Loopback on the real kernel wheel: server_hostname 'h:P1' with an explicit _port P2
     dials P1 (TLS first byte 0x16) and never P2."""
-    try:
-        ilm.version("databricks-sql-kernel")
-    except ilm.PackageNotFoundError:
-        pytest.skip("databricks-sql-kernel wheel not installed")
+    _require_real_kernel_wheel(port_kwarg=True)
 
     def listen():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1756,6 +1777,8 @@ def test_kernel_embedded_port_wins_over_explicit_port():
             _retry_stop_after_attempts_count=1,
             _port=explicit_port,
         ).close()
+    except NotSupportedError:
+        raise
     except Exception:
         pass  # expected: nothing behind the listener completes TLS
     for thread in threads:

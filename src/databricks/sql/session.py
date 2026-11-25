@@ -183,8 +183,15 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
         return
     access_token = kwargs.get("access_token")
     # A JWT from a foreign issuer is exchanged, so it is an OAuth credential even though
-    # it arrives as access_token.
-    foreign_jwt = bool(access_token and _is_foreign_jwt(access_token, server_hostname))
+    # it arrives as access_token. Thrift judges the issuer against server_hostname and the
+    # kernel against its connection host, so a token foreign to either is exchanged.
+    foreign_jwt = bool(
+        access_token
+        and (
+            _is_foreign_jwt(access_token, server_hostname)
+            or _is_foreign_jwt(access_token, kernel_host)
+        )
+    )
     # identity_federation_client_id makes the kernel exchange the access_token at the
     # connection host (mandatory workload-identity exchange), so it is exchanged like a
     # foreign JWT, whatever the token's issuer.
