@@ -1,12 +1,15 @@
 import logging
 import re
 from functools import cached_property
+from urllib.parse import urlsplit
 from typing import Dict, Tuple, List, Optional, Any, Type, TYPE_CHECKING
 
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.auth_utils import decode_token, is_same_host
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider
 from databricks.sql.auth.common import ClientContext
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
@@ -45,6 +48,189 @@ def __getattr__(name: str) -> Any:
 
         return SeaDatabricksClient
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+_OAUTH_AUTH_TYPES = ("databricks-oauth", "azure-oauth", "azure-sp-m2m")
+
+
+def _port_or_none(value: Any) -> Optional[int]:
+    """Validate ``_port``. A falsy value (None, 0, '', False) means the default, as on
+    Thrift (``port or 443``); a truthy value must be an integer between 1 and 65535.
+    """
+    if not value or (isinstance(value, str) and not value.strip()):
+        return None
+    text = (
+        str(value).strip()
+        if isinstance(value, (int, str)) and not isinstance(value, bool)
+        else ""
+    )
+    # isdigit with isascii rejects signs, whitespace and underscores that int() would accept.
+    if not (text.isascii() and text.isdigit()) or int(text) > 65535:
+        raise ValueError(
+            f"Invalid _port {value!r}: expected an integer between 1 and 65535"
+        )
+    return int(text) or None
+
+
+def _redact(value: str) -> str:
+    """Keep only scheme and host[:port] of a URI or host string for an error message.
+
+    Userinfo, path, query and fragment can carry credentials, so they never reach an
+    exception text or log line.
+    """
+    scheme, sep, rest = value.partition("://")
+    if not sep:
+        scheme, rest = "", value
+    elif scheme.lower() not in ("http", "https"):
+        # Not a real scheme: in a scheme-less URI such as "h.io/x?token=t&next=https://e",
+        # everything before "://" is path and query, so none of it is shown.
+        scheme = "<redacted>"
+    # A "/" or "?" can sit inside a password, and "@" can sit in a path, so once any
+    # userinfo marker is present the whole authority is dropped rather than guessed at.
+    if "@" in value or "%40" in value.lower():
+        return f"{scheme}{sep}<redacted>"
+    try:
+        host = urlsplit(f"//{rest}").netloc
+    except ValueError:
+        # urlsplit refuses some hosts (bad IPv6, NFKC-unsafe text); show none of them.
+        return f"{scheme}{sep}<redacted>"
+    return f"{scheme}{sep}{host}"
+
+
+def _uri_host_and_path(uri: str) -> Tuple[str, str]:
+    """Split a ``_connection_uri`` into the kernel host (scheme, authority) and path."""
+    try:
+        parts = urlsplit(uri)
+    except ValueError:
+        parts = None
+    if parts is None:
+        # Raised outside the except block so no chained exception carries urlsplit's netloc.
+        raise ValueError(
+            f"Invalid _connection_uri {_redact(uri)!r}: could not be parsed"
+        )
+    try:
+        port = parts.port
+    except ValueError:
+        port = 0
+    if (
+        parts.scheme not in ("http", "https")
+        or not parts.hostname
+        or "@" in parts.netloc
+        or port == 0
+        # urlsplit reads "h.io:" as no port; an empty port is malformed.
+        or parts.netloc.endswith(":")
+        or parts.path in ("", "/")
+    ):
+        raise ValueError(
+            f"Invalid _connection_uri {_redact(uri)!r}: expected http(s)://host[:port]/path with a "
+            "warehouse path and no credentials"
+        )
+    return f"{parts.scheme}://{parts.netloc}", parts.path + (
+        f"?{parts.query}" if parts.query else ""
+    )
+
+
+def _kernel_endpoint(
+    server_hostname: str, http_path: str, kwargs: dict
+) -> Tuple[str, str, Optional[int]]:
+    """Resolve the kernel ``(host, http_path, port)``. ``_connection_uri`` gives the host
+    (with any port in it) and the path, and wins over ``_port``, so no port is passed.
+    Otherwise ``server_hostname`` and ``http_path`` pass through and ``_port`` is passed as
+    the kernel's ``port``, which applies it. ``None`` and the default 443 pass no port.
+    """
+    if kwargs.get("_connection_uri"):
+        host, path = _uri_host_and_path(kwargs["_connection_uri"])
+        return host, path, None
+    port = _port_or_none(kwargs.get("_port"))
+    return server_hostname, http_path, None if port == 443 else port
+
+
+def _is_foreign_jwt(access_token: str, server_hostname: str) -> bool:
+    """True when ``access_token`` is a JWT whose issuer is not ``server_hostname``. Thrift
+    token-exchanges such a token at server_hostname (TokenFederationProvider); the kernel
+    wraps every provider with the connection host, so it exchanges at the connection host.
+    """
+    claims = decode_token(access_token)
+    if not claims:
+        return False
+    issuer = claims.get("iss", "")
+    return not is_same_host(issuer, normalize_host_with_protocol(server_hostname))
+
+
+def _server_origin(server_hostname: str) -> Tuple[str, Optional[int]]:
+    """Host and port of ``server_hostname`` for the OAuth origin check. A value with no
+    comparable origin (credentials, a bare IPv6 literal, an empty or out-of-range port)
+    returns ``("", None)``, so it never matches and is reported as an origin mismatch.
+    """
+    netloc = server_hostname.rstrip("/").rpartition("://")[2]
+    # urlsplit reads a trailing ':' as an empty port, which has no origin.
+    if netloc.endswith(":"):
+        return "", None
+    try:
+        parts = urlsplit(f"//{netloc}")
+        port = parts.port
+    except ValueError:
+        return "", None
+    if port == 0 or ("@" in parts.netloc and parts.password is not None):
+        return "", None
+    return parts.hostname or "", port
+
+
+def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) -> None:
+    """AC-P4: with OAuth, a ``_connection_uri`` origin must equal ``https://server_hostname``.
+    Thrift keeps OAuth on server_hostname; the kernel uses one host for API and token calls.
+    URI-only use (empty server_hostname) has no server origin to compare and is not checked.
+    """
+    if not (kwargs.get("_connection_uri") and server_hostname):
+        return
+    access_token = kwargs.get("access_token")
+    # A JWT from a foreign issuer is exchanged, so it is an OAuth credential even though
+    # it arrives as access_token. Thrift judges the issuer against server_hostname and the
+    # kernel against its connection host, so a token foreign to either is exchanged.
+    foreign_jwt = bool(
+        access_token
+        and (
+            _is_foreign_jwt(access_token, server_hostname)
+            or _is_foreign_jwt(access_token, kernel_host)
+        )
+    )
+    # identity_federation_client_id makes the kernel exchange the access_token at the
+    # connection host (mandatory workload-identity exchange), so it is exchanged like a
+    # foreign JWT, whatever the token's issuer.
+    federated = bool(access_token and kwargs.get("identity_federation_client_id"))
+    exchanged = foreign_jwt or federated
+    oauth = (
+        kwargs.get("auth_type") in _OAUTH_AUTH_TYPES
+        or kwargs.get("oauth_jwt_key_file")
+        or (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
+        or exchanged
+    )
+    # The kernel auth bridge routes an access_token with no JWT or client-secret
+    # M2M credentials to PAT, even for auth_type='databricks-oauth'; azure-sp-m2m
+    # is resolved before that branch and stays OAuth. A custom credentials_provider
+    # is rejected by the bridge, so it is not an OAuth origin here.
+    routed_to_pat = (
+        bool(access_token)
+        and not exchanged
+        and kwargs.get("auth_type") != "azure-sp-m2m"
+        and not kwargs.get("oauth_jwt_key_file")
+        and not (kwargs.get("oauth_client_id") and kwargs.get("oauth_client_secret"))
+    )
+    if routed_to_pat or not oauth:
+        return
+    server_host, port = _server_origin(server_hostname)
+    uri = urlsplit(kernel_host)
+    if (uri.scheme, uri.hostname or "", uri.port or 443) != (
+        "https",
+        server_host,
+        port or 443,
+    ):
+        raise ValueError(
+            f"OAuth requires the _connection_uri origin to match "
+            f"https://{_redact(server_hostname)}; "
+            f"the kernel would send the credentials to {_redact(kernel_host)}. "
+            "Use a PAT or match the origin."
+        )
 
 
 class Session:
@@ -323,9 +509,24 @@ class Session:
                     "_telemetry_circuit_breaker_enabled"
                 ),
             }
+            kernel_host, kernel_http_path, kernel_port = _kernel_endpoint(
+                server_hostname, http_path, kwargs
+            )
+            _check_oauth_origin(server_hostname, kernel_host, kwargs)
+            if kernel_http_path != http_path:
+                # A _connection_uri can point at another workspace: re-derive the
+                # SPOG org-id header from the resolved path (a caller header still wins).
+                base_headers = [
+                    h for h in all_headers if h not in self._spog_headers.items()
+                ]
+                self._spog_headers = self._extract_spog_headers(
+                    kernel_http_path, base_headers
+                )
+                all_headers = base_headers + list(self._spog_headers.items())
             return KernelDatabricksClient(
-                server_hostname=server_hostname,
-                http_path=http_path,
+                server_hostname=kernel_host,
+                http_path=kernel_http_path,
+                port=kernel_port,
                 http_headers=all_headers,
                 auth_provider=auth_provider,
                 ssl_options=self.ssl_options,

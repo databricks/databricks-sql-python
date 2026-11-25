@@ -1,6 +1,7 @@
 # Release History
 
 # Unreleased
+- Honor `_port` and `_connection_uri` on kernel connections (`use_kernel=True`), as Thrift does. The kernel applies `_port`: a port other than 443 (or 80 for an `http://` host) makes the connection use `scheme://host:port`, bare IPv6 hosts are bracketed, and `0`, unset or `443` change nothing. A port embedded in `server_hostname` wins over a differing `_port`, with a warning. For a non-default `_port`, the kernel rejects credentials, a path, query or fragment in the host, an empty host, and a bad embedded port with `InvalidArgument`, which surfaces as `ProgrammingError`. `_connection_uri` (`http(s)://host[:port]/path?query`) sets host, port, path and query and wins over `_port`; URI-only connections work. Invalid `_port` values and malformed URIs raise `ValueError`. With OAuth, a `_connection_uri` origin that differs from `server_hostname` raises. With OAuth and a non-default `_port`, the token exchange goes to the same host:port, unlike Thrift (documented, not guarded). This needs a databricks-sql-kernel release that includes databricks-sql-kernel#505.
 - Speed up `fetchone()`, `fetchmany()` and `fetchall()` by building each result `Row` with fewer Python calls. The rows are unchanged. Large results and many concurrent cursors in one process benefit most.
 
 # 4.10.0 (2026-11-24)
