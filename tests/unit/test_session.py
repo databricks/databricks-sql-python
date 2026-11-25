@@ -4,7 +4,6 @@ from contextlib import contextmanager
 import gc
 import importlib.metadata as ilm
 import jwt
-import logging
 import socket
 import sys
 import threading
@@ -17,7 +16,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.agent import KNOWN_AGENTS
-from databricks.sql.session import _kernel_host_and_path, _check_oauth_origin
+from databricks.sql.session import _kernel_endpoint, _check_oauth_origin
 
 import databricks.sql
 from databricks.sql.exc import (
@@ -1194,209 +1193,103 @@ class TestReydenThriftFallback:
                 conn.close()
 
 
-# ---- kernel _port / _connection_uri overrides (use_kernel=True) ----
+# ---- kernel _port / _connection_uri resolution (use_kernel=True) ----
+# The kernel applies _port (host:port folding, IPv6 brackets, embedded-port rules, and
+# credential/path/query checks), so these tests cover only what the driver resolves:
+# the host, the port and the path that reach the kernel.
 
 _P = "/sql/1.0/warehouses/abc"
 
 
 @pytest.mark.parametrize(
-    "server, hpath, kwargs, expected",
+    "server, kwargs, expected_port",
     [
-        # AC-P1: _port folds into host:port; 443 adds nothing; a bracketed IPv6 keeps its brackets.
-        ("h.io", _P, {}, ("h.io", _P)),
-        ("h.io", _P, {"_port": 8443}, ("h.io:8443", _P)),
-        ("h.io", _P, {"_port": "8443"}, ("h.io:8443", _P)),
-        ("h.io", _P, {"_port": 1}, ("h.io:1", _P)),
-        ("h.io", _P, {"_port": 65535}, ("h.io:65535", _P)),
-        ("h.io", _P, {"_port": 443}, ("h.io", _P)),
-        ("h.io", _P, {"_port": 0}, ("h.io", _P)),
-        # Falsy _port means the default, as on Thrift (port or 443); no :443 is added.
-        ("h.io", _P, {"_port": None}, ("h.io", _P)),
-        ("h.io", _P, {"_port": ""}, ("h.io", _P)),
-        ("h.io", _P, {"_port": "  "}, ("h.io", _P)),
-        ("h.io", _P, {"_port": False}, ("h.io", _P)),
-        ("h.io", _P, {"_port": "0"}, ("h.io", _P)),
-        # Trailing "/" is trimmed before the port is folded in.
-        ("h.io/", _P, {"_port": 8443}, ("h.io:8443", _P)),
-        ("h.io:8443/", _P, {"_port": 8443}, ("h.io:8443/", _P)),
-        ("h.io/", _P, {}, ("h.io/", _P)),
-        # Without _port, a host with a path passes through unchanged, as on main.
-        ("h.io/x", _P, {}, ("h.io/x", _P)),
-        ("https://h.io:8443/", _P, {"_port": 8443}, ("https://h.io:8443/", _P)),
-        ("https://h.io", _P, {"_port": 8443}, ("https://h.io:8443", _P)),
-        # Without _port a bare IPv6 host passes through, as on main; with _port it is
-        # rejected (see test_kernel_host_and_path_stdlib_edges_reject). Bracket it.
-        ("::1", _P, {}, ("::1", _P)),
-        ("[::1]", _P, {"_port": 8443}, ("[::1]:8443", _P)),
-        ("h.io:8443", _P, {}, ("h.io:8443", _P)),
-        ("h.io:8443", _P, {"_port": 8443}, ("h.io:8443", _P)),
-        # AC-P2: _connection_uri replaces host, port, path and query; it wins over _port.
-        (
-            "h.io",
-            _P,
-            {"_connection_uri": "https://d.io:8443/sql/1.0/warehouses/xyz"},
-            ("https://d.io:8443", "/sql/1.0/warehouses/xyz"),
-        ),
-        (
-            "h.io",
-            _P,
-            {"_connection_uri": "https://h.io/sql/x?o=123"},
-            ("https://h.io", "/sql/x?o=123"),
-        ),
-        (
-            "h.io",
-            _P,
-            {"_connection_uri": "http://h.io:8080/sql/x"},
-            ("http://h.io:8080", "/sql/x"),
-        ),
-        (
-            "h.io",
-            _P,
-            {"_connection_uri": "https://d.io:9999/p", "_port": 8443},
-            ("https://d.io:9999", "/p"),
-        ),
-        (
-            "",
-            "",
-            {"_connection_uri": "https://h.io/sql/x"},
-            ("https://h.io", "/sql/x"),
-        ),  # URI-only
-        # Without _port or _connection_uri the host passes through as on main, even if
-        # it is not a valid host:port (no port is parsed on the default path).
-        ("h.io:0", _P, {}, ("h.io:0", _P)),
-        ("h.io:notaport", _P, {}, ("h.io:notaport", _P)),
-        ("h.io:", _P, {}, ("h.io:", _P)),
-        # An explicit _port of the default 443 adds nothing, so the host passes through
-        # unchanged as on main, before any path, userinfo or IPv6 check (aligned with Node).
-        ("h.io/x", _P, {"_port": 443}, ("h.io/x", _P)),
-        ("h.io?x=1", _P, {"_port": 443}, ("h.io?x=1", _P)),
-        ("", _P, {"_port": 443}, ("", _P)),
+        # A non-default _port is passed as port=; server_hostname is passed unchanged.
+        ("h.io", {"_port": 8443}, 8443),
+        ("h.io", {"_port": "8443"}, 8443),
+        ("h.io", {"_port": 1}, 1),
+        ("h.io", {"_port": 65535}, 65535),
+        ("[::1]", {"_port": 8443}, 8443),
+        ("h.io:8443", {"_port": 8443}, 8443),
+        ("h.io/x", {"_port": 8443}, 8443),
+        ("", {"_port": 8443}, 8443),
+        # Unset, falsy and the default 443 pass no port, so the host is untouched.
+        ("h.io", {}, None),
+        ("h.io", {"_port": None}, None),
+        ("h.io", {"_port": ""}, None),
+        ("h.io", {"_port": "  "}, None),
+        ("h.io", {"_port": False}, None),
+        ("h.io", {"_port": 0}, None),
+        ("h.io", {"_port": "0"}, None),
+        ("h.io", {"_port": 443}, None),
+        ("h.io", {"_port": "443"}, None),
+        ("h.io:0", {}, None),
     ],
 )
-def test_kernel_host_and_path_accepts(server, hpath, kwargs, expected):
-    assert _kernel_host_and_path(server, hpath, kwargs) == expected
-
-
-@pytest.mark.parametrize(
-    "server, kwargs, message",
-    [
-        # AC-P3: ports outside 1..65535, or not integers.
-        ("h.io", {"_port": -1}, "Invalid _port"),
-        ("h.io", {"_port": 65536}, "Invalid _port"),
-        ("h.io", {"_port": "abc"}, "Invalid _port"),
-        ("h.io", {"_port": True}, "Invalid _port"),
-        ("h.io", {"_port": 8443.5}, "Invalid _port"),
-        ("h.io:notaport", {"_port": 8443}, "malformed"),
-        ("h.io:0", {"_port": 8443}, "out of range"),
-        # A non-default _port with a path, query or fragment is rejected, even when the
-        # path looks like a port ('h.io/path:8443').
-        ("h.io/x", {"_port": 8443}, "path, query or fragment"),
-        ("h.io/path:8443", {"_port": 8443}, "path, query or fragment"),
-        ("h.io?x=1", {"_port": 8443}, "path, query or fragment"),
-        ("h.io#x", {"_port": 8443}, "path, query or fragment"),
-        ("https://h.io/x", {"_port": 8443}, "path, query or fragment"),
-        ("h.io/x/", {"_port": 8443}, "path, query or fragment"),
-        # R11: _port needs a server_hostname unless _connection_uri carries the host.
-        ("", {"_port": 8443}, "server_hostname is required"),
-        # AC-P3: _connection_uri must be http(s) with a host and a warehouse path.
-        ("h", {"_connection_uri": "d.io/sql/x"}, "Invalid _connection_uri"),
-        ("h", {"_connection_uri": "ftp://h.io/sql/x"}, "Invalid _connection_uri"),
-        ("h", {"_connection_uri": "https://h.io:8443"}, "Invalid _connection_uri"),
-        ("h", {"_connection_uri": "https://h.io:8443/"}, "Invalid _connection_uri"),
-        (
-            "h",
-            {"_connection_uri": "https://h.io:notaport/sql/x"},
-            "Invalid _connection_uri",
-        ),
-        ("h", {"_connection_uri": "https://h.io:0/sql/x"}, "Invalid _connection_uri"),
-        ("h", {"_connection_uri": "https://u:p@h.io/sql/x"}, "Invalid _connection_uri"),
-        ("h", {"_connection_uri": "https:///sql/x"}, "Invalid _connection_uri"),
-    ],
-)
-def test_kernel_host_and_path_rejects(server, kwargs, message):
-    with pytest.raises(ValueError, match=message):
-        _kernel_host_and_path(server, _P, kwargs)
-
-
-@pytest.mark.parametrize(
-    "server, port, embedded",
-    [
-        ("h.io:7000", 8443, 7000),
-        ("[::1]:7000", 8443, 7000),
-        ("h.io:443", 8443, 443),
-    ],
-)
-def test_embedded_port_wins_over_differing_explicit_port(
-    server, port, embedded, caplog
+def test_kernel_endpoint_passes_host_unchanged_and_port_separately(
+    server, kwargs, expected_port
 ):
-    # A port embedded in server_hostname always wins (as on main); a differing _port
-    # is not an error. The warning names both ports, and the host is passed unchanged.
-    with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
-        host, path = _kernel_host_and_path(server, _P, {"_port": port})
-    assert (host, path) == (server, _P)
-    assert f"carries port {embedded}" in caplog.text
-    assert f"_port={port}" in caplog.text
-
-
-@pytest.mark.parametrize("server", ["h.io:8443", "[::1]:8443", "h.io:7000"])
-def test_embedded_port_with_default_443_does_not_warn(server, caplog):
-    # An explicit _port of the default 443 is not a conflict worth a warning (aligned
-    # with Node), so only a non-default _port that differs from the embedded port logs.
-    with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
-        host, path = _kernel_host_and_path(server, _P, {"_port": 443})
-    assert (host, path) == (server, _P)
-    assert "carries port" not in caplog.text
-
-
-def test_embedded_port_equal_to_explicit_port_does_not_warn(caplog):
-    with caplog.at_level(logging.WARNING, logger="databricks.sql.session"):
-        _kernel_host_and_path("h.io:8443", _P, {"_port": 8443})
-    assert "differs from _port" not in caplog.text
+    assert _kernel_endpoint(server, _P, kwargs) == (server, _P, expected_port)
 
 
 @pytest.mark.parametrize(
-    "server, kwargs, expected",
+    "kwargs, expected",
     [
-        # urlsplit edge cases: the original string passes through unless a port is folded.
-        ("h:", {}, ("h:", _P)),
-        ("user@h", {}, ("user@h", _P)),
-        ("user@h", {"_port": 8443}, ("user@h:8443", _P)),
-        ("[::1", {}, ("[::1", _P)),
-        ("H.Example.COM", {}, ("H.Example.COM", _P)),
-        ("H.Example.COM", {"_port": 8443}, ("H.Example.COM:8443", _P)),
-        ("h:8443/", {"_port": 8443}, ("h:8443/", _P)),
-        ("h/x", {}, ("h/x", _P)),
-        ("h?q", {}, ("h?q", _P)),
-        # With the default _port=443 these pass through unchanged, as on main.
-        ("::1", {"_port": 443}, ("::1", _P)),
-        ("user:pass@h", {"_port": 443}, ("user:pass@h", _P)),
-        ("https://user:pass@h:8443", {"_port": 443}, ("https://user:pass@h:8443", _P)),
+        # _connection_uri gives the host (with any port), the path and the query. It wins
+        # over _port, which is not passed.
+        (
+            {"_connection_uri": "https://d.io:8443/sql/1.0/warehouses/xyz"},
+            ("https://d.io:8443", "/sql/1.0/warehouses/xyz", None),
+        ),
+        (
+            {"_connection_uri": "https://h.io/sql/x?o=123"},
+            ("https://h.io", "/sql/x?o=123", None),
+        ),
+        (
+            {"_connection_uri": "http://h.io:8080/sql/x"},
+            ("http://h.io:8080", "/sql/x", None),
+        ),
+        (
+            {"_connection_uri": "https://d.io:9999/p", "_port": 8443},
+            ("https://d.io:9999", "/p", None),
+        ),
     ],
 )
-def test_kernel_host_and_path_stdlib_edges_accept(server, kwargs, expected):
-    assert _kernel_host_and_path(server, _P, kwargs) == expected
+def test_connection_uri_resolves_host_and_path_and_passes_no_port(kwargs, expected):
+    assert _kernel_endpoint("h.io", _P, kwargs) == expected
+
+
+def test_connection_uri_only_resolves_host_and_path():
+    assert _kernel_endpoint("", "", {"_connection_uri": "https://h.io/sql/x"}) == (
+        "https://h.io",
+        "/sql/x",
+        None,
+    )
 
 
 @pytest.mark.parametrize(
-    "server, kwargs, message",
+    "kwargs, message",
     [
-        # Trailing ':' is an empty port, which is malformed with an explicit _port.
-        ("h:", {"_port": 8443}, "malformed"),
-        ("[::1", {"_port": 8443}, "malformed"),
-        # Bare IPv6 is not supported with _port: urlsplit reads it as a malformed port.
-        ("::1", {"_port": 8443}, "malformed"),
-        ("2001:db8::1", {"_port": 8443}, "malformed"),
-        ("h:abc", {"_port": 8443}, "malformed"),
-        # A colon in userinfo is not a port, but a credential-bearing host is never folded.
-        ("user:pass@h", {"_port": 8443}, "malformed"),
-        ("h:70000", {"_port": 8443}, "1-65535"),
-        ("h/x", {"_port": 8443}, "path, query or fragment"),
-        ("h?q", {"_port": 8443}, "path, query or fragment"),
+        # The driver parses _port as an int in 1..65535 (falsy means the default).
+        ({"_port": -1}, "Invalid _port"),
+        ({"_port": 65536}, "Invalid _port"),
+        ({"_port": "abc"}, "Invalid _port"),
+        ({"_port": True}, "Invalid _port"),
+        ({"_port": 8443.5}, "Invalid _port"),
+        # _connection_uri must be http(s) with a host and a warehouse path, no credentials.
+        ({"_connection_uri": "d.io/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "ftp://h.io/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://h.io:8443"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://h.io:8443/"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://h.io:notaport/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://h.io:0/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://u:p@h.io/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https:///sql/x"}, "Invalid _connection_uri"),
     ],
 )
-def test_kernel_host_and_path_stdlib_edges_reject(server, kwargs, message):
+def test_kernel_endpoint_rejects_driver_owned_inputs(kwargs, message):
     with pytest.raises(ValueError, match=message):
-        _kernel_host_and_path(server, _P, kwargs)
+        _kernel_endpoint("h", _P, kwargs)
 
 
 @pytest.mark.parametrize(
@@ -1412,7 +1305,7 @@ def test_kernel_host_and_path_stdlib_edges_reject(server, kwargs, message):
 def test_thrift_receives_host_and_port_unchanged(mock_client_class, server, port):
     # Thrift is unchanged: the host and _port reach ThriftDatabricksClient verbatim, and
     # ThriftDatabricksClient applies its own `port or 443` to the URL. The kernel-only
-    # folding above does not apply here.
+    # port handling above does not apply here.
     connection = databricks.sql.connect(
         server_hostname=server,
         http_path=_P,
@@ -1520,7 +1413,7 @@ def test_oauth_origin_guard(server, kwargs, uri, should_raise):
     kwargs = dict(kwargs)
     if uri is not None:
         kwargs["_connection_uri"] = uri
-    kernel_host = _kernel_host_and_path(server, _P, kwargs)[0]
+    kernel_host = _kernel_endpoint(server, _P, kwargs)[0]
     if should_raise:
         with pytest.raises(ValueError, match="requires the _connection_uri origin"):
             _check_oauth_origin(server, kernel_host, kwargs)
@@ -1559,7 +1452,7 @@ def _jwt(issuer):
 )
 def test_foreign_issuer_access_token_origin_guard(server, uri, token, should_raise):
     kwargs = {"access_token": token, "_connection_uri": uri}
-    kernel_host = _kernel_host_and_path(server, _P, kwargs)[0]
+    kernel_host = _kernel_endpoint(server, _P, kwargs)[0]
     if should_raise:
         with pytest.raises(ValueError, match="requires the _connection_uri origin"):
             _check_oauth_origin(server, kernel_host, kwargs)
@@ -1582,7 +1475,7 @@ def test_federation_client_id_access_token_origin_guard(uri, should_raise):
         "identity_federation_client_id": "sp-client",
         "_connection_uri": uri,
     }
-    kernel_host = _kernel_host_and_path("h.io", _P, kwargs)[0]
+    kernel_host = _kernel_endpoint("h.io", _P, kwargs)[0]
     if should_raise:
         with pytest.raises(ValueError, match="requires the _connection_uri origin"):
             _check_oauth_origin("h.io", kernel_host, kwargs)
@@ -1620,7 +1513,7 @@ def test_foreign_issuer_access_token_without_connection_uri_is_unaffected():
 )
 def test_invalid_connection_uri_message_omits_credentials(uri, secret):
     with pytest.raises(ValueError, match="Invalid _connection_uri") as exc:
-        _kernel_host_and_path("h", _P, {"_connection_uri": uri})
+        _kernel_endpoint("h", _P, {"_connection_uri": uri})
     assert secret not in str(exc.value)
     # The secret must not survive in a chained cause or context either.
     assert exc.value.__cause__ is None
@@ -1632,7 +1525,7 @@ def test_oauth_origin_message_omits_uri_query():
         "auth_type": "databricks-oauth",
         "_connection_uri": "https://evil.io/sql/x?token=secret",
     }
-    kernel_host = _kernel_host_and_path("h.io", _P, kwargs)[0]
+    kernel_host = _kernel_endpoint("h.io", _P, kwargs)[0]
     with pytest.raises(ValueError, match="requires the _connection_uri origin") as exc:
         _check_oauth_origin("h.io", kernel_host, kwargs)
     assert "secret" not in str(exc.value)
@@ -1640,9 +1533,37 @@ def test_oauth_origin_message_omits_uri_query():
 
 
 @pytest.mark.parametrize(
-    "conn_kwargs, expected_host, expected_path",
+    "conn_kwargs, expected_host, expected_path, expected_port",
     [
-        ({"server_hostname": "h.io", "http_path": _P, "_port": 8443}, "h.io:8443", _P),
+        # _port reaches the kernel client as port=; server_hostname is unchanged.
+        (
+            {"server_hostname": "h.io", "http_path": _P, "_port": 8443},
+            "h.io",
+            _P,
+            8443,
+        ),
+        (
+            {"server_hostname": "h.io", "http_path": _P, "_port": "8443"},
+            "h.io",
+            _P,
+            8443,
+        ),
+        # Unset, falsy and 443 send no port.
+        ({"server_hostname": "h.io", "http_path": _P}, "h.io", _P, None),
+        ({"server_hostname": "h.io", "http_path": _P, "_port": 443}, "h.io", _P, None),
+        ({"server_hostname": "h.io", "http_path": _P, "_port": 0}, "h.io", _P, None),
+        # _connection_uri supplies the host (with its port) and the path; no port.
+        (
+            {
+                "server_hostname": "h.io",
+                "http_path": _P,
+                "_connection_uri": f"https://d.io:9999{_P}",
+                "_port": 8443,
+            },
+            "https://d.io:9999",
+            _P,
+            None,
+        ),
         (
             {
                 "server_hostname": "",
@@ -1651,11 +1572,12 @@ def test_oauth_origin_message_omits_uri_query():
             },
             "https://d.io:9999",
             _P,
+            None,
         ),
     ],
 )
 def test_resolved_kernel_host_and_path_reach_kernel_client(
-    fake_kernel, conn_kwargs, expected_host, expected_path
+    fake_kernel, conn_kwargs, expected_host, expected_path, expected_port
 ):
     client, _ = fake_kernel
     databricks.sql.connect(
@@ -1667,6 +1589,7 @@ def test_resolved_kernel_host_and_path_reach_kernel_client(
     kwargs = client.call_args.kwargs
     assert kwargs["server_hostname"] == expected_host
     assert kwargs["http_path"] == expected_path
+    assert kwargs["port"] == expected_port
 
 
 @pytest.fixture

@@ -238,6 +238,22 @@ def _kernel_geospatial_kwargs(value: bool) -> Dict[str, bool]:
     return {"enable_geospatial_support": value}
 
 
+def _kernel_port_kwargs(port: Optional[int]) -> Dict[str, int]:
+    """Build the kernel ``port`` kwarg. Only a port that applies is passed: unset, 0 and the
+    default 443 send nothing, so the default path sends the same kwargs as before. The kernel
+    applies the port to ``host``. A wheel without the kwarg raises rather than silently
+    connecting to the default port.
+    """
+    if not port or port == 443:
+        return {}
+    if not _kernel_session_accepts_kwarg("port"):
+        raise NotSupportedError(
+            "_port requires a newer databricks-sql-kernel wheel that exposes the "
+            "port kwarg."
+        )
+    return {"port": port}
+
+
 def _validate_telemetry_flush_interval_ms(value: Any) -> None:
     # PyO3 would accept True as 1ms and report other bad values without
     # naming the option, so reject them before the kernel sees them.
@@ -321,10 +337,12 @@ class KernelDatabricksClient(DatabricksClient):
         # toggles, mTLS client cert/key). ``http_headers`` is forwarded
         # to the kernel as custom request headers (it carries the
         # connector's composed ``User-Agent`` + any caller headers + the
-        # SPOG ``x-databricks-org-id``). ``http_client`` / ``port`` are
-        # still accept-and-ignore — the kernel manages its own HTTP
-        # stack.
+        # SPOG ``x-databricks-org-id``). ``port`` (the resolved ``_port``,
+        # or ``None``) is forwarded as the kernel's ``port`` kwarg, which
+        # the kernel applies to ``server_hostname``. ``http_client`` is
+        # accept-and-ignore — the kernel manages its own HTTP stack.
         self._server_hostname = server_hostname
+        self._port: Optional[int] = kwargs.get("port")
         self._http_path = http_path
         self._auth_provider = auth_provider
         self._ssl_options = ssl_options
@@ -488,6 +506,7 @@ class KernelDatabricksClient(DatabricksClient):
             geospatial_kwargs = _kernel_geospatial_kwargs(
                 self._enable_geospatial_support
             )
+            port_kwargs = _kernel_port_kwargs(self._port)
             max_connections_kwargs: Dict[str, Any] = {}
             if _kernel_session_accepts_kwarg("max_connections"):
                 max_connections_kwargs["max_connections"] = self._max_connections
@@ -536,6 +555,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **retry_kwargs,
                 **telemetry_kwargs,
                 **geospatial_kwargs,
+                **port_kwargs,
                 **max_connections_kwargs,
                 **http_headers_kwargs,
             )

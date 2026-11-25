@@ -541,6 +541,79 @@ def test_geospatial_option_rejects_non_bool():
         kernel_client._kernel_geospatial_kwargs("false")
 
 
+@pytest.mark.parametrize("port", [1, 8443, 65535])
+def test_open_session_passes_port_to_kernel_as_port_kwarg(monkeypatch, port):
+    """A resolved ``_port`` reaches the binding as ``port=``. The host is passed
+    unchanged: the kernel applies the port, not the driver."""
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        return MagicMock(session_id="sess-id")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        port=port,
+    )
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert captured["host"] == "example.cloud.databricks.com"
+    assert captured["port"] == port
+
+
+@pytest.mark.parametrize("port", [None, 443])
+def test_open_session_sends_no_port_kwarg_when_no_port_applies(monkeypatch, port):
+    """Unset (``None``) and the default 443 send no ``port`` kwarg, so the default path
+    is unchanged for wheels that predate the kwarg."""
+    captured = {}
+
+    def fake_session(**kw):
+        captured.update(kw)
+        return MagicMock(session_id="sess-id")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        port=port,
+    )
+    c.open_session(session_configuration=None, catalog=None, schema=None)
+
+    assert "port" not in captured
+    assert captured["host"] == "example.cloud.databricks.com"
+
+
+def test_port_kwargs_are_empty_without_a_port():
+    assert kernel_client._kernel_port_kwargs(None) == {}
+
+
+def test_port_requires_kernel_wheel_that_accepts_port(monkeypatch):
+    """A wheel whose fixed ``Session`` signature has no ``port`` raises instead of
+    connecting to the default port."""
+    fake_session = MagicMock()
+    monkeypatch.setattr(
+        kernel_client, "_kernel_session_accepts_kwarg", lambda name: name != "port"
+    )
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    c = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        port=8443,
+    )
+
+    with pytest.raises(NotSupportedError, match="newer databricks-sql-kernel"):
+        c.open_session(session_configuration=None, catalog=None, schema=None)
+    fake_session.assert_not_called()
+
+
 def test_open_session_passes_phase_7_telemetry_kwargs_to_kernel(monkeypatch):
     """Kernel telemetry phase 7 added binding/runtime identity and
     telemetry config kwargs to ``databricks_sql_kernel.Session``."""

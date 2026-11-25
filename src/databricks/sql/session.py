@@ -97,42 +97,6 @@ def _redact(value: str) -> str:
     return f"{scheme}{sep}{host}"
 
 
-def _split_host(host: str) -> Tuple[str, str, Optional[int]]:
-    """Split ``[scheme://]name[:port]`` into ``(prefix, name, port)``. ``name`` keeps the
-    input's case and any userinfo. IPv6 literals must be bracketed: urlsplit reads a bare
-    ``::1`` as a malformed port, so it is rejected.
-    """
-    prefix, sep, rest = host.rstrip("/").rpartition("://")
-    prefix += sep
-    # urlsplit reads a trailing ':' as an empty port; with an explicit _port that is an error.
-    if rest.endswith(":"):
-        raise ValueError(
-            f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port"
-        )
-    try:
-        parts = urlsplit(f"//{rest}")
-        port = parts.port
-    except ValueError:
-        # ``from None`` drops the urlsplit exception, whose text can quote the raw netloc.
-        raise ValueError(
-            f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port; "
-            "a port must be 1-65535"
-        ) from None
-    if "@" in parts.netloc and parts.password is not None:
-        # A colon before '@' is userinfo, not a port, but a credential-bearing host is
-        # still refused when a port is requested (as on main), so it is never folded.
-        raise ValueError(
-            f"Invalid server_hostname {_redact(host)!r}: malformed IPv6 literal or port"
-        )
-    if port is None:
-        return prefix, parts.netloc, None
-    if not 1 <= port <= 65535:
-        raise ValueError(
-            f"Invalid server_hostname {_redact(host)!r}: port {port} is out of range"
-        )
-    return prefix, parts.netloc.rpartition(":")[0], port
-
-
 def _uri_host_and_path(uri: str) -> Tuple[str, str]:
     """Split a ``_connection_uri`` into the kernel host (scheme, authority) and path."""
     try:
@@ -164,47 +128,19 @@ def _uri_host_and_path(uri: str) -> Tuple[str, str]:
     )
 
 
-def _kernel_host_and_path(
+def _kernel_endpoint(
     server_hostname: str, http_path: str, kwargs: dict
-) -> Tuple[str, str]:
-    """Resolve the kernel ``(host, http_path)``. ``_connection_uri`` replaces both and wins over
-    ``_port``; ``_port`` folds into the host as ``host:port`` (default 443 adds nothing).
+) -> Tuple[str, str, Optional[int]]:
+    """Resolve the kernel ``(host, http_path, port)``. ``_connection_uri`` gives the host
+    (with any port in it) and the path, and wins over ``_port``, so no port is passed.
+    Otherwise ``server_hostname`` and ``http_path`` pass through and ``_port`` is passed as
+    the kernel's ``port``, which applies it. ``None`` and the default 443 pass no port.
     """
     if kwargs.get("_connection_uri"):
-        return _uri_host_and_path(kwargs["_connection_uri"])
+        host, path = _uri_host_and_path(kwargs["_connection_uri"])
+        return host, path, None
     port = _port_or_none(kwargs.get("_port"))
-    # The default 443 adds nothing, so the host is passed through unchanged, as on main,
-    # before any of the checks below (a path, userinfo or bare IPv6 host keeps working).
-    if port is None or port == 443:
-        return server_hostname, http_path
-    if not server_hostname:
-        raise ValueError(
-            "server_hostname is required on use_kernel=True when _port is set "
-            "(or pass _connection_uri, which carries its own host)"
-        )
-    # Checked before the port is parsed: 'h.io/path:8443' would otherwise read as host
-    # 'h.io/path' with port 8443. Only the text after any scheme is checked.
-    authority = server_hostname.rstrip("/").rpartition("://")[2]
-    if any(c in authority for c in "/?#"):
-        raise ValueError(
-            f"Invalid server_hostname {_redact(server_hostname)!r}: a path, query or "
-            "fragment cannot be combined with _port; put the port in server_hostname"
-        )
-    prefix, name, embedded = _split_host(server_hostname)
-    if embedded is not None:
-        # A port embedded in server_hostname always wins, as on main (the kernel
-        # connected to it); a differing _port is ignored with a warning, not an error.
-        if embedded != port:
-            logger.warning(
-                "server_hostname %s carries port %d, which differs from _port=%d; "
-                "connecting to port %d. Set the port in one place only.",
-                _redact(server_hostname),
-                embedded,
-                port,
-                embedded,
-            )
-        return server_hostname, http_path
-    return f"{prefix}{name}:{port}", http_path
+    return server_hostname, http_path, None if port == 443 else port
 
 
 def _is_foreign_jwt(access_token: str, server_hostname: str) -> bool:
@@ -217,6 +153,25 @@ def _is_foreign_jwt(access_token: str, server_hostname: str) -> bool:
         return False
     issuer = claims.get("iss", "")
     return not is_same_host(issuer, normalize_host_with_protocol(server_hostname))
+
+
+def _server_origin(server_hostname: str) -> Tuple[str, Optional[int]]:
+    """Host and port of ``server_hostname`` for the OAuth origin check. A value with no
+    comparable origin (credentials, a bare IPv6 literal, an empty or out-of-range port)
+    returns ``("", None)``, so it never matches and is reported as an origin mismatch.
+    """
+    netloc = server_hostname.rstrip("/").rpartition("://")[2]
+    # urlsplit reads a trailing ':' as an empty port, which has no origin.
+    if netloc.endswith(":"):
+        return "", None
+    try:
+        parts = urlsplit(f"//{netloc}")
+        port = parts.port
+    except ValueError:
+        return "", None
+    if port == 0 or ("@" in parts.netloc and parts.password is not None):
+        return "", None
+    return parts.hostname or "", port
 
 
 def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) -> None:
@@ -254,14 +209,7 @@ def _check_oauth_origin(server_hostname: str, kernel_host: str, kwargs: dict) ->
     )
     if routed_to_pat or not oauth:
         return
-    try:
-        _, name, port = _split_host(server_hostname)
-        server_host = urlsplit(f"//{name}").hostname or ""
-    except ValueError:
-        # A server_hostname with no comparable origin (a bare IPv6 literal, an empty port,
-        # credentials) cannot match the URI origin, so it is reported as an origin mismatch
-        # rather than as a malformed host.
-        server_host, port = "", None
+    server_host, port = _server_origin(server_hostname)
     uri = urlsplit(kernel_host)
     if (uri.scheme, uri.hostname or "", uri.port or 443) != (
         "https",
@@ -552,7 +500,7 @@ class Session:
                     "_telemetry_circuit_breaker_enabled"
                 ),
             }
-            kernel_host, kernel_http_path = _kernel_host_and_path(
+            kernel_host, kernel_http_path, kernel_port = _kernel_endpoint(
                 server_hostname, http_path, kwargs
             )
             _check_oauth_origin(server_hostname, kernel_host, kwargs)
@@ -569,6 +517,7 @@ class Session:
             return KernelDatabricksClient(
                 server_hostname=kernel_host,
                 http_path=kernel_http_path,
+                port=kernel_port,
                 http_headers=all_headers,
                 auth_provider=auth_provider,
                 ssl_options=self.ssl_options,

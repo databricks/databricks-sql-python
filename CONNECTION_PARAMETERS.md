@@ -73,7 +73,7 @@ to change without notice.
 | ----------------- | ----- | :----: | :----: | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `server_hostname` | `str` |   ✅   |   ✅   | — (required)  | Workspace hostname, e.g. `dbc-12345.cloud.databricks.com`.                                                              |
 | `http_path`       | `str` |   ✅   |   ✅   | — (required)  | Thrift accepts a SQL-warehouse path **or** an all-purpose-cluster path; Kernel requires a warehouse/endpoint path.      |
-| `_port`           | `int` |   ✅   |   ✅   | `443`         | TCP port (advanced). On Kernel a falsy value means the default, and a port embedded in `server_hostname` wins over a differing `_port` (with a warning). |
+| `_port`           | `int` |   ✅   |   ✅   | `443`         | TCP port (advanced). On Kernel the kernel applies it: a port other than 443 makes the connection use `host:port` (bare IPv6 is bracketed); `0`, unset and `443` change nothing; a port embedded in `server_hostname` wins over a differing `_port` (with a warning). Needs a databricks-sql-kernel release that includes databricks-sql-kernel#505. |
 | `_connection_uri` | `str` |   ✅   |   ✅   | `None`        | Overrides `server_hostname`, `_port` and `http_path` on both, and wins over `_port`. On Kernel with OAuth, the URI origin must match `server_hostname`, and OAuth uses the same host:port as the connection (Thrift keeps OAuth on the bare host). An `access_token` that is exchanged counts as OAuth here: a JWT from an issuer other than `server_hostname`, or any token with `identity_federation_client_id`. |
 | `http_headers`    | `List[Tuple[str, str]]` | ✅ | ⚠️ | `None` | Extra headers sent on requests. Kernel filters `Authorization` and `x-databricks-org-id` because it manages them itself; other headers are forwarded. |
 | `user_agent_entry`| `str` |   ✅   |   ✅   | `None`        | Custom tag folded into the composed `User-Agent` on both. (`_user_agent_entry` is a deprecated alias that warns.)       |
@@ -213,8 +213,7 @@ are forwarded when supported by the installed kernel binding.
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
 8. `force_enable_telemetry`.
-9. `_port` and `_connection_uri`.
-10. `_pool_connections` and `_proxy_auth_method` do not configure the
+9. `_pool_connections` and `_proxy_auth_method` do not configure the
     kernel-owned network stack.
 
 ### Supported on Kernel, missing / ignored on Thrift
