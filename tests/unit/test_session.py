@@ -1284,6 +1284,8 @@ def test_connection_uri_only_resolves_host_and_path():
         ({"_connection_uri": "https://h.io:8443/"}, "Invalid _connection_uri"),
         ({"_connection_uri": "https://h.io:notaport/sql/x"}, "Invalid _connection_uri"),
         ({"_connection_uri": "https://h.io:0/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://h.io:/sql/x"}, "Invalid _connection_uri"),
+        ({"_connection_uri": "https://[::1]:/sql/x"}, "Invalid _connection_uri"),
         ({"_connection_uri": "https://u:p@h.io/sql/x"}, "Invalid _connection_uri"),
         ({"_connection_uri": "https:///sql/x"}, "Invalid _connection_uri"),
     ],

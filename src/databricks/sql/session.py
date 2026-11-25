@@ -117,6 +117,8 @@ def _uri_host_and_path(uri: str) -> Tuple[str, str]:
         or not parts.hostname
         or "@" in parts.netloc
         or port == 0
+        # urlsplit reads "h.io:" as no port; an empty port is malformed.
+        or parts.netloc.endswith(":")
         or parts.path in ("", "/")
     ):
         raise ValueError(
