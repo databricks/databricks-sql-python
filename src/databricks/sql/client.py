@@ -375,6 +375,8 @@ class Connection:
         #  operations. On the kernel path, a positive value is the total HTTP
         #  request deadline. Kernel values of None or 0 select its 120-second
         #  default; 0 is neither unlimited nor an immediate timeout.
+        #  A positive value is also the idle limit for Volume file transfers
+        #  on the kernel path; None or 0 sets no idle limit.
         # _disable_pandas
         #  In case the deserialisation through pandas causes any issues, it can be disabled with
         #  this flag.
@@ -1286,14 +1288,19 @@ class Cursor:
         staging_allowed_local_path: Union[None, str, List[str]],
         input_stream: Optional[BinaryIO] = None,
     ):
-        """Fetch the HTTP request instruction from a staging ingestion command
-        and call the designated handler.
+        """Run the file transfer for a staging (Volume) statement.
 
-        Raise an exception if localFile is specified by the server but the localFile
-        is not descended from staging_allowed_local_path.
+        A result set that can transfer by itself does so (kernel backend).
+        Otherwise fetch the instruction row and send the HTTP request here.
+        Local files must be within staging_allowed_local_path.
         """
 
         assert self.active_result_set is not None
+        complete = getattr(self.active_result_set, "complete_staging_operation", None)
+        if complete is not None:
+            return self._complete_staging_operation(
+                complete, staging_allowed_local_path, input_stream
+            )
         row = self.active_result_set.fetchone()
         assert row is not None
 
@@ -1389,6 +1396,10 @@ class Cursor:
             )
 
     @log_latency(StatementType.SQL)
+    def _complete_staging_operation(self, complete, allowed_paths, input_stream):
+        return complete(allowed_paths, input_stream)
+
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -1404,7 +1415,6 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        # Kernel backends reject staging operations before reaching these handlers.
         assert self.connection.http_client is not None
         with open(local_file, "rb") as fh:
             r = self.connection.http_client.request(

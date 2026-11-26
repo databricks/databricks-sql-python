@@ -5,6 +5,9 @@ network and no Rust extension dependency."""
 from __future__ import annotations
 
 from collections import deque
+import errno
+import io
+import pathlib
 from typing import Deque
 from unittest.mock import MagicMock
 
@@ -15,8 +18,10 @@ import pytest
 # so the whole module must skip when pyarrow is unavailable.
 pa = pytest.importorskip("pyarrow")
 
+from databricks.sql.backend.kernel import _errors
 from databricks.sql.backend.kernel.result_set import KernelResultSet
 from databricks.sql.backend.types import CommandId, CommandState
+from databricks.sql.exc import OperationalError, ProgrammingError
 
 
 class _FakeKernelHandle:
@@ -28,6 +33,7 @@ class _FakeKernelHandle:
         self._schema = schema
         self._batches: Deque[pa.RecordBatch] = deque(batches)
         self.closed = False
+        self.is_volume_operation = False
 
     def arrow_schema(self) -> pa.Schema:
         return self._schema
@@ -243,3 +249,169 @@ def test_close_skips_kernel_call_when_connection_already_closed(int_schema):
     # …but local state is still terminal so __del__ is idempotent:
     assert rs.status == CommandState.CLOSED
     assert rs.has_been_closed_server_side is True
+
+
+@pytest.mark.parametrize(
+    "allowed,paths,stream,sent",
+    [
+        pytest.param(
+            "/allowed", ["/allowed"], io.BytesIO(b"payload"), b"payload", id="bytes"
+        ),
+        pytest.param("/allowed", ["/allowed"], io.BytesIO(b""), b"", id="empty"),
+        pytest.param(
+            [pathlib.Path("/allowed")],
+            [str(pathlib.Path("/allowed"))],
+            io.StringIO("é"),
+            "é".encode("utf-8"),
+            id="path-root-and-text-stream",
+        ),
+    ],
+)
+def test_volume_reads_input_only_when_native_requests_it(
+    int_schema, allowed, paths, stream, sent
+):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock(
+        side_effect=[
+            _errors._kernel.VolumeCompletion.NeedsInputStream,
+            _errors._kernel.VolumeCompletion.Completed,
+        ]
+    )
+    rs = _make_rs(handle)
+    rs.complete_staging_operation(allowed, stream)
+    assert not stream.read()
+    assert handle.complete_volume_operation.call_args_list == [
+        ((paths,), {"remove_not_found_is_success": False, "input_bytes": None}),
+        ((paths,), {"remove_not_found_is_success": False, "input_bytes": sent}),
+    ]
+    assert rs.fetchall() == []
+    rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
+
+
+def test_volume_invalid_allowed_path_still_finishes(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock()
+    rs = _make_rs(handle)
+    with pytest.raises(TypeError):
+        rs.complete_staging_operation([1])
+    handle.complete_volume_operation.assert_not_called()
+    rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
+
+
+def test_volume_does_not_read_irrelevant_stream(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    handle.complete_volume_operation = MagicMock(
+        return_value=_errors._kernel.VolumeCompletion.Completed
+    )
+    rs = _make_rs(handle)
+    stream = MagicMock()
+    rs.complete_staging_operation(None, stream)
+    stream.read.assert_not_called()
+    assert rs.fetchall() == []
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_volume_missing_or_failed_input_closes_without_masking_error(
+    int_schema, missing
+):
+    handle = _FakeKernelHandle(int_schema, [])
+    handle.complete_volume_operation = MagicMock(
+        return_value=_errors._kernel.VolumeCompletion.NeedsInputStream
+    )
+    rs = _make_rs(handle)
+    error = RuntimeError("stream read failed")
+    stream = MagicMock()
+    stream.read.side_effect = error
+    with pytest.raises(ProgrammingError if missing else RuntimeError) as raised:
+        rs.complete_staging_operation([], None if missing else stream)
+    assert missing or raised.value is error
+    assert str(raised.value) == (
+        "No input stream provided for streaming operation" if missing else str(error)
+    )
+    assert handle.closed
+    handle.complete_volume_operation.assert_called_once()
+
+
+def test_failed_volume_consumes_instructions_and_preserves_os_error(int_schema):
+    handle = _FakeKernelHandle(int_schema, [_batch(int_schema, [1])])
+    handle.is_volume_operation = True
+    error = RuntimeError("local file failure")
+    error.local_os_error = errno.ENOENT
+    error.local_path = "/allowed/missing"
+    handle.complete_volume_operation = MagicMock(side_effect=error)
+    rs = _make_rs(handle)
+    with pytest.raises(FileNotFoundError) as raised:
+        rs.complete_staging_operation(["/allowed"])
+    assert raised.value.errno == errno.ENOENT
+    assert raised.value.filename == "/allowed/missing"
+    assert rs.fetchall() == []
+    rs.backend.finish_volume_operation.assert_called_once_with(rs.command_id)
+
+
+@pytest.mark.parametrize("outcome", ["pending", "completed", "failed"])
+def test_volume_close_cancels_only_pending_transfer(int_schema, outcome):
+    handle = _FakeKernelHandle(int_schema, [])
+    handle.is_volume_operation = True
+    rs = _make_rs(handle)
+    if outcome == "completed":
+        handle.complete_volume_operation = MagicMock(
+            return_value=_errors._kernel.VolumeCompletion.Completed
+        )
+        rs.complete_staging_operation([])
+    elif outcome == "failed":
+        handle.complete_volume_operation = MagicMock(
+            side_effect=RuntimeError("transfer failed")
+        )
+        with pytest.raises(Exception):
+            rs.complete_staging_operation([])
+
+    cancels_at_close = []
+    handle.close = MagicMock(
+        side_effect=lambda: cancels_at_close.append(
+            rs.backend.cancel_command.call_count
+        )
+    )
+    rs.close()
+    assert cancels_at_close == [1 if outcome == "pending" else 0]
+    if outcome == "pending":
+        rs.backend.cancel_command.assert_called_once_with(rs.command_id)
+    else:
+        rs.backend.cancel_command.assert_not_called()
+
+
+def test_volume_instruction_http_error_preserves_mapping(int_schema):
+    code, status = "NotFound", 404
+    error = _errors._kernel.KernelError("instruction read failed")
+    error.code = code
+    error.message = "instruction read failed"
+    error.http_status = status
+    error.sql_state = "22023"
+    error.query_id = "query-id"
+    handle = _FakeKernelHandle(int_schema, [])
+    handle.complete_volume_operation = MagicMock(side_effect=error)
+    rs = _make_rs(handle)
+    with pytest.raises(ProgrammingError, match="instruction read failed") as raised:
+        rs.complete_staging_operation([])
+    assert raised.value.http_status == status
+    assert raised.value.code == code
+    assert raised.value.sql_state == "22023"
+    assert raised.value.query_id == "query-id"
+    assert raised.value.__cause__ is error
+
+
+def test_volume_http_404_is_an_operational_error(int_schema):
+    handle = _FakeKernelHandle(int_schema, [])
+    error = _errors._kernel.KernelError("storage response")
+    error.message = "Volume storage request failed: HTTP 404"
+    error.http_status = 404
+    error.error_code = "VOLUME_STORAGE_HTTP_ERROR"
+    handle.complete_volume_operation = MagicMock(side_effect=error)
+    rs = _make_rs(handle)
+    with pytest.raises(
+        OperationalError,
+        match=r"^Staging operation over HTTP was unsuccessful: 404-Volume storage request failed: HTTP 404$",
+    ):
+        rs.complete_staging_operation([])

@@ -141,7 +141,14 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
             "operation-id": getattr(exc, "query_id", None),
             "diagnostic-info": getattr(exc, "diagnostic_info", None),
         }
-    new = cls(getattr(exc, "message", str(exc)), context)
+    message = getattr(exc, "message", str(exc))
+    if getattr(exc, "error_code", None) == "VOLUME_STORAGE_HTTP_ERROR":
+        cls = OperationalError
+        message = (
+            "Staging operation over HTTP was unsuccessful: "
+            f"{getattr(exc, 'http_status', None)}-{message}"
+        )
+    new = cls(message, context)
 
     for attr in (
         "code",

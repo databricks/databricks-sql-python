@@ -114,7 +114,7 @@ to change without notice.
 
 | Option                               | Type        | Thrift | Kernel | Default Value | Note                                                                                                                                            |
 | ------------------------------------ | ----------- | :----: | :----: | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `_socket_timeout`                    | `float` (s) |   ✅   |   ✅   | `900` (Thrift); `120` (kernel) | Thrift: socket send/recv/connect timeout. Kernel: total HTTP request deadline from connect through response-body completion. A positive value is forwarded; unset or `0` selects the kernel's 120s default. On the kernel path, `0` is neither unlimited nor an immediate timeout. |
+| `_socket_timeout`                    | `float` (s) |   ✅   |   ✅   | `900` (Thrift SQL); `120` (kernel SQL) | Thrift: socket send/recv/connect timeout. Kernel: total HTTP request deadline from connect through response-body completion. A positive value is forwarded; unset or `0` selects the kernel's 120s SQL request default. For Volume transfers see Volume file paths. |
 | `_pool_connections`                  | `int`       |   ⚠️   |   ❌   | `10`          | Number of pools in the shared Python HTTP client. On Thrift this affects auxiliary auth/feature-flag/telemetry traffic, not the separate Thrift query transport. Kernel-owned network traffic does not use this client. |
 | `_pool_maxsize`                      | `int`       |   ⚠️   |   ⚠️   | `20` (Python); `100` (kernel when unset) | Max idle connections retained per host. It configures the shared Python client but not the Thrift query transport. With kernel ≥ 1.1.0, a positive value also configures the kernel's Rust HTTP pool. Unset or `0` keeps each client's default. |
 | `_proxy_auth_method`                 | `str`       |   ✅   |   ❌   | `None`        | `basic` or `negotiate` (Kerberos). Applied to both Thrift query traffic and the shared Python client. It is not forwarded to the kernel's Rust transport. See [`docs/proxy.md`](docs/proxy.md). |
@@ -171,7 +171,7 @@ to change without notice.
 | `use_inline_params`           | `bool` \| `"silent"`              |   ✅   |   ✅   | `False`       | Render parameters inline (legacy) vs. native bound params (DBR 14.1+). Shared cursor code performs the rendering before dispatch, so both backends honor it identically. |
 | `ignore_transactions`         | `bool`                            |   ✅   |   ✅   | `True`        | When `True`: `commit()` is a no-op, `rollback()` raises `NotSupportedError`, and setting `autocommit` is a no-op.          |
 | `fetch_autocommit_from_server`| `bool`                            |   ✅   |   ✅   | `False`       | Query the server (`SET AUTOCOMMIT`) for autocommit state instead of returning the cached value.                           |
-| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ❌   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. **Thrift-only** — the kernel has no Volume API yet.          |
+| `staging_allowed_local_path`  | `str` \| `List[str]`              |   ✅   |   ✅   | `None`        | Local path(s) permitted for Unity Catalog Volume `PUT`/`GET`. Kernel also checks resolved symlink targets; see below. |
 
 ## Telemetry
 
@@ -208,13 +208,12 @@ are forwarded when supported by the installed kernel binding.
    `enable_query_result_lz4_compression`.
 5. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
-6. `staging_allowed_local_path` (Volume `PUT`/`GET`).
-7. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
+6. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
-8. `force_enable_telemetry`.
-9. `_port` and `_connection_uri`.
-10. `_pool_connections` and `_proxy_auth_method` do not configure the
+7. `force_enable_telemetry`.
+8. `_port` and `_connection_uri`.
+9. `_pool_connections` and `_proxy_auth_method` do not configure the
     kernel-owned network stack.
 
 ### Supported on Kernel, missing / ignored on Thrift
@@ -241,6 +240,23 @@ are forwarded when supported by the installed kernel binding.
 - **Telemetry**: Kernel owns its telemetry lifecycle. It does not honor
   `force_enable_telemetry`, and an omitted `enable_telemetry` or circuit-breaker
   setting uses the kernel's default.
+
+### Volume file paths
+
+With `use_kernel=True`, SQL `PUT`, `GET` and `REMOVE` complete their file
+operations before `execute()` or `get_async_execution_result()` returns.
+`PUT` and `GET` require requested paths and resolved symlink targets within
+`staging_allowed_local_path`; `REMOVE` needs no local root.
+`execute(input_stream=stream)` reads the stream only when requested by the server.
+Completed transfers return no instruction rows.
+On the kernel backend, cancelling or closing the cursor stops a running
+transfer. The Thrift backend lets it finish.
+A GET that has started copying into the destination finishes the copy.
+
+Volume transfers have no total deadline.
+An explicit positive `_socket_timeout` caps storage connection establishment, reads, upload progress and PUT response waits.
+A redirected PUT resend has no idle bound.
+Unset or `0` leaves storage inactivity unbounded.
 
 > All kernel-path behavior reflects the current **early-access** surface and is
 > subject to change. Generated against connector version `4.5.0`; the source of
