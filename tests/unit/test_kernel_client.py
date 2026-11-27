@@ -18,7 +18,7 @@ import threading
 import types
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import call, MagicMock
 
 import pytest
 
@@ -1007,6 +1007,40 @@ def test_execute_command_forwards_row_limit(row_limit):
     )
 
     stmt.set_row_limit.assert_called_once_with(row_limit)
+
+
+@pytest.mark.parametrize("async_op", [False, True])
+def test_execute_command_forwards_lz4_compression_before_dispatch(async_op):
+    client = _make_client()
+    client._kernel_session = MagicMock()
+    cursor = MagicMock(arraysize=100, buffer_size_bytes=1024)
+    statements = [MagicMock(), MagicMock()]
+    client._kernel_session.statement.side_effect = statements
+
+    for stmt, enabled in zip(statements, [True, False]):
+        stmt.execute.return_value = MagicMock(
+            statement_id="stmt-id",
+            arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+        )
+        stmt.submit.return_value.statement_id = "stmt-id"
+        client.execute_command(
+            operation="SELECT 1",
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=enabled,
+            cursor=cursor,
+            use_cloud_fetch=True,
+            parameters=[],
+            async_op=async_op,
+            enforce_embedded_schema_correctness=False,
+        )
+
+        dispatch = call.submit() if async_op else call.execute()
+        stmt.set_lz4_compression.assert_called_once_with(enabled)
+        assert stmt.method_calls.index(call.set_lz4_compression(enabled)) < (
+            stmt.method_calls.index(dispatch)
+        )
 
 
 # ---------------------------------------------------------------------------
