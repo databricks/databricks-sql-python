@@ -1014,10 +1014,11 @@ def test_execute_command_forwards_lz4_compression_before_dispatch(async_op):
     client = _make_client()
     client._kernel_session = MagicMock()
     cursor = MagicMock(arraysize=100, buffer_size_bytes=1024)
-    statements = [MagicMock(), MagicMock()]
+    cases = [(True, True), (False, False), (0, False)]
+    statements = [MagicMock() for _ in cases]
     client._kernel_session.statement.side_effect = statements
 
-    for stmt, enabled in zip(statements, [True, False]):
+    for stmt, (value, expected) in zip(statements, cases):
         stmt.execute.return_value = MagicMock(
             statement_id="stmt-id",
             arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
@@ -1028,7 +1029,7 @@ def test_execute_command_forwards_lz4_compression_before_dispatch(async_op):
             session_id=MagicMock(),
             max_rows=1,
             max_bytes=1,
-            lz4_compression=enabled,
+            lz4_compression=value,
             cursor=cursor,
             use_cloud_fetch=True,
             parameters=[],
@@ -1037,8 +1038,9 @@ def test_execute_command_forwards_lz4_compression_before_dispatch(async_op):
         )
 
         dispatch = call.submit() if async_op else call.execute()
-        stmt.set_lz4_compression.assert_called_once_with(enabled)
-        assert stmt.method_calls.index(call.set_lz4_compression(enabled)) < (
+        stmt.set_lz4_compression.assert_called_once_with(expected)
+        assert stmt.set_lz4_compression.call_args.args[0] is expected
+        assert stmt.method_calls.index(call.set_lz4_compression(expected)) < (
             stmt.method_calls.index(dispatch)
         )
 

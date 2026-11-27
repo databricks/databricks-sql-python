@@ -211,9 +211,9 @@ are forwarded when supported by the installed kernel binding.
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
 7. `force_enable_telemetry`.
-9. `_port` and `_connection_uri`.
-10. `_pool_connections` and `_proxy_auth_method` do not configure the
-    kernel-owned network stack.
+8. `_port` and `_connection_uri`.
+9. `_pool_connections` and `_proxy_auth_method` do not configure the
+   kernel-owned network stack.
 
 ### Supported on Kernel, missing / ignored on Thrift
 
