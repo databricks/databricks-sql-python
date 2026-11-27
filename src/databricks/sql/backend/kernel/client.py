@@ -666,6 +666,7 @@ class KernelDatabricksClient(DatabricksClient):
             try:
                 stmt.set_sql(operation)
                 stmt.set_row_limit(row_limit)
+                stmt.set_lz4_compression(bool(lz4_compression))
                 if query_tags:
                     # Per-statement query tags. The kernel serialises the
                     # dict (None value -> bare key) into the SEA

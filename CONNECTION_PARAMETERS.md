@@ -151,7 +151,7 @@ to change without notice.
 | ------------------------------------- | ------ | :----: | :----: | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `use_cloud_fetch`                     | `bool` |   ✅   |   ✅   | `True`        | Set `False` at connection creation to fetch complete results without cloud-storage downloads. On the kernel path, changing this attribute after connecting does not change result delivery. |
 | `max_download_threads`                | `int`  |   ✅   |   ✅   | `16` kernel, `10` Thrift | CloudFetch download window; on the kernel, counts downloading and queued chunks ahead of consumption, excluding consumer buffers. Not a byte limit. |
-| `enable_query_result_lz4_compression` | `bool` |   ✅   |   ❌   | `True`        | LZ4-compress result payloads. Not forwarded; the kernel handles compression internally.                       |
+| `enable_query_result_lz4_compression` | `bool` |   ✅   |   ✅   | `True`        | Request LZ4 compression for Arrow results. Set `False` to request uncompressed results. |
 | `_disable_pandas`                     | `bool` |   ✅   |   ✅   | `False`       | Skip the pandas-based Arrow→row deserialization and materialize rows directly with PyArrow. This is a **Python-side** result-conversion toggle, not a wire option: the kernel returns results as Arrow (`RecordBatch`es) and the connector runs the *same* `_convert_arrow_table` for both backends, so the flag is honored on the kernel path too. Affects only row fetches (`fetchone`/`fetchmany`/`fetchall`); the `fetch*_arrow` methods return the Arrow table unchanged regardless of this flag. |
 | `enable_geospatial_support`           | `bool` |   ❌   |   ✅   | `False` | Return GEOMETRY / GEOGRAPHY as `{"srid": int, "wkb": bytes}` values when `True`, or as WKT / EWKT strings when `False`. This is a local result conversion and is never forwarded to SEA. |
 | `_use_arrow_native_complex_types`     | `bool` |   ✅   |   ✅   | `True`        | Return `ARRAY`/`MAP`/`STRUCT` as native Arrow types instead of JSON strings. Forwarded to the kernel.         |
@@ -204,18 +204,16 @@ are forwarded when supported by the installed kernel binding.
 2. `experimental_oauth_persistence` (custom OAuth token store).
 3. TLS-client-cert *authentication* (`_use_cert_as_auth`) — note the TLS
    *transport* options (`_tls_*`) themselves **are** honored on both backends.
-4. Result-transport tuning:
-   `enable_query_result_lz4_compression`.
-5. Arrow-native rendering for `_use_arrow_native_decimals` /
+4. Arrow-native rendering for `_use_arrow_native_decimals` /
    `_use_arrow_native_timestamps` (complex types **are** forwarded).
-6. `staging_allowed_local_path` (Volume `PUT`/`GET`).
-7. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
+5. `staging_allowed_local_path` (Volume `PUT`/`GET`).
+6. Retry fine-tuning beyond the four forwarded knobs: `_retry_delay_default`,
    `_retry_dangerous_codes`, `_respect_server_retry_after_header`,
    `_retry_max_redirects`, `_enable_v3_retries`.
-8. `force_enable_telemetry`.
-9. `_port` and `_connection_uri`.
-10. `_pool_connections` and `_proxy_auth_method` do not configure the
-    kernel-owned network stack.
+7. `force_enable_telemetry`.
+8. `_port` and `_connection_uri`.
+9. `_pool_connections` and `_proxy_auth_method` do not configure the
+   kernel-owned network stack.
 
 ### Supported on Kernel, missing / ignored on Thrift
 
