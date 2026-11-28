@@ -400,7 +400,10 @@ def test_open_session_honors_cloudfetch_option(
     )
     original = dict(configuration) if configuration is not None else None
     client.open_session(configuration, catalog=None, schema=None)
-    assert captured["session_conf"] == expected
+    assert captured["session_conf"] == {
+        "cloudfetch_max_chunks_in_memory": "16",
+        **expected,
+    }
     assert configuration == original
 
 
@@ -1432,7 +1435,8 @@ def test_get_query_state_uses_reader_after_result_stream_started():
     reader.status.assert_called_once_with()
 
 
-def test_get_execution_result_uses_retained_owning_handle_first():
+@pytest.mark.parametrize("count", [7, 0, None])
+def test_get_execution_result_uses_retained_owning_handle_first(count):
     """The first in-process result fetch uses the retained submitting
     handle so the kernel finalizes the original async statement telemetry."""
     c = _make_client()
@@ -1440,7 +1444,13 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = MagicMock()
-    handle.await_result.return_value = fake_stream
+    del handle.num_modified_rows
+
+    def await_result():
+        handle.num_modified_rows = count
+        return fake_stream
+
+    handle.await_result.side_effect = await_result
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1451,6 +1461,8 @@ def test_get_execution_result_uses_retained_owning_handle_first():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == count
+    fake_stream.fetch_next_batch.assert_not_called()
     c._kernel_session.attach_async_statement.assert_not_called()
     handle.await_result.assert_called_once_with()
     assert cid.guid in c._async_result_stream_started
@@ -1463,6 +1475,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     fake_stream = MagicMock()
     fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     handle = _attach_returns(c, await_result=fake_stream)
+    handle.num_modified_rows = 7
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
@@ -1471,6 +1484,7 @@ def test_get_execution_result_attaches_by_id_when_no_retained_handle():
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == 7
     c._kernel_session.attach_async_statement.assert_called_once_with("async-1")
     handle.await_result.assert_called_once_with()
 
@@ -1525,6 +1539,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     retry_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
     reader = MagicMock()
     reader.await_result.return_value = retry_stream
+    reader.num_modified_rows = 0
     owning_handle.reader.return_value = reader
     cursor = MagicMock()
     cursor.arraysize = 100
@@ -1533,6 +1548,7 @@ def test_get_execution_result_construction_failure_retains_marker_and_uses_reade
     rs = c.get_execution_result(cid, cursor=cursor)
 
     assert rs is not None
+    assert rs.num_modified_rows == 0
     owning_handle.reader.assert_called_once_with()
     c._kernel_session.attach_async_statement.assert_not_called()
     reader.await_result.assert_called_once_with()
@@ -1613,11 +1629,60 @@ def test_get_query_state_returns_state_when_no_failure():
 # ---------------------------------------------------------------------------
 
 
-def test_max_download_threads_is_nonzero():
-    """Property is consulted by Thrift code paths that don't run for
-    ``use_kernel=True``; a non-zero default avoids divide-by-zero."""
-    c = _make_client()
-    assert c.max_download_threads > 0
+@pytest.mark.parametrize(
+    "threads, override",
+    [
+        (1, None),
+        (4, None),
+        (10, None),
+        (1000, None),
+        (10**100, None),
+        (4, "cloudfetch_max_chunks_in_memory"),
+        (4, "CLOUDFETCH_MAX_CHUNKS_IN_MEMORY"),
+    ],
+)
+def test_max_download_threads_configures_kernel(monkeypatch, threads, override):
+    captured = {}
+
+    def fake_session(**options):
+        captured.update(options)
+        return MagicMock(session_id="sess-id")
+
+    monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+    client = kernel_client.KernelDatabricksClient(
+        server_hostname="example.cloud.databricks.com",
+        http_path="/sql/1.0/warehouses/abc",
+        auth_provider=AccessTokenAuthProvider("dapi-test"),
+        ssl_options=None,
+        max_download_threads=threads,
+    )
+    configuration = {"TIMEZONE": "UTC"}
+    if override:
+        configuration[override] = "2"
+    original = dict(configuration)
+    client.open_session(configuration, catalog=None, schema=None)
+    expected = (
+        original
+        if override
+        else {**original, "cloudfetch_max_chunks_in_memory": str(min(threads, 256))}
+    )
+    assert captured["session_conf"] == expected
+    assert configuration == original
+    assert client.max_download_threads == threads
+
+
+@pytest.mark.parametrize("threads", [0, -1, None, "4", 1.5, True])
+def test_max_download_threads_rejects_invalid_values(threads):
+    with pytest.raises(
+        ValueError, match="max_download_threads must be a positive integer"
+    ):
+        kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            max_download_threads=threads,
+        )
 
 
 def test_synthetic_command_id_is_uuid_shaped():

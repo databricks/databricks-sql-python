@@ -303,6 +303,29 @@ class ClientTestSuite(unittest.TestCase):
         cursor.execute("SELECT 1")
         self.assertEqual(cursor.rowcount, -1)
 
+    def test_async_rowcount_on_completion_and_reset(self):
+        for count in (5, 0, None):
+            with self.subTest(count=count):
+                result_set = Mock(num_modified_rows=count, is_staging_operation=False)
+                backend = ThriftDatabricksClientMockFactory.new()
+                backend.get_execution_result.return_value = result_set
+                backend.get_query_state.return_value = CommandState.SUCCEEDED
+                cursor = client.Cursor(connection=Mock(), backend=backend)
+                cursor.rowcount = 9
+
+                cursor.execute_async("UPDATE t SET x = 1")
+                self.assertEqual(cursor.rowcount, -1)
+                cursor.active_command_id = Mock(spec=CommandId)
+                self.assertIs(cursor.get_async_execution_result(), cursor)
+                self.assertEqual(cursor.rowcount, count if count is not None else -1)
+                result_set.fetchall.assert_not_called()
+
+                result_set.num_modified_rows = None
+                cursor.execute_async("SELECT 1")
+                self.assertEqual(cursor.rowcount, -1)
+                cursor.get_async_execution_result()
+                self.assertEqual(cursor.rowcount, -1)
+
     def test_closed_cursor_doesnt_allow_operations(self):
         cursor = client.Cursor(Mock(), Mock())
         cursor.close()
