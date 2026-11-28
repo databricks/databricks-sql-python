@@ -539,6 +539,7 @@ class TestKernelTransportOptionsThreading:
                 _socket_timeout=12.5,
                 _pool_maxsize=41,
                 use_cloud_fetch=False,
+                max_download_threads=4,
                 enable_geospatial_support=False,
             )
             try:
@@ -551,6 +552,7 @@ class TestKernelTransportOptionsThreading:
                 assert kwargs["request_timeout_secs"] == 12.5
                 assert kwargs["max_connections"] == 41
                 assert kwargs["use_cloud_fetch"] is False
+                assert kwargs["max_download_threads"] == 4
                 assert kwargs["enable_geospatial_support"] is False
             finally:
                 conn.close()
@@ -566,6 +568,7 @@ class TestKernelTransportOptionsThreading:
             try:
                 _, kwargs = mock_kernel_client.call_args
                 assert kwargs["max_connections"] is None
+                assert kwargs["max_download_threads"] == 16
             finally:
                 conn.close()
 
