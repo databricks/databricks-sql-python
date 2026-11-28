@@ -2,6 +2,7 @@
 
 # Unreleased
 - Speed up `fetchone()`, `fetchmany()` and `fetchall()` by building each result `Row` with fewer Python calls. The rows are unchanged. Large results and many concurrent cursors in one process benefit most.
+- Fix: a CloudFetch download that finished faster than the clock resolution (common on Windows) no longer fails the fetch with `ZeroDivisionError` while logging its download speed. Download time is now measured with `time.perf_counter()`.
 
 # 4.10.0 (2026-11-24)
 - Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
