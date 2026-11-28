@@ -2,6 +2,7 @@
 
 # Unreleased
 - Speed up `fetchone()`, `fetchmany()` and `fetchall()` by building each result `Row` with fewer Python calls. The rows are unchanged. Large results and many concurrent cursors in one process benefit most.
+- Fix: with pandas enabled (the default), a floating-point NaN in a FLOAT or DOUBLE column is now returned as `float('nan')` instead of `None`, so it can be told apart from SQL NULL. This matches what `_disable_pandas=True` already returned.
 
 # 4.10.0 (2026-11-24)
 - Upgrade Databricks SQL Kernel to 1.5.0, with lower overhead for buffered fetches and closing drained cursors, and Arrow and Quinn security updates.
