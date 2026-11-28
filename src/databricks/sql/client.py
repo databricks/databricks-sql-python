@@ -247,6 +247,16 @@ class Connection:
             user_agent_entry: `str`, optional
                 A custom tag to append to the User-Agent header. This is typically used by partners to identify their applications.. If not specified, it will use the default user agent PyDatabricksSqlConnector
 
+            max_download_threads: `int`, optional (default 16 with use_kernel=True, otherwise 10)
+                CloudFetch download window. With use_kernel=True, bounds downloading
+                and queued chunks ahead of consumption, excluding consumer buffers;
+                it is not a byte limit. Must be a positive integer on the kernel
+                backend and is fixed when connecting. On the kernel backend, values above
+                256 are clamped.
+                An explicit cloudfetch_max_chunks_in_memory in session_configuration
+                takes precedence, case-insensitively. Invalid raw overrides warn and
+                retain the kernel default of 16.
+
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
                 When `auth_type` is set to `databricks-oauth` or `azure-oauth` without persisting the oauth token in a
@@ -1713,6 +1723,13 @@ class Cursor:
             self.active_result_set = self.backend.get_execution_result(
                 self.active_command_id, self
             )
+
+            num_modified_rows = (
+                self.active_result_set.num_modified_rows
+                if self.active_result_set
+                else None
+            )
+            self.rowcount = num_modified_rows if num_modified_rows is not None else -1
 
             if self.active_result_set and self.active_result_set.is_staging_operation:
                 self._handle_staging_operation(
